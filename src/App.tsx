@@ -3,7 +3,7 @@ import Dashboard from './Dashboard';
 import ManageServices from './ManageServices';
 import UnlockScreen from './UnlockScreen';
 import { preloadServiceLogos } from './logoCache';
-import { mockServices, type Service } from './mockServices';
+import { mockServices, HUB_PRACTICE_LOGIN_ID, type Service } from './mockServices';
 import type { Credential } from './credentials';
 import { persistVault, unlockVault, type VaultState } from './vault/vault';
 import './App.css';
@@ -13,6 +13,8 @@ type Screen = 'manage' | 'dashboard';
 function App() {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [screen, setScreen] = useState<Screen>('manage');
+  const [manageIsFirstRun, setManageIsFirstRun] = useState(false);
+  const [showMagicMomentHint, setShowMagicMomentHint] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [customServices, setCustomServices] = useState<Service[]>([]);
   const [credentials, setCredentials] = useState<Record<string, Credential>>({});
@@ -46,7 +48,18 @@ function App() {
     setSelectedIds(new Set(loaded.selectedIds));
     setCustomServices(loaded.customServices);
     setIsUnlocked(true);
-    setScreen(loaded.selectedIds.length > 0 ? 'dashboard' : 'manage');
+    if (loaded.selectedIds.length > 0) {
+      setManageIsFirstRun(false);
+      setScreen('dashboard');
+    } else {
+      const initialIds = new Set([HUB_PRACTICE_LOGIN_ID]);
+      setSelectedIds(initialIds);
+      setManageIsFirstRun(true);
+      setScreen('manage');
+      void saveVaultState(
+        buildVaultState(loaded.credentials, initialIds, loaded.customServices),
+      );
+    }
   }
 
   function toggleService(id: string) {
@@ -90,9 +103,14 @@ function App() {
       <Dashboard
         services={selectedServices}
         credentials={credentials}
+        showMagicMomentHint={showMagicMomentHint}
+        onDismissMagicMomentHint={() => setShowMagicMomentHint(false)}
         onSaveCredential={saveCredential}
         onDeleteCredential={deleteCredential}
-        onAddMore={() => setScreen('manage')}
+        onAddMore={() => {
+          setManageIsFirstRun(false);
+          setScreen('manage');
+        }}
       />
     );
   }
@@ -101,9 +119,16 @@ function App() {
     <ManageServices
       allServices={allServices}
       selectedIds={selectedIds}
+      isFirstRun={manageIsFirstRun}
       onToggle={toggleService}
       onAddCustom={addCustomService}
-      onContinue={() => setScreen('dashboard')}
+      onContinue={() => {
+        void saveVaultState(
+          buildVaultState(credentials, selectedIds, customServices),
+        );
+        setShowMagicMomentHint(manageIsFirstRun);
+        setScreen('dashboard');
+      }}
     />
   );
 }

@@ -1,5 +1,12 @@
 import type { Credential } from './credentials';
-import { getServiceOpenUrl, mockServices } from './mockServices';
+import {
+  DEFAULT_LOGIN_FIELDS,
+  getServiceOpenUrl,
+  HUB_PRACTICE_LOGIN_ID,
+  mockServices,
+  type LoginField,
+  type Service,
+} from './mockServices';
 
 /** Local demo-only mock credentials. */
 export const POC_MOCK_CREDENTIALS = {
@@ -14,12 +21,31 @@ export const POC_MOCK_3_FIELD_CREDENTIALS = {
 };
 
 export const HTZONE_SERVICE_ID = 'htzone';
+export { HUB_PRACTICE_LOGIN_ID };
+export const HUB_PRACTICE_DEMO_PATH = '/demo-login.html';
+
 const htzoneService = mockServices.find((service) => service.id === HTZONE_SERVICE_ID);
 export const POC_IL_SITE_URL = htzoneService
   ? getServiceOpenUrl(htzoneService)
   : 'https://www.htzone.co.il/login';
 
-const extensionId = import.meta.env.VITE_POC_EXTENSION_ID;
+const extensionId =
+  typeof import.meta.env.VITE_POC_EXTENSION_ID === 'string'
+    ? import.meta.env.VITE_POC_EXTENSION_ID.trim()
+    : '';
+
+/** True in Vite dev server (`npm run dev`). POC dashboard controls are dev-only. */
+export function isPocControlsVisible(): boolean {
+  return import.meta.env.DEV;
+}
+
+export function isHubPracticeService(service: Service): boolean {
+  return service.id === HUB_PRACTICE_LOGIN_ID;
+}
+
+export function isExtensionAvailable(): boolean {
+  return Boolean(getChromeRuntime()?.sendMessage && extensionId);
+}
 
 function withPocAutofillParam(url: string): string {
   const parsed = new URL(url);
@@ -27,8 +53,9 @@ function withPocAutofillParam(url: string): string {
   return parsed.toString();
 }
 
-function localDemoUrl(path: string): string {
-  return withPocAutofillParam(new URL(path, window.location.origin).toString());
+function localDemoUrl(path: string, useAutofillParam = true): string {
+  const absolute = new URL(path, window.location.origin).toString();
+  return useAutofillParam ? withPocAutofillParam(absolute) : absolute;
 }
 
 type ChromeRuntime = {
@@ -46,6 +73,14 @@ function getChromeRuntime(): ChromeRuntime | undefined {
   ).chrome?.runtime;
 }
 
+export function hasCompleteCredentials(
+  credential: Credential | undefined,
+  loginFields: LoginField[],
+): boolean {
+  if (!credential) return false;
+  return loginFields.every((field) => Boolean(credential[field.id]?.trim()));
+}
+
 export function getHtzoneVaultCredentials(
   vaultCredentials: Record<string, Credential>,
 ): { email: string; password: string } | null {
@@ -60,24 +95,60 @@ export function getHtzoneVaultCredentials(
   return { email, password };
 }
 
-function openLocalDemoPage(path: string): void {
-  const url = localDemoUrl(path);
+type DemoFillOptions = {
+  credentials?: Credential;
+  loginFields?: LoginField[];
+};
+
+function openLocalDemoPage(path: string, options?: DemoFillOptions): void {
+  const useUrlAutofill = !options?.credentials;
+  const url = localDemoUrl(path, useUrlAutofill);
   const runtime = getChromeRuntime();
+  const payload: Record<string, unknown> = {
+    type: 'POC_FILL_DEMO',
+    url,
+  };
+
+  if (options?.credentials) {
+    payload.credentials = options.credentials;
+  }
+
+  if (options?.loginFields) {
+    payload.loginFields = options.loginFields;
+  }
 
   if (runtime?.sendMessage && extensionId) {
-    runtime.sendMessage(
-      extensionId,
-      {
-        type: 'POC_FILL_DEMO',
-        url,
-      },
-      () => {
-        if (runtime.lastError) {
-          window.open(url, '_blank', 'noopener,noreferrer');
+    const isPracticeVaultFill = Boolean(options?.credentials);
+
+    if (isPracticeVaultFill) {
+      console.log('[Practice] Extension target ID:', extensionId);
+    }
+
+    runtime.sendMessage(extensionId, payload, (response: unknown) => {
+      const lastError = runtime.lastError;
+
+      if (isPracticeVaultFill) {
+        if (lastError?.message) {
+          console.log('[Practice] Extension send error:', lastError.message);
+        } else {
+          console.log('[Practice] Extension response:', response);
         }
-      },
-    );
+      }
+
+      if (lastError) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    });
     return;
+  }
+
+  if (options?.credentials) {
+    console.log(
+      '[Practice] Extension send error:',
+      extensionId
+        ? 'chrome.runtime.sendMessage unavailable'
+        : 'VITE_POC_EXTENSION_ID is not configured',
+    );
   }
 
   window.open(url, '_blank', 'noopener,noreferrer');
@@ -113,7 +184,7 @@ function openHtzonePage(
 
 /** POC button: open local demo-login.html and trigger extension autofill. */
 export function openDemoAndFill(): void {
-  openLocalDemoPage('/demo-login.html');
+  openLocalDemoPage(HUB_PRACTICE_DEMO_PATH);
 }
 
 /** POC button: open local 3-field demo page and trigger extension autofill. */
@@ -138,4 +209,33 @@ export function openHtzoneTile(
   }
 
   openHtzonePage(saved, false);
+}
+
+export type PracticeOpenResult =
+  | { ok: true; extensionUsed: boolean }
+  | { ok: false; reason: 'credentials_missing' };
+
+/** Hub practice tile: open demo login and fill saved vault credentials. */
+export function openPracticeLoginFromTile(
+  credential: Credential | undefined,
+  loginFields: LoginField[] = DEFAULT_LOGIN_FIELDS,
+): PracticeOpenResult {
+  if (!hasCompleteCredentials(credential, loginFields)) {
+    return { ok: false, reason: 'credentials_missing' };
+  }
+
+  const vaultCredentials: Credential = {};
+  for (const field of loginFields) {
+    vaultCredentials[field.id] = credential![field.id].trim();
+  }
+
+  console.log('[Practice] Practice credentials found');
+  console.log('[Practice] Practice credentials sent to extension');
+
+  openLocalDemoPage(HUB_PRACTICE_DEMO_PATH, {
+    credentials: vaultCredentials,
+    loginFields,
+  });
+
+  return { ok: true, extensionUsed: isExtensionAvailable() };
 }

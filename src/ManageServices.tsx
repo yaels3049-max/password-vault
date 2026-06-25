@@ -12,6 +12,7 @@ import {
 interface ManageServicesProps {
   allServices: Service[];
   selectedIds: Set<string>;
+  isFirstRun: boolean;
   onToggle: (id: string) => void;
   onAddCustom: (service: Service) => void;
   onContinue: () => void;
@@ -20,6 +21,7 @@ interface ManageServicesProps {
 export default function ManageServices({
   allServices,
   selectedIds,
+  isFirstRun,
   onToggle,
   onAddCustom,
   onContinue,
@@ -50,12 +52,33 @@ export default function ManageServices({
     closeAddModal();
   }
 
+  const selectedCount = selectedIds.size;
+
   return (
     <div className="onboarding">
       <header className="onboarding-header">
-        <h1>ניהול השירותים שלי</h1>
-        <p>בחרו את השירותים שאתם משתמשים בהם</p>
+        {isFirstRun ? (
+          <>
+            <h1>בואו נתחיל עם שירות אחד</h1>
+            <p>
+              בחרו שירות אחד להתחלה — מספיק לבחור מאחת הקטגוריות למטה.
+              אפשר להוסיף עוד שירותים בכל עת מהלוח הבקרה.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1>ניהול השירותים שלי</h1>
+            <p>בחרו את השירותים שאתם משתמשים בהם</p>
+          </>
+        )}
       </header>
+
+        {isFirstRun && (
+        <p className="onboarding-first-run-note">
+          אין צורך לבחור מכל הקטגוריות. שירות אחד מספיק כדי להתחיל.
+          <strong>תרגול התחברות</strong> כבר נבחר — אפשר להמשיך או לבחור שירות אחר.
+        </p>
+      )}
 
       {categories.map((category) => {
         const services = allServices.filter((s) => s.category === category);
@@ -78,18 +101,28 @@ export default function ManageServices({
                 </li>
               ))}
             </ul>
-            <button
-              type="button"
-              className="add-custom-btn"
-              onClick={() => openAddModal(category)}
-            >
-              ➕ הוסף אתר משלי
-            </button>
+            {category !== 'practice' && (
+              <button
+                type="button"
+                className="add-custom-btn"
+                onClick={() => openAddModal(category)}
+              >
+                ➕ הוסף אתר משלי
+              </button>
+            )}
           </section>
         );
       })}
 
       <footer className="onboarding-footer">
+        {isFirstRun && selectedCount === 1 && (
+          <p className="onboarding-footer-hint">נבחר שירות אחד — אפשר להמשיך.</p>
+        )}
+        {isFirstRun && selectedCount > 1 && (
+          <p className="onboarding-footer-hint">
+            נבחרו {selectedCount} שירותים — אפשר להמשיך או להוסיף עוד מאוחר יותר.
+          </p>
+        )}
         <button type="button" className="finish-btn" onClick={onContinue}>
           המשך
         </button>

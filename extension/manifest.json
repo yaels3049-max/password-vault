@@ -18,7 +18,10 @@
     {
       "matches": [
         "http://localhost/*",
-        "http://127.0.0.1/*"
+        "http://127.0.0.1/*",
+        "http://[::1]/*",
+        "https://localhost/*",
+        "https://127.0.0.1/*"
       ],
       "js": [
         "generic/form-detector.js",
@@ -34,7 +37,10 @@
   "externally_connectable": {
     "matches": [
       "http://localhost/*",
-      "http://127.0.0.1/*"
+      "http://127.0.0.1/*",
+      "http://[::1]/*",
+      "https://localhost/*",
+      "https://127.0.0.1/*"
     ]
   }
 }

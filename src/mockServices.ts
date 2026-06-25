@@ -1,4 +1,4 @@
-export type ServiceCategory = 'banking' | 'health' | 'shopping';
+export type ServiceCategory = 'practice' | 'banking' | 'health' | 'shopping';
 
 export type LoginFieldType = 'text' | 'password';
 
@@ -38,7 +38,16 @@ function highResFavicon(siteUrl: string): string {
 
 export { highResFavicon };
 
+export const HUB_PRACTICE_LOGIN_ID = 'hub-practice-login';
+
 export const mockServices: Service[] = [
+  {
+    id: HUB_PRACTICE_LOGIN_ID,
+    name: 'תרגול התחברות',
+    icon: '✨',
+    url: '/demo-login.html',
+    category: 'practice',
+  },
   {
     id: 'hapoalim',
     name: 'בנק הפועלים',
@@ -155,15 +164,22 @@ export const mockServices: Service[] = [
 ];
 
 export const categoryLabels: Record<ServiceCategory, string> = {
+  practice: 'התחלה כאן',
   banking: 'בנקים',
   health: 'בריאות',
   shopping: 'קניות',
 };
 
 export const categoryQuestions: Record<ServiceCategory, string> = {
+  practice: 'רוצים לחוות את המילוי האוטומטי? בחרו תרגול התחברות.',
   banking: 'איזה בנקים יש לך?',
   health: 'באיזו קופת חולים אתה חבר?',
   shopping: 'באילו אתרי קניות אתה משתמש?',
 };
 
-export const categories: ServiceCategory[] = ['banking', 'health', 'shopping'];
+export const categories: ServiceCategory[] = [
+  'practice',
+  'banking',
+  'health',
+  'shopping',
+];

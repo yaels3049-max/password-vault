@@ -1,5 +1,7 @@
 'use strict';
 
+console.log('[Practice] Background service worker started');
+
 const MOCK_2_FIELD_CREDENTIALS = {
   username: 'demo-user',
   password: 'demo-pass',
@@ -41,8 +43,10 @@ const PAGE_CONFIGS = [
     ],
     match: function (url) {
       const isLocal =
-        url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-      return isLocal && url.pathname.endsWith('/demo-login.html');
+        url.hostname === 'localhost' ||
+        url.hostname === '127.0.0.1' ||
+        url.hostname === '[::1]';
+      return isLocal && url.pathname.indexOf('demo-login.html') !== -1;
     },
     credentials: MOCK_2_FIELD_CREDENTIALS,
   },
@@ -85,13 +89,29 @@ function withAutofillParam(urlString) {
   return url.href;
 }
 
-function buildFillMessage(pageConfig) {
-  return {
+function withoutAutofillParam(urlString) {
+  const url = new URL(urlString);
+  url.searchParams.delete('pocAutofill');
+  return url.href;
+}
+
+function buildFillMessage(pageConfig, overrides) {
+  const fillMessage = {
     type: 'FILL',
     demoPage: pageConfig.id,
     credentials: pageConfig.credentials,
     mapping: pageConfig.mapping,
   };
+
+  if (overrides && overrides.credentials) {
+    fillMessage.credentials = overrides.credentials;
+  }
+
+  if (overrides && overrides.loginFields) {
+    fillMessage.loginFields = overrides.loginFields;
+  }
+
+  return fillMessage;
 }
 
 function runScriptingFillFallback(tabId, fillMessage, onDone) {
@@ -183,6 +203,152 @@ function sendFillWithRetry(tabId, fillMessage, attempt, onDone) {
     }
 
     onDone(response || { ok: !lastError });
+  });
+}
+
+const PRACTICE_FILL_RETRY_DELAY_MS = 300;
+const PRACTICE_FILL_MAX_ATTEMPTS = 20;
+const PRACTICE_CONTENT_READY_MAX_ATTEMPTS = 30;
+const PRACTICE_CONTENT_READY_DELAY_MS = 200;
+
+function isPracticeDemoTabUrl(urlString) {
+  if (!urlString || typeof urlString !== 'string') {
+    return false;
+  }
+  return urlString.indexOf('demo-login.html') !== -1;
+}
+
+function onceExternalSendResponse(sendResponse, label) {
+  let called = false;
+  return function (payload) {
+    if (called) {
+      console.log('[Practice] sendResponse skipped (already called):', label);
+      return;
+    }
+    called = true;
+    console.log('[Practice] External sendResponse:', label, payload);
+    sendResponse(payload);
+  };
+}
+
+function waitForPracticeContentScript(tabId, attempt, onReady) {
+  chrome.tabs.sendMessage(tabId, { type: 'PRACTICE_PING' }, function (response) {
+    const lastError = chrome.runtime.lastError;
+
+    if (!lastError && response && response.ready) {
+      console.log('[Practice] Content script ready on tab', tabId);
+      onReady();
+      return;
+    }
+
+    if (attempt < PRACTICE_CONTENT_READY_MAX_ATTEMPTS) {
+      if (lastError && attempt === 0) {
+        console.log('[Practice] Content script not ready yet:', lastError.message);
+      }
+      setTimeout(function () {
+        waitForPracticeContentScript(tabId, attempt + 1, onReady);
+      }, PRACTICE_CONTENT_READY_DELAY_MS);
+      return;
+    }
+
+    if (lastError) {
+      console.log('[Practice] Content script wait lastError:', lastError.message);
+    }
+    onReady();
+  });
+}
+
+function sendPracticeVaultFillWithRetry(tabId, fillMessage, attempt, onDone) {
+  if (attempt === 0) {
+    console.log('[Practice] Sending fill message to tab', tabId);
+  }
+
+  chrome.tabs.sendMessage(tabId, fillMessage, function (response) {
+    const lastError = chrome.runtime.lastError;
+
+    if (lastError) {
+      console.log('[Practice] Fill message lastError:', lastError.message);
+    }
+
+    const fillFailed = lastError || !response || !response.ok;
+
+    if (fillFailed && attempt < PRACTICE_FILL_MAX_ATTEMPTS) {
+      setTimeout(function () {
+        sendPracticeVaultFillWithRetry(tabId, fillMessage, attempt + 1, onDone);
+      }, PRACTICE_FILL_RETRY_DELAY_MS);
+      return;
+    }
+
+    if (response && response.ok) {
+      console.log('[Practice] Fill message sent successfully');
+      onDone(response);
+      return;
+    }
+
+    if (fillMessage.mapping && fillMessage.credentials) {
+      console.log('[Practice] Using scripting fill fallback for practice tab', tabId);
+      runScriptingFillFallback(tabId, fillMessage, function (scriptResult) {
+        if (scriptResult && scriptResult.ok) {
+          console.log('[Practice] Fill message sent successfully');
+        } else if (chrome.runtime.lastError) {
+          console.log(
+            '[Practice] Scripting fallback lastError:',
+            chrome.runtime.lastError.message,
+          );
+        }
+        onDone(scriptResult);
+      });
+      return;
+    }
+
+    onDone(
+      response || {
+        ok: !lastError,
+        reason: lastError ? lastError.message : 'practice_fill_failed',
+      },
+    );
+  });
+}
+
+function startPracticeVaultFill(tabId, fillMessage, sendResponse) {
+  waitForPracticeContentScript(tabId, 0, function () {
+    setTimeout(function () {
+      sendPracticeVaultFillWithRetry(tabId, fillMessage, 0, sendResponse);
+    }, 100);
+  });
+}
+
+function waitForPracticeDemoTabReady(tabId, sendResponse, onReady) {
+  function onTabUpdated(updatedTabId, changeInfo) {
+    if (updatedTabId !== tabId || changeInfo.status !== 'complete') {
+      return;
+    }
+
+    chrome.tabs.get(tabId, function (tab) {
+      if (chrome.runtime.lastError) {
+        console.log(
+          '[Practice] tabs.get lastError:',
+          chrome.runtime.lastError.message,
+        );
+        return;
+      }
+
+      if (!tab || !isPracticeDemoTabUrl(tab.url)) {
+        return;
+      }
+
+      chrome.tabs.onUpdated.removeListener(onTabUpdated);
+      onReady();
+    });
+  }
+
+  chrome.tabs.onUpdated.addListener(onTabUpdated);
+
+  chrome.tabs.get(tabId, function (tab) {
+    if (!chrome.runtime.lastError && tab && isPracticeDemoTabUrl(tab.url)) {
+      chrome.tabs.onUpdated.removeListener(onTabUpdated);
+      onReady();
+    }
   });
 }
 
@@ -283,19 +449,57 @@ function scheduleHtzoneRetry(tabId, credentials, attempt, onDone, lastResult) {
   );
 }
 
-function openLocalPageAndFill(urlString, sendResponse) {
+function openLocalPageAndFill(urlString, sendResponse, externalMessage) {
+  const hasVaultCredentials =
+    externalMessage &&
+    externalMessage.credentials &&
+    typeof externalMessage.credentials === 'object';
+  const respond = hasVaultCredentials
+    ? onceExternalSendResponse(sendResponse, 'openLocalPageAndFill')
+    : sendResponse;
+
+  if (hasVaultCredentials) {
+    console.log('[Practice] Extension received practice fill request');
+  }
+
   const pageConfig = getPageConfig(urlString);
   if (!pageConfig || pageConfig.id === 'htzone-login') {
-    sendResponse({ ok: false, reason: 'not_allowed_page' });
+    if (hasVaultCredentials) {
+      console.log('[Practice] Page config rejected for URL:', urlString);
+    }
+    respond({ ok: false, reason: 'not_allowed_page' });
     return false;
   }
 
-  const targetUrl = withAutofillParam(urlString);
-  const fillMessage = buildFillMessage(pageConfig);
+  const targetUrl = hasVaultCredentials
+    ? withoutAutofillParam(urlString)
+    : withAutofillParam(urlString);
+  const fillOverrides = hasVaultCredentials
+    ? {
+        credentials: externalMessage.credentials,
+        loginFields: externalMessage.loginFields,
+      }
+    : externalMessage && externalMessage.loginFields
+      ? { loginFields: externalMessage.loginFields }
+      : null;
+  const fillMessage = buildFillMessage(pageConfig, fillOverrides);
+  if (hasVaultCredentials) {
+    fillMessage.vaultFill = true;
+  }
+
+  if (hasVaultCredentials) {
+    console.log('[Practice] Opening demo tab', targetUrl);
+  }
 
   chrome.tabs.create({ url: targetUrl }, function (tab) {
     if (chrome.runtime.lastError || !tab || !tab.id) {
-      sendResponse({
+      if (hasVaultCredentials && chrome.runtime.lastError) {
+        console.log(
+          '[Practice] tabs.create lastError:',
+          chrome.runtime.lastError.message,
+        );
+      }
+      respond({
         ok: false,
         reason: chrome.runtime.lastError
           ? chrome.runtime.lastError.message
@@ -306,6 +510,15 @@ function openLocalPageAndFill(urlString, sendResponse) {
 
     const tabId = tab.id;
 
+    if (hasVaultCredentials) {
+      console.log('[Practice] Demo tab created with id', tabId);
+      waitForPracticeDemoTabReady(tabId, respond, function () {
+        console.log('[Practice] Demo tab ready for fill, tab id', tabId);
+        startPracticeVaultFill(tabId, fillMessage, respond);
+      });
+      return;
+    }
+
     function onTabUpdated(updatedTabId, changeInfo) {
       if (updatedTabId !== tabId) {
         return;
@@ -313,7 +526,7 @@ function openLocalPageAndFill(urlString, sendResponse) {
 
       if (changeInfo.status === 'complete') {
         chrome.tabs.onUpdated.removeListener(onTabUpdated);
-        sendFillWithRetry(tabId, fillMessage, 0, sendResponse);
+        sendFillWithRetry(tabId, fillMessage, 0, respond);
         return;
       }
 
@@ -322,7 +535,7 @@ function openLocalPageAndFill(urlString, sendResponse) {
         changeInfo.url === 'chrome-error://chromewebdata/'
       ) {
         chrome.tabs.onUpdated.removeListener(onTabUpdated);
-        sendResponse({ ok: false, reason: 'tab_load_error' });
+        respond({ ok: false, reason: 'tab_load_error' });
       }
     }
 
@@ -410,26 +623,30 @@ function openHtzonePageAndFill(urlString, credentials, options, sendResponse) {
 
 chrome.runtime.onMessageExternal.addListener(function (
   message,
-  _sender,
+  sender,
   sendResponse,
 ) {
+  console.log('[Practice] Background received message', message && message.type);
+
   if (!message) {
     sendResponse({ ok: false, reason: 'no_message' });
     return false;
   }
 
   if (message.type === 'POC_FILL_DEMO') {
-    return openLocalPageAndFill(message.url, sendResponse);
+    openLocalPageAndFill(message.url, sendResponse, message);
+    return true;
   }
 
   if (message.type === 'POC_FILL_IL') {
     console.log('[Israeli Vault POC] HTZone external message POC_FILL_IL received');
-    return openHtzonePageAndFill(
+    openHtzonePageAndFill(
       message.url,
       message.credentials,
       { withAutofillParam: message.withAutofillParam !== false },
       sendResponse,
     );
+    return true;
   }
 
   sendResponse({ ok: false, reason: 'unknown_message' });

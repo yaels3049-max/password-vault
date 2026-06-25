@@ -28,7 +28,7 @@ export default function UnlockScreen({ onUnlock }: UnlockScreenProps) {
     <div className="unlock">
       <div className="unlock-card">
         <header className="unlock-header">
-          <h1>פתיחת הכספת</h1>
+          <h1>כניסה למרכז הדיגיטלי שלי</h1>
         </header>
         <form onSubmit={handleSubmit}>
           <label className="unlock-field">
@@ -47,7 +47,7 @@ export default function UnlockScreen({ onUnlock }: UnlockScreenProps) {
           </label>
           {error && <p className="unlock-error">{error}</p>}
           <button type="submit" className="unlock-btn" disabled={loading}>
-            {loading ? 'פותח...' : 'פתח כספת'}
+            {loading ? 'נכנס...' : 'היכנס למרכז'}
           </button>
         </form>
       </div>

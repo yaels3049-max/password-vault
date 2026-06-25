@@ -21,6 +21,24 @@
   line-height: 1.5;
 }
 
+.onboarding-first-run-note {
+  margin: -1rem 0 1.25rem;
+  padding: 0.75rem 1rem;
+  background: #f0f4f8;
+  border-radius: 6px;
+  color: #444;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.onboarding-footer-hint {
+  margin: 0 0 0.75rem;
+  color: #555;
+  font-size: 0.95rem;
+  text-align: center;
+  line-height: 1.5;
+}
+
 .category-card {
   margin-bottom: 1.25rem;
   padding: 1.25rem 1.5rem;
@@ -189,6 +207,52 @@
   font-size: 1.375rem;
   font-weight: 700;
   color: #1a1a1a;
+}
+
+.dashboard-banner {
+  margin-bottom: 1rem;
+  padding: 0.875rem 1rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.dashboard-banner p {
+  margin: 0;
+}
+
+.dashboard-banner--info {
+  background: #eff6ff;
+  color: #1e3a8a;
+  border: 1px solid #bfdbfe;
+}
+
+.dashboard-banner--hint {
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+}
+
+.dashboard-banner--success {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.dashboard-banner-dismiss {
+  margin-top: 0.625rem;
+  padding: 0.25rem 0.75rem;
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: #475569;
+  cursor: pointer;
+}
+
+.dashboard-banner-dismiss:hover {
+  background: #f1f5f9;
 }
 
 .add-more-btn {
