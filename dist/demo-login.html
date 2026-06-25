@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>דמו התחברות</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 360px;
+        margin: 3rem auto;
+        padding: 1.5rem;
+      }
+      label {
+        display: block;
+        margin-bottom: 1rem;
+      }
+      span {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-weight: 600;
+      }
+      input {
+        width: 100%;
+        padding: 0.5rem;
+        font-size: 1rem;
+      }
+      h1 {
+        font-size: 1.25rem;
+        margin-bottom: 1.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>דמו התחברות (POC)</h1>
+    <form>
+      <label>
+        <span>שם משתמש</span>
+        <input id="username" name="username" type="text" autocomplete="username" />
+      </label>
+      <label>
+        <span>סיסמה</span>
+        <input id="password" name="password" type="password" autocomplete="current-password" />
+      </label>
+    </form>
+  </body>
+</html>

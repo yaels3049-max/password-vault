@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Israeli Vault Autofill POC",
+  "version": "1.0.0",
+  "description": "Local demo autofill proof of concept only",
+  "minimum_chrome_version": "93",
+  "permissions": ["tabs", "scripting"],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": ["mappings.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost/*",
+      "http://127.0.0.1/*"
+    ]
+  }
+}
