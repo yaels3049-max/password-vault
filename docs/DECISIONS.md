@@ -135,6 +135,34 @@ Future releases may change presentation without changing the underlying architec
 
 ---
 
+## ADR-007 — Web-First Platform
+
+**Decision**
+
+The Personal Digital Hub is a Web-first platform.
+
+The browser application is the primary user experience.
+
+Browser extensions, future mobile applications and any additional clients are supporting interfaces rather than independent products.
+
+**Reason**
+
+Users should be able to securely access their Digital Hub from any trusted computer without depending on a specific device.
+
+The platform should provide the same encrypted vault and user experience regardless of where the user signs in.
+
+This decision also keeps the product portable across future clients while maintaining a single architectural foundation.
+
+**Consequence**
+
+Future development should prioritize the web platform.
+
+Browser extensions remain complementary components whose purpose is to assist the web experience.
+
+Future clients (PWA, mobile applications, desktop wrappers, etc.) should reuse the same platform architecture and encrypted data model rather than becoming separate products.
+
+---
+
 ## Status
 
 Living document.
