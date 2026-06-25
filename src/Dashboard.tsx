@@ -13,6 +13,8 @@ import { useServiceLogos } from './useServiceLogos';
 import {
   openDemo3FieldsAndFill,
   openDemoAndFill,
+  openHtzoneTile,
+  openIsraeliSiteAutofillTest,
 } from './pocAutofill';
 
 interface DashboardProps {
@@ -56,6 +58,11 @@ export default function Dashboard({
   }
 
   function handleServiceOpen(service: Service) {
+    if (service.id === 'htzone') {
+      openHtzoneTile(credentials);
+      return;
+    }
+
     window.open(getServiceOpenUrl(service), '_blank', 'noopener,noreferrer');
   }
 
@@ -79,6 +86,18 @@ export default function Dashboard({
             </div>
             <p className="poc-fill-note">
               בדיקת מילוי אוטומטי - דמו מקומי בלבד
+            </p>
+          </div>
+          <div className="poc-fill-wrap">
+            <button
+              type="button"
+              className="poc-fill-btn poc-fill-btn--il"
+              onClick={openIsraeliSiteAutofillTest}
+            >
+              בדיקת מילוי באתר ישראלי
+            </button>
+            <p className="poc-fill-note">
+              הייטקזון - mock בלבד, ללא שליחת טופס
             </p>
           </div>
           <button type="button" className="add-more-btn" onClick={onAddMore}>

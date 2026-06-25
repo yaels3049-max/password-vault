@@ -11,6 +11,13 @@ const MOCK_3_FIELD_CREDENTIALS = {
   password: 'demo-pass',
 };
 
+const MOCK_HTZONE_CREDENTIALS = {
+  email: 'demo-user@mock.test',
+  password: 'demo-pass',
+};
+
+const HTZONE_LOGIN_PATH = '/login';
+
 const PAGE_CONFIGS = [
   {
     id: 'demo-login-3-fields.html',
@@ -41,7 +48,23 @@ const PAGE_CONFIGS = [
   },
 ];
 
+function isHtzoneLoginUrl(urlString) {
+  try {
+    const url = new URL(urlString);
+    const isHtzone =
+      url.hostname === 'www.htzone.co.il' || url.hostname === 'htzone.co.il';
+    const path = url.pathname.replace(/\/$/, '');
+    return isHtzone && (path === HTZONE_LOGIN_PATH || path.indexOf('/login/') === 0);
+  } catch (_error) {
+    return false;
+  }
+}
+
 function getPageConfig(urlString) {
+  if (isHtzoneLoginUrl(urlString)) {
+    return { id: 'htzone-login' };
+  }
+
   try {
     const url = new URL(urlString);
     for (let i = 0; i < PAGE_CONFIGS.length; i += 1) {
@@ -163,9 +186,106 @@ function sendFillWithRetry(tabId, fillMessage, attempt, onDone) {
   });
 }
 
-function openPageAndFill(urlString, sendResponse) {
+const HTZONE_RETRY_DELAYS_MS = [0, 500, 1500, 2500, 4000, 6000, 8000, 10000];
+
+function invokeHtzoneFill(tabId, credentials, onDone) {
+  chrome.scripting.executeScript(
+    {
+      target: { tabId: tabId },
+      world: 'MAIN',
+      func: function (creds) {
+        if (typeof window.__israeliVaultHtzoneFill !== 'function') {
+          return {
+            ok: false,
+            reason: 'adapter_function_missing',
+          };
+        }
+        return window.__israeliVaultHtzoneFill(creds);
+      },
+      args: [credentials],
+    },
+    function (results) {
+      if (chrome.runtime.lastError) {
+        console.log(
+          '[Israeli Vault POC] HTZone invoke lastError:',
+          chrome.runtime.lastError.message,
+        );
+      }
+      const result =
+        results && results[0] ? results[0].result : { ok: false };
+      console.log('[Israeli Vault POC] HTZone invoke result:', result);
+      onDone(result);
+    },
+  );
+}
+
+function runHtzoneAdapterFill(tabId, credentials, attempt, onDone) {
+  console.log(
+    '[Israeli Vault POC] HTZone injecting htzone-adapter.js attempt:',
+    attempt,
+  );
+  chrome.scripting.executeScript(
+    {
+      target: { tabId: tabId },
+      files: ['htzone-adapter.js'],
+      world: 'MAIN',
+    },
+    function () {
+      if (chrome.runtime.lastError) {
+        console.log(
+          '[Israeli Vault POC] HTZone adapter injection failed:',
+          chrome.runtime.lastError.message,
+        );
+        scheduleHtzoneRetry(tabId, credentials, attempt, onDone, {
+          ok: false,
+          reason: chrome.runtime.lastError.message,
+        });
+        return;
+      }
+
+      console.log('[Israeli Vault POC] HTZone htzone-adapter.js injected: true');
+      invokeHtzoneFill(tabId, credentials, function (result) {
+        if (result && result.ok) {
+          onDone(Object.assign({ via: 'htzone-adapter' }, result));
+          return;
+        }
+        scheduleHtzoneRetry(tabId, credentials, attempt, onDone, result);
+      });
+    },
+  );
+}
+
+function scheduleHtzoneRetry(tabId, credentials, attempt, onDone, lastResult) {
+  if (attempt < HTZONE_RETRY_DELAYS_MS.length - 1) {
+    const delay =
+      HTZONE_RETRY_DELAYS_MS[attempt + 1] - HTZONE_RETRY_DELAYS_MS[attempt];
+    setTimeout(function () {
+      console.log(
+        '[Israeli Vault POC] HTZone retry attempt:',
+        attempt + 1,
+      );
+      invokeHtzoneFill(tabId, credentials, function (result) {
+        if (result && result.ok) {
+          onDone(Object.assign({ via: 'htzone-adapter' }, result));
+          return;
+        }
+        scheduleHtzoneRetry(tabId, credentials, attempt + 1, onDone, result);
+      });
+    }, delay);
+    return;
+  }
+
+  onDone(
+    Object.assign({ via: 'htzone-adapter' }, lastResult || {
+      ok: false,
+      reason: 'htzone_fill_failed',
+    }),
+  );
+}
+
+function openLocalPageAndFill(urlString, sendResponse) {
   const pageConfig = getPageConfig(urlString);
-  if (!pageConfig) {
+  if (!pageConfig || pageConfig.id === 'htzone-login') {
     sendResponse({ ok: false, reason: 'not_allowed_page' });
     return false;
   }
@@ -212,15 +332,106 @@ function openPageAndFill(urlString, sendResponse) {
   return true;
 }
 
+function openHtzonePageAndFill(urlString, credentials, options, sendResponse) {
+  const urlMatchesHtzone = isHtzoneLoginUrl(urlString);
+  console.log('[Israeli Vault POC] HTZone request received');
+  console.log('[Israeli Vault POC] HTZone target URL:', urlString);
+  console.log(
+    '[Israeli Vault POC] HTZone URL matches htzone.co.il/login:',
+    urlMatchesHtzone,
+  );
+
+  if (!urlMatchesHtzone) {
+    console.log(
+      '[Israeli Vault POC] HTZone rejected: URL does not match htzone login',
+    );
+    sendResponse({ ok: false, reason: 'not_htzone_login' });
+    return false;
+  }
+
+  const useAutofillParam = options && options.withAutofillParam;
+  const targetUrl = useAutofillParam ? withAutofillParam(urlString) : urlString;
+  const fillCredentials = credentials || MOCK_HTZONE_CREDENTIALS;
+
+  if (credentials && credentials.email) {
+    console.log('[Israeli Vault POC] HTZone fill source: vault');
+  } else {
+    console.log('[Israeli Vault POC] HTZone fill source: mock');
+  }
+
+  chrome.tabs.create({ url: targetUrl }, function (tab) {
+    if (chrome.runtime.lastError || !tab || !tab.id) {
+      if (chrome.runtime.lastError) {
+        console.log(
+          '[Israeli Vault POC] HTZone tabs.create lastError:',
+          chrome.runtime.lastError.message,
+        );
+      }
+      sendResponse({
+        ok: false,
+        reason: chrome.runtime.lastError
+          ? chrome.runtime.lastError.message
+          : 'no_tab',
+      });
+      return;
+    }
+
+    const tabId = tab.id;
+    console.log('[Israeli Vault POC] HTZone tab opened:', tabId, targetUrl);
+
+    function onTabUpdated(updatedTabId, changeInfo) {
+      if (updatedTabId !== tabId) {
+        return;
+      }
+
+      if (changeInfo.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(onTabUpdated);
+        console.log('[Israeli Vault POC] HTZone tab load complete, starting fill');
+        setTimeout(function () {
+          runHtzoneAdapterFill(tabId, fillCredentials, 0, sendResponse);
+        }, 800);
+        return;
+      }
+
+      if (
+        changeInfo.status === 'loading' &&
+        changeInfo.url === 'chrome-error://chromewebdata/'
+      ) {
+        chrome.tabs.onUpdated.removeListener(onTabUpdated);
+        sendResponse({ ok: false, reason: 'tab_load_error' });
+      }
+    }
+
+    chrome.tabs.onUpdated.addListener(onTabUpdated);
+  });
+
+  return true;
+}
+
 chrome.runtime.onMessageExternal.addListener(function (
   message,
   _sender,
   sendResponse,
 ) {
-  if (!message || message.type !== 'POC_FILL_DEMO') {
-    sendResponse({ ok: false, reason: 'unknown_message' });
+  if (!message) {
+    sendResponse({ ok: false, reason: 'no_message' });
     return false;
   }
 
-  return openPageAndFill(message.url, sendResponse);
+  if (message.type === 'POC_FILL_DEMO') {
+    return openLocalPageAndFill(message.url, sendResponse);
+  }
+
+  if (message.type === 'POC_FILL_IL') {
+    console.log('[Israeli Vault POC] HTZone external message POC_FILL_IL received');
+    return openHtzonePageAndFill(
+      message.url,
+      message.credentials,
+      { withAutofillParam: message.withAutofillParam !== false },
+      sendResponse,
+    );
+  }
+
+  sendResponse({ ok: false, reason: 'unknown_message' });
+  return false;
 });

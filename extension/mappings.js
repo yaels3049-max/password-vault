@@ -2,6 +2,11 @@
 
 const DEMO_PAGES = {
   'demo-login-3-fields.html': {
+    loginFields: [
+      { id: 'idNumber', label: 'תעודת זהות', type: 'text' },
+      { id: 'userCode', label: 'קוד משתמש', type: 'text' },
+      { id: 'password', label: 'סיסמה', type: 'password' },
+    ],
     mapping: [
       { credentialId: 'idNumber', selector: '#idNumber' },
       { credentialId: 'userCode', selector: '#userCode' },
@@ -14,6 +19,10 @@ const DEMO_PAGES = {
     },
   },
   'demo-login.html': {
+    loginFields: [
+      { id: 'username', label: 'שם משתמש', type: 'text' },
+      { id: 'password', label: 'סיסמה', type: 'password' },
+    ],
     mapping: [
       { credentialId: 'username', selector: '#username' },
       { credentialId: 'password', selector: '#password' },
@@ -100,6 +109,21 @@ function getMockCredentialsForPageKey(pageKey) {
     return null;
   }
   return DEMO_PAGES[pageKey].mockCredentials;
+}
+
+function getLoginFieldsForPageKey(pageKey) {
+  if (!pageKey || !DEMO_PAGES[pageKey]) {
+    return null;
+  }
+  return DEMO_PAGES[pageKey].loginFields;
+}
+
+function getLoginFieldsForPage() {
+  const pageKey = getPageKey();
+  if (!pageKey) {
+    return null;
+  }
+  return DEMO_PAGES[pageKey].loginFields;
 }
 
 function getMappingForPageKey(pageKey) {

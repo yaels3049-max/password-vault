@@ -1,13 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Israeli Vault Autofill POC",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Local demo autofill proof of concept only",
   "minimum_chrome_version": "93",
   "permissions": ["tabs", "scripting"],
   "host_permissions": [
     "http://localhost/*",
-    "http://127.0.0.1/*"
+    "http://127.0.0.1/*",
+    "https://www.htzone.co.il/*",
+    "https://htzone.co.il/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -18,7 +20,14 @@
         "http://localhost/*",
         "http://127.0.0.1/*"
       ],
-      "js": ["mappings.js", "content.js"],
+      "js": [
+        "generic/form-detector.js",
+        "generic/field-mapper.js",
+        "generic/fill-executor.js",
+        "generic/generic-autofill.js",
+        "mappings.js",
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],

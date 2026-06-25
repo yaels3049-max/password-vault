@@ -54,7 +54,45 @@ function resolveFillContext(message) {
   return { pageKey, mapping, credentials };
 }
 
-function fillCredentials(message) {
+function resolveGenericFillContext(message) {
+  const pageKey = (message && message.demoPage) || getPageKey();
+  if (!pageKey) {
+    return null;
+  }
+
+  const loginFields =
+    (message && message.loginFields) ||
+    getLoginFieldsForPageKey(pageKey) ||
+    getLoginFieldsForPage();
+  const credentials =
+    (message && message.credentials) ||
+    getMockCredentialsForPageKey(pageKey) ||
+    getMockCredentialsForPage();
+
+  if (!loginFields || !credentials) {
+    return null;
+  }
+
+  return { pageKey, loginFields, credentials };
+}
+
+function fillWithGenericEngine(message) {
+  if (typeof runGenericAutofill !== 'function') {
+    return null;
+  }
+
+  const context = resolveGenericFillContext(message);
+  if (!context) {
+    return { ok: false, reason: 'no_generic_context' };
+  }
+
+  return runGenericAutofill({
+    loginFields: context.loginFields,
+    credentials: context.credentials,
+  });
+}
+
+function fillCredentialsLegacy(message) {
   const context = resolveFillContext(message);
   if (!context) {
     return { ok: false, reason: 'no_mapping' };
@@ -81,6 +119,19 @@ function fillCredentials(message) {
   }
 
   return { ok, filled };
+}
+
+function fillCredentials(message) {
+  if (isLocalDemoPage()) {
+    const genericResult = fillWithGenericEngine(message);
+    if (genericResult && genericResult.ok) {
+      showFillSuccess();
+      return genericResult;
+    }
+    console.log('[Legacy Autofill] fallback used');
+  }
+
+  return fillCredentialsLegacy(message);
 }
 
 function shouldAutoFillFromUrl() {
