@@ -44,6 +44,14 @@ import {
 
   openPracticeLoginFromTile,
 
+  openShufersalLoginFromTile,
+
+  openClalitLoginFromTile,
+
+  CLALIT_SERVICE_ID,
+
+  SHUFERSAL_SERVICE_ID,
+
 } from './pocAutofill';
 
 
@@ -181,6 +189,114 @@ export default function Dashboard({
     if (service.id === HTZONE_SERVICE_ID) {
 
       openHtzoneTile(credentials);
+
+      return;
+
+    }
+
+
+
+    if (service.id === SHUFERSAL_SERVICE_ID) {
+
+      const loginFields = getLoginFields(service);
+
+      const stored = credentials[service.id];
+
+
+
+      if (!hasCompleteCredentials(stored, loginFields)) {
+
+        setEditingService(service);
+
+        clearStatusSoon('שמרו פרטי כניסה לפני הפתיחה.');
+
+        return;
+
+      }
+
+
+
+      const result = openShufersalLoginFromTile(stored, loginFields);
+
+
+
+      if (!result.ok) {
+
+        setEditingService(service);
+
+        clearStatusSoon('שמרו פרטי כניסה לפני הפתיחה.');
+
+        return;
+
+      }
+
+
+
+      if (!result.extensionUsed) {
+
+        clearStatusSoon(
+
+          'דף ההתחברות נפתח. התקינו את תוסף הדפדפן כדי לאפשר מילוי אוטומטי.',
+
+        );
+
+      }
+
+
+
+      return;
+
+    }
+
+
+
+    if (service.id === CLALIT_SERVICE_ID) {
+
+      const loginFields = getLoginFields(service);
+
+      const stored = credentials[service.id];
+
+
+
+      if (!hasCompleteCredentials(stored, loginFields)) {
+
+        setEditingService(service);
+
+        clearStatusSoon('שמרו פרטי כניסה לפני הפתיחה.');
+
+        return;
+
+      }
+
+
+
+      const result = openClalitLoginFromTile(stored, loginFields);
+
+
+
+      if (!result.ok) {
+
+        setEditingService(service);
+
+        clearStatusSoon('שמרו פרטי כניסה לפני הפתיחה.');
+
+        return;
+
+      }
+
+
+
+      if (!result.extensionUsed) {
+
+        clearStatusSoon(
+
+          'דף ההתחברות נפתח. התקינו את תוסף הדפדפן כדי לאפשר מילוי אוטומטי.',
+
+        );
+
+      }
+
+
 
       return;
 

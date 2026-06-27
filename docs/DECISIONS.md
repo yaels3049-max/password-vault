@@ -163,6 +163,26 @@ Future clients (PWA, mobile applications, desktop wrappers, etc.) should reuse t
 
 ---
 
+## ADR-008 — Generic Integration Validation
+
+**Decision**
+
+The first real website integration must validate the generic autofill engine before any new site-specific adapter is introduced.
+
+**Reason**
+
+The long-term architecture depends on a scalable generic autofill engine.
+
+The first production-quality integration should therefore validate the generic path rather than an exception.
+
+**Consequence**
+
+When multiple candidate websites exist, preference is given to websites that can be integrated without introducing a site-specific adapter.
+
+Adapter-based integrations remain important, but are performed only after the generic approach has been validated.
+
+---
+
 ## Status
 
 Living document.

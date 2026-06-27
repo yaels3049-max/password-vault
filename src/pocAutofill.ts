@@ -1,6 +1,7 @@
 import type { Credential } from './credentials';
 import {
   DEFAULT_LOGIN_FIELDS,
+  getLoginFields,
   getServiceOpenUrl,
   HUB_PRACTICE_LOGIN_ID,
   mockServices,
@@ -21,6 +22,8 @@ export const POC_MOCK_3_FIELD_CREDENTIALS = {
 };
 
 export const HTZONE_SERVICE_ID = 'htzone';
+export const SHUFERSAL_SERVICE_ID = 'shufersal';
+export const CLALIT_SERVICE_ID = 'clalit';
 export { HUB_PRACTICE_LOGIN_ID };
 export const HUB_PRACTICE_DEMO_PATH = '/demo-login.html';
 
@@ -238,4 +241,175 @@ export function openPracticeLoginFromTile(
   });
 
   return { ok: true, extensionUsed: isExtensionAvailable() };
+}
+
+const shufersalService = mockServices.find(
+  (service) => service.id === SHUFERSAL_SERVICE_ID,
+);
+const SHUFERSAL_LOGIN_URL = shufersalService
+  ? getServiceOpenUrl(shufersalService)
+  : 'https://www.shufersal.co.il/online/he/login';
+
+export type ShufersalOpenResult =
+  | { ok: true; extensionUsed: boolean }
+  | { ok: false; reason: 'credentials_missing' };
+
+function logGenericFillDev(message: string, detail?: unknown): void {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+  if (detail !== undefined) {
+    console.log(message, detail);
+    return;
+  }
+  console.log(message);
+}
+
+function summarizeGenericFillResponse(response: unknown): Record<string, unknown> {
+  if (!response || typeof response !== 'object') {
+    return { response };
+  }
+
+  const result = response as Record<string, unknown>;
+  return {
+    ok: result.ok,
+    reason: result.reason,
+    filled: result.filled,
+    expected: result.expected,
+    verified: result.verified,
+    via: result.via,
+    formId: result.formId,
+    fieldMapping: result.fieldMapping,
+  };
+}
+
+/** Shufersal tile: open login page and fill vault credentials via generic engine. */
+export function openShufersalLoginFromTile(
+  credential: Credential | undefined,
+  loginFields: LoginField[] = shufersalService
+    ? getLoginFields(shufersalService)
+    : DEFAULT_LOGIN_FIELDS,
+): ShufersalOpenResult {
+  if (!hasCompleteCredentials(credential, loginFields)) {
+    return { ok: false, reason: 'credentials_missing' };
+  }
+
+  const vaultCredentials: Credential = {};
+  for (const field of loginFields) {
+    vaultCredentials[field.id] = credential![field.id].trim();
+  }
+
+  const runtime = getChromeRuntime();
+  const payload: Record<string, unknown> = {
+    type: 'POC_GENERIC_FILL',
+    url: SHUFERSAL_LOGIN_URL,
+    loginFields,
+    credentials: vaultCredentials,
+  };
+
+  logGenericFillDev('[Generic Fill] Hub: vault credentials prepared for extension');
+
+  if (runtime?.sendMessage && extensionId) {
+    logGenericFillDev('[Generic Fill] Hub: sending POC_GENERIC_FILL', {
+      type: payload.type,
+      url: payload.url,
+      loginFields,
+    });
+
+    runtime.sendMessage(extensionId, payload, (response: unknown) => {
+      const lastError = runtime.lastError?.message;
+
+      logGenericFillDev('[Generic Fill] Hub: callback fired');
+      if (lastError) {
+        logGenericFillDev('[Generic Fill] Hub: callback lastError', lastError);
+      }
+      logGenericFillDev(
+        '[Generic Fill] Shufersal result:',
+        summarizeGenericFillResponse(response),
+      );
+
+      if (lastError) {
+        window.open(SHUFERSAL_LOGIN_URL, '_blank', 'noopener,noreferrer');
+      }
+    });
+
+    return { ok: true, extensionUsed: true };
+  }
+
+  logGenericFillDev(
+    '[Generic Fill] Hub: extension unavailable — opening login page without fill',
+  );
+  window.open(SHUFERSAL_LOGIN_URL, '_blank', 'noopener,noreferrer');
+
+  return { ok: true, extensionUsed: false };
+}
+
+const clalitService = mockServices.find((service) => service.id === CLALIT_SERVICE_ID);
+const CLALIT_LOGIN_URL = clalitService
+  ? getServiceOpenUrl(clalitService)
+  : 'https://e-services.clalit.co.il/onlineweb/general/login.aspx';
+
+export type ClalitOpenResult =
+  | { ok: true; extensionUsed: boolean }
+  | { ok: false; reason: 'credentials_missing' };
+
+/** Clalit tile: open login page and fill vault credentials via generic engine. */
+export function openClalitLoginFromTile(
+  credential: Credential | undefined,
+  loginFields: LoginField[] = clalitService
+    ? getLoginFields(clalitService)
+    : DEFAULT_LOGIN_FIELDS,
+): ClalitOpenResult {
+  if (!hasCompleteCredentials(credential, loginFields)) {
+    return { ok: false, reason: 'credentials_missing' };
+  }
+
+  const vaultCredentials: Credential = {};
+  for (const field of loginFields) {
+    vaultCredentials[field.id] = credential![field.id].trim();
+  }
+
+  const runtime = getChromeRuntime();
+  const payload: Record<string, unknown> = {
+    type: 'POC_GENERIC_FILL',
+    url: CLALIT_LOGIN_URL,
+    loginFields,
+    credentials: vaultCredentials,
+  };
+
+  logGenericFillDev('[Generic Fill] Hub: Clalit vault credentials prepared for extension');
+
+  if (runtime?.sendMessage && extensionId) {
+    logGenericFillDev('[Generic Fill] Hub: sending POC_GENERIC_FILL', {
+      type: payload.type,
+      url: payload.url,
+      loginFields,
+    });
+
+    runtime.sendMessage(extensionId, payload, (response: unknown) => {
+      const lastError = runtime.lastError?.message;
+
+      logGenericFillDev('[Generic Fill] Hub: callback fired');
+      if (lastError) {
+        logGenericFillDev('[Generic Fill] Hub: callback lastError', lastError);
+      }
+      logGenericFillDev(
+        '[Generic Fill] Clalit result:',
+        summarizeGenericFillResponse(response),
+      );
+
+      if (lastError) {
+        window.open(CLALIT_LOGIN_URL, '_blank', 'noopener,noreferrer');
+      }
+    });
+
+    return { ok: true, extensionUsed: true };
+  }
+
+  logGenericFillDev(
+    '[Generic Fill] Hub: extension unavailable — opening Clalit login page without fill',
+  );
+  window.open(CLALIT_LOGIN_URL, '_blank', 'noopener,noreferrer');
+
+  return { ok: true, extensionUsed: false };
 }

@@ -9,7 +9,10 @@
     "http://localhost/*",
     "http://127.0.0.1/*",
     "https://www.htzone.co.il/*",
-    "https://htzone.co.il/*"
+    "https://htzone.co.il/*",
+    "https://www.shufersal.co.il/*",
+    "https://shufersal.co.il/*",
+    "https://e-services.clalit.co.il/*"
   ],
   "background": {
     "service_worker": "background.js"

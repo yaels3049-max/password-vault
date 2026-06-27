@@ -222,11 +222,11 @@ function onceExternalSendResponse(sendResponse, label) {
   let called = false;
   return function (payload) {
     if (called) {
-      console.log('[Practice] sendResponse skipped (already called):', label);
+      console.log('[External] sendResponse skipped (already called):', label);
       return;
     }
     called = true;
-    console.log('[Practice] External sendResponse:', label, payload);
+    console.log('[External] sendResponse:', label, payload);
     sendResponse(payload);
   };
 }
@@ -621,6 +621,384 @@ function openHtzonePageAndFill(urlString, credentials, options, sendResponse) {
   return true;
 }
 
+const GENERIC_REAL_SITE_SCRIPT_FILES = {
+  detect: [
+    'generic/form-detector.js',
+    'generic/field-mapper.js',
+    'generic/login-form-detect.js',
+  ],
+  fill: [
+    'generic/form-detector.js',
+    'generic/field-mapper.js',
+    'generic/fill-executor.js',
+    'generic/generic-autofill.js',
+  ],
+};
+
+const GENERIC_REAL_SITE_RETRY_DELAY_MS = 300;
+const GENERIC_REAL_SITE_MAX_ATTEMPTS = 25;
+const GENERIC_REAL_SITE_INITIAL_DELAY_MS = 1500;
+/** Time allowed for a heavy real-site login page to reach the target URL. */
+const GENERIC_REAL_SITE_TAB_LOAD_TIMEOUT_MS = 120000;
+/** Time allowed for detect/fill once the login page is ready (retries included). */
+const GENERIC_REAL_SITE_OPERATION_TIMEOUT_MS = 90000;
+
+const GENERIC_REAL_SITE_ALLOWED_HOSTS = {
+  'www.shufersal.co.il': true,
+  'shufersal.co.il': true,
+  'e-services.clalit.co.il': true,
+};
+
+function isAllowedGenericRealSiteUrl(urlString) {
+  try {
+    var url = new URL(urlString);
+    return (
+      url.protocol === 'https:' &&
+      GENERIC_REAL_SITE_ALLOWED_HOSTS[url.hostname] === true
+    );
+  } catch (_error) {
+    return false;
+  }
+}
+
+function tabUrlMatchesGenericTarget(tabUrl, urlString) {
+  if (!tabUrl) {
+    return false;
+  }
+
+  var expectedPath = '';
+  try {
+    expectedPath = new URL(urlString).pathname.replace(/\/$/, '');
+  } catch (_error) {
+    expectedPath = '';
+  }
+
+  try {
+    var expected = new URL(urlString);
+    var parsed = new URL(tabUrl);
+    if (parsed.origin !== expected.origin) {
+      return false;
+    }
+    if (expectedPath) {
+      return parsed.pathname.replace(/\/$/, '') === expectedPath;
+    }
+    return parsed.hostname === expected.hostname;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function openGenericRealSiteTab(urlString, sendResponse, sessionLabel, onTabReady) {
+  if (!isAllowedGenericRealSiteUrl(urlString)) {
+    sendResponse({ ok: false, reason: 'url_not_allowed' });
+    return false;
+  }
+
+  var respond = onceExternalSendResponse(sendResponse, sessionLabel);
+  var settled = false;
+  var readyWorkStarted = false;
+  var operationTimeout = null;
+
+  function clearOperationTimeout() {
+    if (operationTimeout) {
+      clearTimeout(operationTimeout);
+      operationTimeout = null;
+    }
+  }
+
+  function finishSession(result) {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    clearTimeout(tabLoadTimeout);
+    clearOperationTimeout();
+    respond(result);
+  }
+
+  function armOperationTimeout() {
+    clearOperationTimeout();
+    operationTimeout = setTimeout(function () {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      respond({ ok: false, reason: 'operation_timeout' });
+    }, GENERIC_REAL_SITE_OPERATION_TIMEOUT_MS);
+  }
+
+  var tabLoadTimeout = setTimeout(function () {
+    if (settled || readyWorkStarted) {
+      return;
+    }
+    finishSession({ ok: false, reason: 'tab_load_timeout' });
+  }, GENERIC_REAL_SITE_TAB_LOAD_TIMEOUT_MS);
+
+  chrome.tabs.create({ url: urlString }, function (tab) {
+    if (chrome.runtime.lastError || !tab || !tab.id) {
+      clearTimeout(tabLoadTimeout);
+      finishSession({
+        ok: false,
+        reason: chrome.runtime.lastError
+          ? chrome.runtime.lastError.message
+          : 'no_tab',
+      });
+      return;
+    }
+
+    var tabId = tab.id;
+
+    function startReadyWork() {
+      if (readyWorkStarted || settled) {
+        return;
+      }
+      readyWorkStarted = true;
+      clearTimeout(tabLoadTimeout);
+      armOperationTimeout();
+
+      setTimeout(function () {
+        if (settled) {
+          return;
+        }
+        onTabReady(tabId, finishSession);
+      }, GENERIC_REAL_SITE_INITIAL_DELAY_MS);
+    }
+
+    function onTabUpdated(updatedTabId, changeInfo) {
+      if (updatedTabId !== tabId) {
+        return;
+      }
+
+      if (
+        changeInfo.status === 'loading' &&
+        changeInfo.url === 'chrome-error://chromewebdata/'
+      ) {
+        chrome.tabs.onUpdated.removeListener(onTabUpdated);
+        finishSession({ ok: false, reason: 'tab_load_error' });
+        return;
+      }
+
+      if (changeInfo.status !== 'complete') {
+        return;
+      }
+
+      chrome.tabs.get(updatedTabId, function (loadedTab) {
+        if (chrome.runtime.lastError || !loadedTab) {
+          return;
+        }
+
+        if (!tabUrlMatchesGenericTarget(loadedTab.url, urlString)) {
+          return;
+        }
+
+        chrome.tabs.onUpdated.removeListener(onTabUpdated);
+        startReadyWork();
+      });
+    }
+
+    chrome.tabs.onUpdated.addListener(onTabUpdated);
+
+    chrome.tabs.get(tabId, function (currentTab) {
+      if (chrome.runtime.lastError || !currentTab) {
+        return;
+      }
+
+      if (
+        currentTab.status === 'complete' &&
+        tabUrlMatchesGenericTarget(currentTab.url, urlString)
+      ) {
+        chrome.tabs.onUpdated.removeListener(onTabUpdated);
+        startReadyWork();
+      }
+    });
+  });
+
+  return true;
+}
+
+function runGenericDetectOnTab(tabId, loginFields, attempt, onDone) {
+  chrome.scripting.executeScript(
+    {
+      target: { tabId: tabId },
+      files: GENERIC_REAL_SITE_SCRIPT_FILES.detect,
+    },
+    function () {
+      if (chrome.runtime.lastError) {
+        if (attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+          setTimeout(function () {
+            runGenericDetectOnTab(tabId, loginFields, attempt + 1, onDone);
+          }, GENERIC_REAL_SITE_RETRY_DELAY_MS);
+          return;
+        }
+        onDone({
+          ok: false,
+          reason: chrome.runtime.lastError.message || 'script_injection_failed',
+        });
+        return;
+      }
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tabId },
+          func: function (fields) {
+            if (typeof runGenericLoginFormDetection !== 'function') {
+              return { ok: false, reason: 'detect_function_missing' };
+            }
+            return runGenericLoginFormDetection({
+              loginFields: fields || undefined,
+            });
+          },
+          args: [loginFields || null],
+        },
+        function (results) {
+          if (chrome.runtime.lastError) {
+            if (attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+              setTimeout(function () {
+                runGenericDetectOnTab(tabId, loginFields, attempt + 1, onDone);
+              }, GENERIC_REAL_SITE_RETRY_DELAY_MS);
+              return;
+            }
+            onDone({
+              ok: false,
+              reason: chrome.runtime.lastError.message || 'detect_run_failed',
+            });
+            return;
+          }
+
+          var result =
+            results && results[0] ? results[0].result : { ok: false, reason: 'no_result' };
+
+          if ((!result || !result.ok) && attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+            setTimeout(function () {
+              runGenericDetectOnTab(tabId, loginFields, attempt + 1, onDone);
+            }, GENERIC_REAL_SITE_RETRY_DELAY_MS);
+            return;
+          }
+
+          onDone(Object.assign({ via: 'generic-detect' }, result || { ok: false }));
+        },
+      );
+    },
+  );
+}
+
+function runGenericAutofillOnTab(tabId, loginFields, credentials, attempt, onDone) {
+  chrome.scripting.executeScript(
+    {
+      target: { tabId: tabId },
+      files: GENERIC_REAL_SITE_SCRIPT_FILES.fill,
+    },
+    function () {
+      if (chrome.runtime.lastError) {
+        if (attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+          setTimeout(function () {
+            runGenericAutofillOnTab(
+              tabId,
+              loginFields,
+              credentials,
+              attempt + 1,
+              onDone,
+            );
+          }, GENERIC_REAL_SITE_RETRY_DELAY_MS);
+          return;
+        }
+        onDone({
+          ok: false,
+          reason: chrome.runtime.lastError.message || 'script_injection_failed',
+        });
+        return;
+      }
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tabId },
+          func: function (fields, creds) {
+            if (typeof runGenericAutofill !== 'function') {
+              return { ok: false, reason: 'autofill_function_missing' };
+            }
+            return runGenericAutofill({
+              loginFields: fields,
+              credentials: creds,
+            });
+          },
+          args: [loginFields, credentials],
+        },
+        function (results) {
+          if (chrome.runtime.lastError) {
+            if (attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+              setTimeout(function () {
+                runGenericAutofillOnTab(
+                  tabId,
+                  loginFields,
+                  credentials,
+                  attempt + 1,
+                  onDone,
+                );
+              }, GENERIC_REAL_SITE_RETRY_DELAY_MS);
+              return;
+            }
+            onDone({
+              ok: false,
+              reason: chrome.runtime.lastError.message || 'autofill_run_failed',
+            });
+            return;
+          }
+
+          var result =
+            results && results[0] ? results[0].result : { ok: false, reason: 'no_result' };
+
+          if ((!result || !result.ok) && attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+            setTimeout(function () {
+              runGenericAutofillOnTab(
+                tabId,
+                loginFields,
+                credentials,
+                attempt + 1,
+                onDone,
+              );
+            }, GENERIC_REAL_SITE_RETRY_DELAY_MS);
+            return;
+          }
+
+          onDone(Object.assign({ via: 'generic-autofill' }, result || { ok: false }));
+        },
+      );
+    },
+  );
+}
+
+function openPageAndDetectGenericLogin(urlString, loginFields, sendResponse) {
+  return openGenericRealSiteTab(
+    urlString,
+    sendResponse,
+    'generic-detect',
+    function (tabId, finishSession) {
+      runGenericDetectOnTab(tabId, loginFields, 0, finishSession);
+    },
+  );
+}
+
+function openPageAndGenericAutofill(urlString, loginFields, credentials, sendResponse) {
+  if (
+    !credentials ||
+    typeof credentials !== 'object' ||
+    !loginFields ||
+    !Array.isArray(loginFields)
+  ) {
+    sendResponse({ ok: false, reason: 'missing_vault_payload' });
+    return false;
+  }
+
+  return openGenericRealSiteTab(
+    urlString,
+    sendResponse,
+    'generic-autofill',
+    function (tabId, finishSession) {
+      runGenericAutofillOnTab(tabId, loginFields, credentials, 0, finishSession);
+    },
+  );
+}
+
 chrome.runtime.onMessageExternal.addListener(function (
   message,
   sender,
@@ -644,6 +1022,25 @@ chrome.runtime.onMessageExternal.addListener(function (
       message.url,
       message.credentials,
       { withAutofillParam: message.withAutofillParam !== false },
+      sendResponse,
+    );
+    return true;
+  }
+
+  if (message.type === 'POC_GENERIC_DETECT') {
+    openPageAndDetectGenericLogin(
+      message.url,
+      message.loginFields,
+      sendResponse,
+    );
+    return true;
+  }
+
+  if (message.type === 'POC_GENERIC_FILL') {
+    openPageAndGenericAutofill(
+      message.url,
+      message.loginFields,
+      message.credentials,
       sendResponse,
     );
     return true;

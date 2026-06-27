@@ -89,6 +89,7 @@ export const mockServices: Service[] = [
     name: 'כללית',
     icon: '🏥',
     url: 'https://www.clalit.co.il',
+    loginUrl: 'https://e-services.clalit.co.il/onlineweb/general/login.aspx',
     logoUrl: highResFavicon('https://www.clalit.co.il'),
     loginFields: [
       { id: 'idNumber', label: 'מספר תעודת זהות', type: 'text' },
@@ -124,7 +125,12 @@ export const mockServices: Service[] = [
     name: 'שופרסל',
     icon: '🛒',
     url: 'https://www.shufersal.co.il',
+    loginUrl: 'https://www.shufersal.co.il/online/he/login',
     logoUrl: highResFavicon('https://www.shufersal.co.il'),
+    loginFields: [
+      { id: 'email', label: 'כתובת מייל', type: 'text' },
+      { id: 'password', label: 'סיסמה', type: 'password' },
+    ],
     category: 'shopping',
   },
   {
