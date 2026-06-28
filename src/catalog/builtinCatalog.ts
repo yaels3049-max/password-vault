@@ -1,0 +1,173 @@
+import {
+  SERVICE_SCHEMA_VERSION,
+  type ServiceDefinition,
+} from '../service/serviceModel';
+
+/** Presentation favicon source — resolved to logoUrl at legacy compatibility layer. */
+function faviconSite(url: string): ServiceDefinition['metadata'] {
+  return { faviconSiteUrl: url };
+}
+
+/**
+ * Built-in hub catalog as canonical ServiceDefinition data (Phase 3 — Iteration 3.4).
+ * Authoritative source for predefined services; runtime legacy shape is derived from this.
+ */
+export const BUILTIN_CATALOG_DEFINITIONS: ServiceDefinition[] = [
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'hub-practice-login',
+    displayName: 'תרגול התחברות',
+    url: '/demo-login.html',
+    icon: '✨',
+    category: 'practice',
+    source: 'built-in-catalog',
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'hapoalim',
+    displayName: 'בנק הפועלים',
+    url: 'https://www.bankhapoalim.co.il',
+    icon: '🏦',
+    category: 'banking',
+    source: 'built-in-catalog',
+    metadata: faviconSite('https://www.bankhapoalim.co.il'),
+    loginFields: [
+      { id: 'username', label: 'שם משתמש', type: 'text' },
+      { id: 'password', label: 'סיסמה', type: 'password' },
+    ],
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'leumi',
+    displayName: 'בנק לאומי',
+    url: 'https://www.leumi.co.il',
+    icon: '🏦',
+    category: 'banking',
+    source: 'built-in-catalog',
+    metadata: faviconSite('https://www.leumi.co.il'),
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'discount',
+    displayName: 'דיסקונט',
+    url: 'https://www.discountbank.co.il',
+    icon: '🏦',
+    category: 'banking',
+    source: 'built-in-catalog',
+    metadata: faviconSite('https://www.discountbank.co.il'),
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'mizrahi',
+    displayName: 'מזרחי טפחות',
+    url: 'https://www.mizrahi-tefahot.co.il',
+    icon: '🏦',
+    category: 'banking',
+    source: 'built-in-catalog',
+    metadata: faviconSite('https://www.mizrahi-tefahot.co.il'),
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'clalit',
+    displayName: 'כללית',
+    url: 'https://www.clalit.co.il',
+    loginUrl: 'https://e-services.clalit.co.il/onlineweb/general/login.aspx',
+    icon: '🏥',
+    category: 'health',
+    source: 'built-in-catalog',
+    metadata: faviconSite('https://www.clalit.co.il'),
+    loginFields: [
+      { id: 'idNumber', label: 'מספר תעודת זהות', type: 'text' },
+      { id: 'userCode', label: 'קוד משתמש', type: 'text' },
+      { id: 'password', label: 'סיסמה', type: 'password' },
+    ],
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'maccabi',
+    displayName: 'מכבי',
+    url: 'https://www.maccabi4u.co.il',
+    icon: '🏥',
+    category: 'health',
+    source: 'built-in-catalog',
+    metadata: faviconSite('https://www.maccabi4u.co.il'),
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'meuhedet',
+    displayName: 'מאוחדת',
+    url: 'https://www.meuhedet.co.il',
+    icon: '🏥',
+    category: 'health',
+    source: 'built-in-catalog',
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'leumit',
+    displayName: 'לאומית',
+    url: 'https://www.leumit.co.il',
+    icon: '🏥',
+    category: 'health',
+    source: 'built-in-catalog',
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'shufersal',
+    displayName: 'שופרסל',
+    url: 'https://www.shufersal.co.il',
+    loginUrl: 'https://www.shufersal.co.il/online/he/login',
+    icon: '🛒',
+    category: 'shopping',
+    source: 'built-in-catalog',
+    metadata: faviconSite('https://www.shufersal.co.il'),
+    loginFields: [
+      { id: 'email', label: 'כתובת מייל', type: 'text' },
+      { id: 'password', label: 'סיסמה', type: 'password' },
+    ],
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'rami-levy',
+    displayName: 'רמי לוי',
+    url: 'https://www.rami-levy.co.il',
+    icon: '🛒',
+    category: 'shopping',
+    source: 'built-in-catalog',
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'amazon-il',
+    displayName: 'Amazon ישראל',
+    url: 'https://www.amazon.co.il',
+    icon: '🛒',
+    category: 'shopping',
+    source: 'built-in-catalog',
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'ksp',
+    displayName: 'KSP',
+    url: 'https://www.ksp.co.il',
+    icon: '🛒',
+    category: 'shopping',
+    source: 'built-in-catalog',
+  },
+  {
+    schemaVersion: SERVICE_SCHEMA_VERSION,
+    id: 'htzone',
+    displayName: 'הייטקזון',
+    url: 'https://www.htzone.co.il',
+    loginUrl: 'https://www.htzone.co.il/login',
+    icon: '🛒',
+    category: 'shopping',
+    source: 'built-in-catalog',
+    adapterId: 'htzone',
+    metadata: faviconSite('https://www.htzone.co.il'),
+    loginFields: [
+      { id: 'email', label: 'אימייל', type: 'text' },
+      { id: 'password', label: 'סיסמה', type: 'password' },
+    ],
+  },
+];
+
+export const HUB_PRACTICE_LOGIN_ID = 'hub-practice-login';

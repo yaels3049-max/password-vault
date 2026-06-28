@@ -1,24 +1,51 @@
 import { useState } from 'react';
+import { validateCustomPrimaryUrl } from './catalog';
 
 interface AddSiteModalProps {
-  onAdd: (name: string, url: string) => void;
+  onAdd: (displayName: string, primaryUrl: string) => void | Promise<void>;
   onCancel: () => void;
+  error?: string | null;
+  isDiscovering?: boolean;
+  discoveryMessage?: string | null;
+  discoveryOutcome?: 'success' | 'failure' | null;
 }
 
-export default function AddSiteModal({ onAdd, onCancel }: AddSiteModalProps) {
-  const [name, setName] = useState('');
-  const [url, setUrl] = useState('');
+export default function AddSiteModal({
+  onAdd,
+  onCancel,
+  error,
+  isDiscovering = false,
+  discoveryMessage = null,
+  discoveryOutcome = null,
+}: AddSiteModalProps) {
+  const [displayName, setDisplayName] = useState('');
+  const [primaryUrl, setPrimaryUrl] = useState('');
+  const [urlError, setUrlError] = useState<string | null>(null);
+
+  function validateUrlField(url: string): boolean {
+    const result = validateCustomPrimaryUrl(url);
+    if (!result.valid) {
+      setUrlError(result.message);
+      return false;
+    }
+
+    setUrlError(null);
+    return true;
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const trimmedName = name.trim();
-    const trimmedUrl = url.trim();
+    if (isDiscovering) return;
+
+    const trimmedName = displayName.trim();
+    const trimmedUrl = primaryUrl.trim();
     if (!trimmedName || !trimmedUrl) return;
-    onAdd(trimmedName, trimmedUrl);
+    if (!validateUrlField(trimmedUrl)) return;
+    void onAdd(trimmedName, trimmedUrl);
   }
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay" onClick={isDiscovering ? undefined : onCancel}>
       <div
         className="modal-dialog"
         dir="rtl"
@@ -27,32 +54,73 @@ export default function AddSiteModal({ onAdd, onCancel }: AddSiteModalProps) {
         <h2 className="modal-title">הוספת אתר חדש</h2>
         <form onSubmit={handleSubmit}>
           <label className="modal-field">
-            <span>שם האתר</span>
+            <span>שם להצגה</span>
             <input
               type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
               autoFocus
+              disabled={isDiscovering}
             />
           </label>
           <label className="modal-field">
-            <span>כתובת האתר</span>
+            <span>כתובת ראשית (HTTPS)</span>
             <input
               type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              value={primaryUrl}
+              onChange={(e) => {
+                setPrimaryUrl(e.target.value);
+                if (urlError) {
+                  validateUrlField(e.target.value);
+                }
+              }}
+              onBlur={() => {
+                if (primaryUrl.trim()) {
+                  validateUrlField(primaryUrl);
+                }
+              }}
               placeholder="https://"
               dir="ltr"
+              disabled={isDiscovering}
             />
           </label>
+          {(urlError || error) && !isDiscovering && !discoveryMessage && (
+            <p className="modal-field-error" role="alert">
+              {urlError ?? error}
+            </p>
+          )}
+          {isDiscovering && (
+            <p className="modal-discovery-progress" role="status" aria-live="polite">
+              <span className="modal-loading-spinner" aria-hidden="true" />
+              מוסיף את השירות…
+            </p>
+          )}
+          {discoveryMessage && !isDiscovering && (
+            <p
+              className={
+                discoveryOutcome === 'success'
+                  ? 'modal-discovery-success'
+                  : 'modal-discovery-failure'
+              }
+              role="status"
+              aria-live="polite"
+            >
+              {discoveryMessage}
+            </p>
+          )}
           <div className="modal-actions">
-            <button type="submit" className="modal-btn modal-btn-primary">
-              הוסף
+            <button
+              type="submit"
+              className="modal-btn modal-btn-primary"
+              disabled={isDiscovering}
+            >
+              {isDiscovering ? 'מוסיף…' : 'הוסף'}
             </button>
             <button
               type="button"
               className="modal-btn modal-btn-secondary"
               onClick={onCancel}
+              disabled={isDiscovering}
             >
               ביטול
             </button>

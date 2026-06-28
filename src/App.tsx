@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import Dashboard from './Dashboard';
 import ManageServices from './ManageServices';
 import UnlockScreen from './UnlockScreen';
+import { definitionsToLegacyServices } from './catalog';
 import { preloadServiceLogos } from './logoCache';
-import { mockServices, HUB_PRACTICE_LOGIN_ID, type Service } from './mockServices';
+import { mockServices, HUB_PRACTICE_LOGIN_ID } from './mockServices';
 import type { Credential } from './credentials';
+import type { ServiceDefinition } from './service/serviceModel';
 import { persistVault, unlockVault, type VaultState } from './vault/vault';
 import './App.css';
 
@@ -16,10 +18,11 @@ function App() {
   const [manageIsFirstRun, setManageIsFirstRun] = useState(false);
   const [showMagicMomentHint, setShowMagicMomentHint] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [customServices, setCustomServices] = useState<Service[]>([]);
+  const [customServices, setCustomServices] = useState<ServiceDefinition[]>([]);
   const [credentials, setCredentials] = useState<Record<string, Credential>>({});
 
-  const allServices = [...mockServices, ...customServices];
+  const legacyCustomServices = definitionsToLegacyServices(customServices);
+  const allServices = [...mockServices, ...legacyCustomServices];
   const selectedServices = allServices.filter((s) => selectedIds.has(s.id));
 
   useEffect(() => {
@@ -33,7 +36,7 @@ function App() {
   function buildVaultState(
     creds: Record<string, Credential>,
     ids: Set<string>,
-    customs: Service[],
+    customs: ServiceDefinition[],
   ): VaultState {
     return {
       credentials: creds,
@@ -73,9 +76,9 @@ function App() {
     void saveVaultState(buildVaultState(credentials, next, customServices));
   }
 
-  function addCustomService(service: Service) {
-    const nextCustom = [...customServices, service];
-    const nextIds = new Set([...selectedIds, service.id]);
+  function addCustomService(definition: ServiceDefinition) {
+    const nextCustom = [...customServices, definition];
+    const nextIds = new Set([...selectedIds, definition.id]);
     setCustomServices(nextCustom);
     setSelectedIds(nextIds);
     void saveVaultState(buildVaultState(credentials, nextIds, nextCustom));

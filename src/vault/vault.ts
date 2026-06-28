@@ -1,5 +1,5 @@
 import type { Credential } from '../credentials';
-import type { Service } from '../mockServices';
+import type { ServiceDefinition } from '../service/serviceModel';
 import {
   createCryptoKey,
   createEmptyPayload,
@@ -22,7 +22,7 @@ export { WrongPasswordError };
 export interface VaultState {
   credentials: Record<string, Credential>;
   selectedIds: string[];
-  customServices: Service[];
+  customServices: ServiceDefinition[];
 }
 
 export function isVaultUnlocked(): boolean {

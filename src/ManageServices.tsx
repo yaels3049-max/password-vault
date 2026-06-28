@@ -1,20 +1,21 @@
 import { useState } from 'react';
 import AddSiteModal from './AddSiteModal';
+import { createCustomServiceDefinition, discoverLoginForCustomService } from './catalog';
 import {
   categories,
   categoryLabels,
   categoryQuestions,
-  highResFavicon,
   type Service,
   type ServiceCategory,
 } from './mockServices';
+import type { ServiceDefinition } from './service/serviceModel';
 
 interface ManageServicesProps {
   allServices: Service[];
   selectedIds: Set<string>;
   isFirstRun: boolean;
   onToggle: (id: string) => void;
-  onAddCustom: (service: Service) => void;
+  onAddCustom: (definition: ServiceDefinition) => void;
   onContinue: () => void;
 }
 
@@ -29,27 +30,67 @@ export default function ManageServices({
   const [modalCategory, setModalCategory] = useState<ServiceCategory | null>(
     null,
   );
+  const [addError, setAddError] = useState<string | null>(null);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
+  const [discoveryOutcome, setDiscoveryOutcome] = useState<'success' | 'failure' | null>(
+    null,
+  );
 
   function openAddModal(category: ServiceCategory) {
+    setAddError(null);
+    setDiscoveryMessage(null);
+    setDiscoveryOutcome(null);
+    setIsDiscovering(false);
     setModalCategory(category);
   }
 
-  function closeAddModal() {
+  function dismissAddModal() {
     setModalCategory(null);
+    setAddError(null);
+    setDiscoveryMessage(null);
+    setDiscoveryOutcome(null);
+    setIsDiscovering(false);
   }
 
-  function handleAddCustomSite(name: string, url: string) {
-    if (!modalCategory) return;
+  function closeAddModal() {
+    if (isDiscovering) {
+      return;
+    }
 
-    onAddCustom({
-      id: `custom-${Date.now()}`,
-      name,
-      icon: '🔗',
-      url,
-      logoUrl: highResFavicon(url),
-      category: modalCategory,
-    });
-    closeAddModal();
+    dismissAddModal();
+  }
+
+  async function handleAddCustomSite(displayName: string, primaryUrl: string) {
+    if (!modalCategory || isDiscovering) return;
+
+    try {
+      const definition = createCustomServiceDefinition({
+        displayName,
+        primaryUrl,
+        category: modalCategory,
+      });
+
+      setAddError(null);
+      setDiscoveryMessage(null);
+      setDiscoveryOutcome(null);
+      setIsDiscovering(true);
+
+      const { definition: finalDefinition, outcome } =
+        await discoverLoginForCustomService(definition, { primaryUrl });
+
+      onAddCustom(finalDefinition);
+      setDiscoveryMessage(outcome.message);
+      setDiscoveryOutcome(outcome.status);
+      setIsDiscovering(false);
+
+      window.setTimeout(() => {
+        dismissAddModal();
+      }, 1800);
+    } catch (error) {
+      setIsDiscovering(false);
+      setAddError(error instanceof Error ? error.message : 'לא ניתן להוסיף את האתר');
+    }
   }
 
   const selectedCount = selectedIds.size;
@@ -132,6 +173,10 @@ export default function ManageServices({
         <AddSiteModal
           onAdd={handleAddCustomSite}
           onCancel={closeAddModal}
+          error={addError}
+          isDiscovering={isDiscovering}
+          discoveryMessage={discoveryMessage}
+          discoveryOutcome={discoveryOutcome}
         />
       )}
     </div>

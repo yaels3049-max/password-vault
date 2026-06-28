@@ -1,6 +1,7 @@
 import { argon2id } from 'hash-wasm';
 import type { Credential } from '../credentials';
-import type { Service } from '../mockServices';
+import type { ServiceDefinition } from '../service/serviceModel';
+import { normalizeStoredCustomServices } from '../catalog/customServiceStorage';
 
 export class WrongPasswordError extends Error {
   constructor() {
@@ -12,7 +13,7 @@ export class WrongPasswordError extends Error {
 export interface VaultPayload {
   credentials: Record<string, Credential>;
   selectedIds: string[];
-  customServices: Service[];
+  customServices: ServiceDefinition[];
 }
 
 export interface KdfParams {
@@ -125,11 +126,13 @@ export function createEmptyPayload(): VaultPayload {
   return { credentials: {}, selectedIds: [], customServices: [] };
 }
 
-export function normalizePayload(raw: Partial<VaultPayload>): VaultPayload {
+export function normalizePayload(raw: Partial<VaultPayload> & { customServices?: unknown[] }): VaultPayload {
+  const rawCustomServices = Array.isArray(raw.customServices) ? raw.customServices : [];
+
   return {
     credentials: raw.credentials ?? {},
     selectedIds: raw.selectedIds ?? [],
-    customServices: raw.customServices ?? [],
+    customServices: normalizeStoredCustomServices(rawCustomServices),
   };
 }
 

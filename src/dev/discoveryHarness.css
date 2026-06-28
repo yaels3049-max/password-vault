@@ -1,0 +1,178 @@
+.discovery-harness {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  font-family: system-ui, sans-serif;
+  color: #1a1a1a;
+}
+
+.discovery-harness-header {
+  margin-bottom: 1.5rem;
+}
+
+.discovery-harness-header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+}
+
+.discovery-harness-header p {
+  margin: 0 0 0.75rem;
+  color: #555;
+}
+
+.discovery-harness-back {
+  color: #0366d6;
+  font-size: 0.95rem;
+}
+
+.discovery-harness-panel,
+.discovery-harness-summary,
+.discovery-harness-details,
+.discovery-harness-meta,
+.discovery-harness-raw,
+.discovery-harness-error {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.discovery-harness-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.discovery-harness-field span {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.discovery-harness-field input,
+.discovery-harness-field textarea {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.discovery-harness-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.discovery-harness-preset {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid #bbb;
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+}
+
+.discovery-harness-preset:hover {
+  background: #eef4ff;
+}
+
+.discovery-harness-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.discovery-harness-run {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: #0366d6;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.discovery-harness-run:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.discovery-harness-summary pre,
+.discovery-harness-raw pre,
+.discovery-harness-error pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.discovery-harness-details dl {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.discovery-harness-details dt {
+  font-weight: 600;
+}
+
+.discovery-harness-details dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.discovery-harness-details h3 {
+  margin: 1rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.discovery-harness-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.discovery-harness-table th,
+.discovery-harness-table td {
+  border: 1px solid #ddd;
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.discovery-harness-table th {
+  background: #eee;
+}
+
+.discovery-harness-meta dl {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+
+.discovery-harness-meta dt {
+  font-weight: 600;
+}
+
+.discovery-harness-meta dd {
+  margin: 0;
+}
+
+.discovery-harness-meta p {
+  margin: 0.75rem 0 0;
+  color: #555;
+  font-size: 0.9rem;
+}

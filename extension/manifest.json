@@ -8,6 +8,8 @@
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*",
+    "http://*/*",
+    "https://*/*",
     "https://www.htzone.co.il/*",
     "https://htzone.co.il/*",
     "https://www.shufersal.co.il/*",

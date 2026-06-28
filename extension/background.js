@@ -978,6 +978,290 @@ function openPageAndDetectGenericLogin(urlString, loginFields, sendResponse) {
   );
 }
 
+const LOGIN_ENTRY_DISCOVERY_SCRIPT = 'discovery/login-entry-discovery.js';
+const LOGIN_ENTRY_DISCOVERY_INITIAL_DELAY_MS = 1500;
+const LOGIN_ENTRY_DISCOVERY_TAB_LOAD_TIMEOUT_MS = 120000;
+const LOGIN_ENTRY_DISCOVERY_OPERATION_TIMEOUT_MS = 90000;
+const LOGIN_ENTRY_DISCOVERY_RETRY_DELAY_MS = 300;
+const LOGIN_ENTRY_DISCOVERY_MAX_ATTEMPTS = 25;
+
+function isAllowedLoginEntryDiscoveryUrl(urlString) {
+  try {
+    var url = new URL(urlString);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch (_error) {
+    return false;
+  }
+}
+
+function tabUrlMatchesDiscoveryPrimary(tabUrl, primaryUrl) {
+  if (!tabUrl) {
+    return false;
+  }
+
+  try {
+    var expected = new URL(primaryUrl);
+    var parsed = new URL(tabUrl);
+    if (parsed.origin !== expected.origin) {
+      return false;
+    }
+
+    var expectedPath = expected.pathname.replace(/\/$/, '');
+    if (expectedPath) {
+      return parsed.pathname.replace(/\/$/, '') === expectedPath;
+    }
+
+    return parsed.hostname === expected.hostname;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function closeDiscoveryTabSafely(tabId) {
+  if (!tabId) {
+    return;
+  }
+
+  chrome.tabs.get(tabId, function (tab) {
+    if (chrome.runtime.lastError || !tab) {
+      return;
+    }
+
+    chrome.tabs.remove(tabId, function () {
+      if (chrome.runtime.lastError) {
+        console.log(
+          '[LoginEntryDiscovery] tab close skipped:',
+          chrome.runtime.lastError.message,
+        );
+      }
+    });
+  });
+}
+
+function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
+  if (!isAllowedLoginEntryDiscoveryUrl(primaryUrl)) {
+    sendResponse({ ok: false, reason: 'url_not_allowed' });
+    return false;
+  }
+
+  var respond = onceExternalSendResponse(sendResponse, 'login-entry-discovery');
+  var settled = false;
+  var readyWorkStarted = false;
+  var operationTimeout = null;
+
+  function clearOperationTimeout() {
+    if (operationTimeout) {
+      clearTimeout(operationTimeout);
+      operationTimeout = null;
+    }
+  }
+
+  function finishSession(result) {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    clearTimeout(tabLoadTimeout);
+    clearOperationTimeout();
+    respond(result);
+  }
+
+  function armOperationTimeout() {
+    clearOperationTimeout();
+    operationTimeout = setTimeout(function () {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      respond({ ok: false, reason: 'operation_timeout' });
+    }, LOGIN_ENTRY_DISCOVERY_OPERATION_TIMEOUT_MS);
+  }
+
+  var tabLoadTimeout = setTimeout(function () {
+    if (settled || readyWorkStarted) {
+      return;
+    }
+    finishSession({ ok: false, reason: 'tab_load_timeout' });
+  }, LOGIN_ENTRY_DISCOVERY_TAB_LOAD_TIMEOUT_MS);
+
+  chrome.tabs.create({ url: primaryUrl }, function (tab) {
+    if (chrome.runtime.lastError || !tab || !tab.id) {
+      clearTimeout(tabLoadTimeout);
+      finishSession({
+        ok: false,
+        reason: chrome.runtime.lastError
+          ? chrome.runtime.lastError.message
+          : 'no_tab',
+      });
+      return;
+    }
+
+    var tabId = tab.id;
+
+    function startReadyWork() {
+      if (readyWorkStarted || settled) {
+        return;
+      }
+      readyWorkStarted = true;
+      clearTimeout(tabLoadTimeout);
+      armOperationTimeout();
+
+      setTimeout(function () {
+        if (settled) {
+          return;
+        }
+        onTabReady(tabId, finishSession);
+      }, LOGIN_ENTRY_DISCOVERY_INITIAL_DELAY_MS);
+    }
+
+    function onTabUpdated(updatedTabId, changeInfo) {
+      if (updatedTabId !== tabId) {
+        return;
+      }
+
+      if (
+        changeInfo.status === 'loading' &&
+        changeInfo.url === 'chrome-error://chromewebdata/'
+      ) {
+        chrome.tabs.onUpdated.removeListener(onTabUpdated);
+        finishSession({ ok: false, reason: 'tab_load_error' });
+        return;
+      }
+
+      if (changeInfo.status !== 'complete') {
+        return;
+      }
+
+      chrome.tabs.get(updatedTabId, function (loadedTab) {
+        if (chrome.runtime.lastError || !loadedTab) {
+          return;
+        }
+
+        if (!tabUrlMatchesDiscoveryPrimary(loadedTab.url, primaryUrl)) {
+          return;
+        }
+
+        chrome.tabs.onUpdated.removeListener(onTabUpdated);
+        startReadyWork();
+      });
+    }
+
+    chrome.tabs.onUpdated.addListener(onTabUpdated);
+
+    chrome.tabs.get(tabId, function (currentTab) {
+      if (chrome.runtime.lastError || !currentTab) {
+        return;
+      }
+
+      if (
+        currentTab.status === 'complete' &&
+        tabUrlMatchesDiscoveryPrimary(currentTab.url, primaryUrl)
+      ) {
+        chrome.tabs.onUpdated.removeListener(onTabUpdated);
+        startReadyWork();
+      }
+    });
+  });
+
+  return true;
+}
+
+function runLoginEntryDiscoveryOnTab(tabId, primaryUrl, attempt, onDone) {
+  chrome.scripting.executeScript(
+    {
+      target: { tabId: tabId },
+      files: [LOGIN_ENTRY_DISCOVERY_SCRIPT],
+    },
+    function () {
+      if (chrome.runtime.lastError) {
+        if (attempt < LOGIN_ENTRY_DISCOVERY_MAX_ATTEMPTS) {
+          setTimeout(function () {
+            runLoginEntryDiscoveryOnTab(tabId, primaryUrl, attempt + 1, onDone);
+          }, LOGIN_ENTRY_DISCOVERY_RETRY_DELAY_MS);
+          return;
+        }
+        onDone({
+          __transportError: true,
+          reason: chrome.runtime.lastError.message || 'script_injection_failed',
+        });
+        return;
+      }
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tabId },
+          func: async function (primary) {
+            if (typeof runLoginEntryDiscoveryInPage !== 'function') {
+              return {
+                success: false,
+                primaryUrl: primary,
+                reason: 'discovery_function_missing',
+              };
+            }
+
+            return await runLoginEntryDiscoveryInPage(primary);
+          },
+          args: [primaryUrl],
+        },
+        function (results) {
+          if (chrome.runtime.lastError) {
+            if (attempt < LOGIN_ENTRY_DISCOVERY_MAX_ATTEMPTS) {
+              setTimeout(function () {
+                runLoginEntryDiscoveryOnTab(tabId, primaryUrl, attempt + 1, onDone);
+              }, LOGIN_ENTRY_DISCOVERY_RETRY_DELAY_MS);
+              return;
+            }
+            onDone({
+              __transportError: true,
+              reason: chrome.runtime.lastError.message || 'discovery_run_failed',
+            });
+            return;
+          }
+
+          var discovery =
+            results && results[0] ? results[0].result : { success: false, reason: 'no_result' };
+
+          if (
+            (!discovery || discovery.reason === 'discovery_function_missing') &&
+            attempt < LOGIN_ENTRY_DISCOVERY_MAX_ATTEMPTS
+          ) {
+            setTimeout(function () {
+              runLoginEntryDiscoveryOnTab(tabId, primaryUrl, attempt + 1, onDone);
+            }, LOGIN_ENTRY_DISCOVERY_RETRY_DELAY_MS);
+            return;
+          }
+
+          onDone(discovery || { success: false, reason: 'no_result' });
+        },
+      );
+    },
+  );
+}
+
+function openPageAndDiscoverLoginEntry(primaryUrl, sendResponse) {
+  return openLoginEntryDiscoveryTab(primaryUrl, sendResponse, function (tabId, finishSession) {
+    runLoginEntryDiscoveryOnTab(tabId, primaryUrl, 0, function (discovery) {
+      closeDiscoveryTabSafely(tabId);
+
+      if (!discovery || typeof discovery !== 'object') {
+        finishSession({ ok: false, reason: 'discovery_no_result' });
+        return;
+      }
+
+      if (discovery.__transportError) {
+        finishSession({ ok: false, reason: discovery.reason || 'discovery_run_failed' });
+        return;
+      }
+
+      finishSession({
+        ok: true,
+        via: 'login-entry-discovery',
+        discovery: discovery,
+      });
+    });
+  });
+}
+
 function openPageAndGenericAutofill(urlString, loginFields, credentials, sendResponse) {
   if (
     !credentials ||
@@ -1033,6 +1317,11 @@ chrome.runtime.onMessageExternal.addListener(function (
       message.loginFields,
       sendResponse,
     );
+    return true;
+  }
+
+  if (message.type === 'HUB_LOGIN_ENTRY_DISCOVERY') {
+    openPageAndDiscoverLoginEntry(message.primaryUrl, sendResponse);
     return true;
   }
 

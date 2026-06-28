@@ -4,6 +4,8 @@ import CredentialModal from './CredentialModal';
 
 import type { Credential } from './credentials';
 
+import { isCustomServiceId } from './catalog';
+
 import {
 
   categories,
@@ -353,6 +355,16 @@ export default function Dashboard({
       }
 
 
+
+      return;
+
+    }
+
+
+
+    if (isCustomServiceId(service.id)) {
+
+      window.open(getServiceOpenUrl(service), '_blank', 'noopener,noreferrer');
 
       return;
 

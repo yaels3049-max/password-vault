@@ -498,6 +498,54 @@
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
+.modal-field-error {
+  margin: -0.5rem 0 0.75rem;
+  color: #b42318;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.modal-discovery-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  color: #2563eb;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.modal-loading-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #bfdbfe;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: modal-spinner 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes modal-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.modal-discovery-success {
+  margin: 0 0 0.75rem;
+  color: #027a48;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.modal-discovery-failure {
+  margin: 0 0 0.75rem;
+  color: #b54708;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
 .modal-actions {
   display: flex;
   gap: 0.75rem;
