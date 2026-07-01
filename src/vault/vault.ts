@@ -1,4 +1,5 @@
 import type { Credential } from '../credentials';
+import type { AccessProfile } from '../profile/accessProfileModel';
 import type { ServiceDefinition } from '../service/serviceModel';
 import {
   createCryptoKey,
@@ -14,6 +15,7 @@ import {
   type VaultPayload,
 } from './crypto';
 import { getVault, putVault, VAULT_ID, type VaultRecord } from './db';
+import { migrateVaultPayload } from './vaultMigration';
 
 let vaultKey: CryptoKey | null = null;
 
@@ -21,6 +23,7 @@ export { WrongPasswordError };
 
 export interface VaultState {
   credentials: Record<string, Credential>;
+  accessProfiles: AccessProfile[];
   selectedIds: string[];
   customServices: ServiceDefinition[];
 }
@@ -47,6 +50,15 @@ async function saveEncrypted(
   });
 }
 
+function payloadFromVaultState(state: VaultState): VaultPayload {
+  return {
+    credentials: state.credentials,
+    accessProfiles: state.accessProfiles,
+    selectedIds: state.selectedIds,
+    customServices: state.customServices,
+  };
+}
+
 export async function unlockVault(masterPassword: string): Promise<VaultState> {
   const existing = await getVault();
 
@@ -66,7 +78,13 @@ export async function unlockVault(masterPassword: string): Promise<VaultState> {
   const salt = saltFromBase64(existing.kdf.salt);
   const key = await createCryptoKey(masterPassword, salt, existing.kdf);
   const raw = await decryptPayload(key, existing.ciphertext, existing.iv);
-  const payload = normalizePayload(raw);
+  const normalized = normalizePayload(raw);
+  const { payload, migrated } = migrateVaultPayload(normalized);
+
+  if (migrated) {
+    await saveEncrypted(key, existing.kdf, payload);
+  }
+
   vaultKey = key;
   return payload;
 }
@@ -81,7 +99,7 @@ export async function persistVault(state: VaultState): Promise<void> {
     throw new Error('Vault record missing');
   }
 
-  await saveEncrypted(vaultKey, existing.kdf, state);
+  await saveEncrypted(vaultKey, existing.kdf, payloadFromVaultState(state));
 }
 
 export async function vaultExists(): Promise<boolean> {

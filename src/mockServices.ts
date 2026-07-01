@@ -17,6 +17,8 @@ export {
   DEFAULT_LOGIN_FIELDS,
   getLoginFields,
   getServiceOpenUrl,
+  hasConfiguredLoginFields,
+  hasLoginIntegrationMetadata,
 } from './service/legacyService';
 
 export { highResFavicon, HUB_PRACTICE_LOGIN_ID };

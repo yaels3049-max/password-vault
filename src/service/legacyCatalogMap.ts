@@ -16,34 +16,16 @@ export function inferServiceSource(service: Pick<Service, 'id'>): ServiceSource 
 
 /**
  * Future adapter binding for catalog entries that use site-specific adapters today.
- * Metadata only in Iteration 3.1 — autofill still routes by legacy service id.
+ * Prefer {@link Service.adapterId} on the legacy runtime shape when present.
  */
-const LEGACY_ADAPTER_ID_BY_SERVICE_ID: Readonly<Record<string, string>> = {
-  htzone: 'htzone',
-};
+const LEGACY_ADAPTER_ID_BY_SERVICE_ID: Readonly<Record<string, string>> = {};
 
-/**
- * Map a legacy runtime {@link Service} (mockServices / vault customServices shape)
- * to the canonical {@link ServiceDefinition}.
- *
- * Field mapping:
- * - id → id
- * - name → displayName
- * - url → url (primary URL)
- * - loginUrl → loginUrl
- * - loginFields → loginFields
- * - category → category
- * - icon → icon
- * - logoUrl → metadata.logoUrl (presentation layer; not part of integration)
- * - source → inferred from id (`built-in-catalog` | `user-created`)
- * - adapterId → metadata-only for htzone; undefined for all other current entries
- */
 export function legacyServiceToDefinition(
   service: Service,
   options?: { source?: ServiceSource },
 ): ServiceDefinition {
   const source = options?.source ?? inferServiceSource(service);
-  const adapterId = LEGACY_ADAPTER_ID_BY_SERVICE_ID[service.id];
+  const adapterId = service.adapterId ?? LEGACY_ADAPTER_ID_BY_SERVICE_ID[service.id];
 
   const candidate: ServiceDefinition = {
     schemaVersion: SERVICE_SCHEMA_VERSION,

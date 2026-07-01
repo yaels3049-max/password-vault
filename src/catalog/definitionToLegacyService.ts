@@ -49,6 +49,9 @@ export function definitionToLegacyService(definition: ServiceDefinition): Servic
   if (definition.loginFields) {
     service.loginFields = definition.loginFields;
   }
+  if (definition.adapterId) {
+    service.adapterId = definition.adapterId;
+  }
 
   const logoUrl = resolveLogoUrl(definition);
   if (logoUrl) {

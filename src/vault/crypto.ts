@@ -1,5 +1,6 @@
 import { argon2id } from 'hash-wasm';
 import type { Credential } from '../credentials';
+import type { AccessProfile } from '../profile/accessProfileModel';
 import type { ServiceDefinition } from '../service/serviceModel';
 import { normalizeStoredCustomServices } from '../catalog/customServiceStorage';
 
@@ -12,6 +13,7 @@ export class WrongPasswordError extends Error {
 
 export interface VaultPayload {
   credentials: Record<string, Credential>;
+  accessProfiles: AccessProfile[];
   selectedIds: string[];
   customServices: ServiceDefinition[];
 }
@@ -123,14 +125,31 @@ export async function decryptPayload(
 }
 
 export function createEmptyPayload(): VaultPayload {
-  return { credentials: {}, selectedIds: [], customServices: [] };
+  return { credentials: {}, accessProfiles: [], selectedIds: [], customServices: [] };
 }
 
-export function normalizePayload(raw: Partial<VaultPayload> & { customServices?: unknown[] }): VaultPayload {
+function normalizeAccessProfiles(raw: unknown): AccessProfile[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw.filter(
+    (entry): entry is AccessProfile =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      typeof (entry as AccessProfile).id === 'string' &&
+      typeof (entry as AccessProfile).serviceId === 'string',
+  );
+}
+
+export function normalizePayload(
+  raw: Partial<VaultPayload> & { customServices?: unknown[]; accessProfiles?: unknown },
+): VaultPayload {
   const rawCustomServices = Array.isArray(raw.customServices) ? raw.customServices : [];
 
   return {
     credentials: raw.credentials ?? {},
+    accessProfiles: normalizeAccessProfiles(raw.accessProfiles),
     selectedIds: raw.selectedIds ?? [],
     customServices: normalizeStoredCustomServices(rawCustomServices),
   };

@@ -21,6 +21,7 @@ export const BUILTIN_CATALOG_DEFINITIONS: ServiceDefinition[] = [
     icon: '✨',
     category: 'practice',
     source: 'built-in-catalog',
+    adapterId: 'practice',
   },
   {
     schemaVersion: SERVICE_SCHEMA_VERSION,

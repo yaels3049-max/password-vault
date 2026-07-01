@@ -18,6 +18,8 @@ export interface Service {
   category: ServiceCategory;
   logoUrl?: string;
   loginFields?: LoginField[];
+  /** Optional adapter routing metadata (e.g. htzone). */
+  adapterId?: string;
 }
 
 export const DEFAULT_LOGIN_FIELDS: LoginField[] = [
@@ -31,4 +33,17 @@ export function getServiceOpenUrl(service: Service): string {
 
 export function getLoginFields(service: Service): LoginField[] {
   return service.loginFields ?? DEFAULT_LOGIN_FIELDS;
+}
+
+/** True when the service definition includes an explicit login field schema. */
+export function hasConfiguredLoginFields(service: Service): boolean {
+  return Boolean(service.loginFields && service.loginFields.length > 0);
+}
+
+/**
+ * True when the service has login integration metadata (explicit fields and/or discovered login URL).
+ * Used by unified execution — origin-agnostic.
+ */
+export function hasLoginIntegrationMetadata(service: Service): boolean {
+  return hasConfiguredLoginFields(service) || Boolean(service.loginUrl?.trim());
 }

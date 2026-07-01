@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Dashboard from './Dashboard';
 import ManageServices from './ManageServices';
 import UnlockScreen from './UnlockScreen';
 import { definitionsToLegacyServices } from './catalog';
 import { preloadServiceLogos } from './logoCache';
 import { mockServices, HUB_PRACTICE_LOGIN_ID } from './mockServices';
-import type { Credential } from './credentials';
 import type { ServiceDefinition } from './service/serviceModel';
+import { credentialsByServiceId } from './vault/credentialAccess';
 import { persistVault, unlockVault, type VaultState } from './vault/vault';
+import { ProfileResolution } from './profile';
 import './App.css';
 
 type Screen = 'manage' | 'dashboard';
@@ -17,13 +18,30 @@ function App() {
   const [screen, setScreen] = useState<Screen>('manage');
   const [manageIsFirstRun, setManageIsFirstRun] = useState(false);
   const [showMagicMomentHint, setShowMagicMomentHint] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [customServices, setCustomServices] = useState<ServiceDefinition[]>([]);
-  const [credentials, setCredentials] = useState<Record<string, Credential>>({});
+  const [vaultState, setVaultState] = useState<VaultState>({
+    credentials: {},
+    accessProfiles: [],
+    selectedIds: [],
+    customServices: [],
+  });
+
+  const selectedIds = useMemo(() => new Set(vaultState.selectedIds), [vaultState.selectedIds]);
+  const customServices = vaultState.customServices;
+  const credentials = useMemo(
+    () => credentialsByServiceId(vaultState),
+    [vaultState],
+  );
 
   const legacyCustomServices = definitionsToLegacyServices(customServices);
   const allServices = [...mockServices, ...legacyCustomServices];
   const selectedServices = allServices.filter((s) => selectedIds.has(s.id));
+  const serviceNameById = useMemo(() => {
+    const names: Record<string, string> = {};
+    for (const service of selectedServices) {
+      names[service.id] = service.name;
+    }
+    return names;
+  }, [selectedServices]);
 
   useEffect(() => {
     preloadServiceLogos(selectedServices);
@@ -33,68 +51,54 @@ function App() {
     await persistVault(state);
   }
 
-  function buildVaultState(
-    creds: Record<string, Credential>,
-    ids: Set<string>,
-    customs: ServiceDefinition[],
-  ): VaultState {
-    return {
-      credentials: creds,
-      selectedIds: [...ids],
-      customServices: customs,
-    };
-  }
-
   async function handleUnlock(password: string) {
     const loaded = await unlockVault(password);
-    setCredentials(loaded.credentials);
-    setSelectedIds(new Set(loaded.selectedIds));
-    setCustomServices(loaded.customServices);
+    setVaultState(loaded);
     setIsUnlocked(true);
     if (loaded.selectedIds.length > 0) {
       setManageIsFirstRun(false);
       setScreen('dashboard');
     } else {
-      const initialIds = new Set([HUB_PRACTICE_LOGIN_ID]);
-      setSelectedIds(initialIds);
+      const initialIds = [HUB_PRACTICE_LOGIN_ID];
+      const nextState: VaultState = {
+        ...loaded,
+        selectedIds: initialIds,
+      };
+      setVaultState(nextState);
       setManageIsFirstRun(true);
       setScreen('manage');
-      void saveVaultState(
-        buildVaultState(loaded.credentials, initialIds, loaded.customServices),
-      );
+      void saveVaultState(nextState);
     }
   }
 
   function toggleService(id: string) {
-    const next = new Set(selectedIds);
-    if (next.has(id)) {
-      next.delete(id);
+    const nextIds = new Set(selectedIds);
+    if (nextIds.has(id)) {
+      nextIds.delete(id);
     } else {
-      next.add(id);
+      nextIds.add(id);
     }
-    setSelectedIds(next);
-    void saveVaultState(buildVaultState(credentials, next, customServices));
+    const nextState: VaultState = {
+      ...vaultState,
+      selectedIds: [...nextIds],
+    };
+    setVaultState(nextState);
+    void saveVaultState(nextState);
   }
 
   function addCustomService(definition: ServiceDefinition) {
-    const nextCustom = [...customServices, definition];
-    const nextIds = new Set([...selectedIds, definition.id]);
-    setCustomServices(nextCustom);
-    setSelectedIds(nextIds);
-    void saveVaultState(buildVaultState(credentials, nextIds, nextCustom));
+    const nextState: VaultState = {
+      ...vaultState,
+      customServices: [...customServices, definition],
+      selectedIds: [...new Set([...selectedIds, definition.id])],
+    };
+    setVaultState(nextState);
+    void saveVaultState(nextState);
   }
 
-  async function saveCredential(serviceId: string, credential: Credential) {
-    const updated = { ...credentials, [serviceId]: credential };
-    setCredentials(updated);
-    await saveVaultState(buildVaultState(updated, selectedIds, customServices));
-  }
-
-  async function deleteCredential(serviceId: string) {
-    const updated = { ...credentials };
-    delete updated[serviceId];
-    setCredentials(updated);
-    await saveVaultState(buildVaultState(updated, selectedIds, customServices));
+  async function handleVaultStateChange(state: VaultState) {
+    setVaultState(state);
+    await saveVaultState(state);
   }
 
   if (!isUnlocked) {
@@ -103,18 +107,25 @@ function App() {
 
   if (screen === 'dashboard') {
     return (
-      <Dashboard
-        services={selectedServices}
-        credentials={credentials}
-        showMagicMomentHint={showMagicMomentHint}
-        onDismissMagicMomentHint={() => setShowMagicMomentHint(false)}
-        onSaveCredential={saveCredential}
-        onDeleteCredential={deleteCredential}
-        onAddMore={() => {
-          setManageIsFirstRun(false);
-          setScreen('manage');
-        }}
-      />
+      <ProfileResolution
+        accessProfiles={vaultState.accessProfiles}
+        serviceNameById={serviceNameById}
+      >
+        {(resolveProfile) => (
+          <Dashboard
+            services={selectedServices}
+            credentials={credentials}
+            credentialsByProfileId={vaultState.credentials}
+            resolveProfile={resolveProfile}
+            showMagicMomentHint={showMagicMomentHint}
+            onDismissMagicMomentHint={() => setShowMagicMomentHint(false)}
+            onAddMore={() => {
+              setManageIsFirstRun(false);
+              setScreen('manage');
+            }}
+          />
+        )}
+      </ProfileResolution>
     );
   }
 
@@ -123,12 +134,12 @@ function App() {
       allServices={allServices}
       selectedIds={selectedIds}
       isFirstRun={manageIsFirstRun}
+      vaultState={vaultState}
       onToggle={toggleService}
       onAddCustom={addCustomService}
+      onVaultStateChange={handleVaultStateChange}
       onContinue={() => {
-        void saveVaultState(
-          buildVaultState(credentials, selectedIds, customServices),
-        );
+        void saveVaultState(vaultState);
         setShowMagicMomentHint(manageIsFirstRun);
         setScreen('dashboard');
       }}

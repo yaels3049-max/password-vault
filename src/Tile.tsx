@@ -6,7 +6,6 @@ interface TileProps {
   logoSrc?: string | null;
   hasCredentials: boolean;
   onOpen: () => void;
-  onEditCredentials: () => void;
 }
 
 export default function Tile({
@@ -14,7 +13,6 @@ export default function Tile({
   logoSrc,
   hasCredentials,
   onOpen,
-  onEditCredentials,
 }: TileProps) {
   const [imgFailed, setImgFailed] = useState(false);
   const initial = getServiceInitial(name);
@@ -55,13 +53,6 @@ export default function Tile({
         )}
       </button>
       <span className="app-label">{name}</span>
-      <button
-        type="button"
-        className="tile-credentials-btn"
-        onClick={onEditCredentials}
-      >
-        פרטי כניסה
-      </button>
     </div>
   );
 }
