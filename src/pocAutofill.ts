@@ -1,5 +1,6 @@
 import type { Credential } from './credentials';
 import { hasCompleteCredentials } from './credentials';
+import { isDevBuild } from './dev/devMode';
 import {
   DEFAULT_LOGIN_FIELDS,
   getServiceOpenUrl,
@@ -32,15 +33,15 @@ export const SHUFERSAL_SERVICE_ID = 'shufersal';
 export const CLALIT_SERVICE_ID = 'clalit';
 export { HUB_PRACTICE_LOGIN_ID };
 export const HUB_PRACTICE_DEMO_PATH = '/demo-login.html';
+export const POC_IL_SITE_URL = 'https://www.htzone.co.il/login';
 
-const htzoneService = mockServices.find((service) => service.id === HTZONE_SERVICE_ID);
-export const POC_IL_SITE_URL = htzoneService
-  ? getServiceOpenUrl(htzoneService)
-  : 'https://www.htzone.co.il/login';
+function findRuntimeService(serviceId: string): Service | undefined {
+  return mockServices.find((service) => service.id === serviceId);
+}
 
 /** True in Vite dev server (`npm run dev`). POC dashboard controls are dev-only. */
 export function isPocControlsVisible(): boolean {
-  return import.meta.env.DEV;
+  return isDevBuild();
 }
 
 export function isHubPracticeService(service: Service): boolean {
@@ -78,7 +79,8 @@ export function openDemo3FieldsAndFill(): void {
 
 /** HTZone mock test: open login and fill mock email/password only. */
 export function openIsraeliSiteAutofillTest(): void {
-  const url = POC_IL_SITE_URL;
+  const htzoneService = findRuntimeService(HTZONE_SERVICE_ID);
+  const url = htzoneService ? getServiceOpenUrl(htzoneService) : POC_IL_SITE_URL;
   if (
     !sendExtensionMessage(
       { type: 'POC_FILL_IL', url, withAutofillParam: true },
@@ -94,7 +96,7 @@ export function openShufersalLoginFromTile(
   credential: Credential | undefined,
   loginFields: LoginField[] = DEFAULT_LOGIN_FIELDS,
 ): ReturnType<typeof executeGenericAutofill> {
-  const shufersalService = mockServices.find((service) => service.id === SHUFERSAL_SERVICE_ID);
+  const shufersalService = findRuntimeService(SHUFERSAL_SERVICE_ID);
   const url = shufersalService
     ? getServiceOpenUrl(shufersalService)
     : 'https://www.shufersal.co.il/online/he/login';
@@ -106,7 +108,7 @@ export function openClalitLoginFromTile(
   credential: Credential | undefined,
   loginFields: LoginField[] = DEFAULT_LOGIN_FIELDS,
 ): ReturnType<typeof executeGenericAutofill> {
-  const clalitService = mockServices.find((service) => service.id === CLALIT_SERVICE_ID);
+  const clalitService = findRuntimeService(CLALIT_SERVICE_ID);
   const url = clalitService
     ? getServiceOpenUrl(clalitService)
     : 'https://e-services.clalit.co.il/onlineweb/general/login.aspx';
@@ -116,8 +118,9 @@ export function openClalitLoginFromTile(
 /** Dev-only: exercise HTZone adapter directly. */
 export function openHtzoneTile(
   credential: Credential | undefined,
-  loginFields: LoginField[] = htzoneService ? htzoneService.loginFields ?? DEFAULT_LOGIN_FIELDS : DEFAULT_LOGIN_FIELDS,
+  loginFields: LoginField[] = DEFAULT_LOGIN_FIELDS,
 ): void {
+  const htzoneService = findRuntimeService(HTZONE_SERVICE_ID);
   htzoneAdapter.execute({
     service: htzoneService ?? {
       id: HTZONE_SERVICE_ID,
@@ -127,9 +130,9 @@ export function openHtzoneTile(
       category: 'shopping',
       adapterId: 'htzone',
     },
-    openUrl: POC_IL_SITE_URL,
+    openUrl: htzoneService ? getServiceOpenUrl(htzoneService) : POC_IL_SITE_URL,
     credential,
-    loginFields,
+    loginFields: htzoneService?.loginFields ?? loginFields,
   });
 }
 
@@ -138,7 +141,7 @@ export function openPracticeLoginFromTile(
   credential: Credential | undefined,
   loginFields: LoginField[] = DEFAULT_LOGIN_FIELDS,
 ): ReturnType<typeof practiceAdapter.execute> {
-  const practiceService = mockServices.find((service) => service.id === HUB_PRACTICE_LOGIN_ID);
+  const practiceService = findRuntimeService(HUB_PRACTICE_LOGIN_ID);
   if (!practiceService) {
     return { ok: false, reason: 'credentials_missing' };
   }

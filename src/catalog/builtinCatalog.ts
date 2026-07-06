@@ -76,6 +76,7 @@ export const BUILTIN_CATALOG_DEFINITIONS: ServiceDefinition[] = [
     icon: '🏥',
     category: 'health',
     source: 'built-in-catalog',
+    adapterId: 'generic',
     metadata: faviconSite('https://www.clalit.co.il'),
     loginFields: [
       { id: 'idNumber', label: 'מספר תעודת זהות', type: 'text' },
@@ -120,6 +121,7 @@ export const BUILTIN_CATALOG_DEFINITIONS: ServiceDefinition[] = [
     icon: '🛒',
     category: 'shopping',
     source: 'built-in-catalog',
+    adapterId: 'generic',
     metadata: faviconSite('https://www.shufersal.co.il'),
     loginFields: [
       { id: 'email', label: 'כתובת מייל', type: 'text' },

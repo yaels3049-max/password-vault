@@ -1,9 +1,10 @@
 import {
   definitionsToLegacyServices,
-  getBuiltinCatalogDefinitions,
   highResFavicon,
   HUB_PRACTICE_LOGIN_ID,
 } from './catalog';
+import { isDevBuild } from './dev/devMode';
+import type { ServiceDefinition } from './service/serviceModel';
 import type { ServiceCategory } from './service/legacyService';
 
 export type {
@@ -23,8 +24,12 @@ export {
 
 export { highResFavicon, HUB_PRACTICE_LOGIN_ID };
 
-/** Built-in catalog derived from canonical ServiceDefinition data. */
-export const mockServices = definitionsToLegacyServices(getBuiltinCatalogDefinitions());
+/** Built-in catalog legacy services — populated after registry load (Phase 102). */
+export let mockServices: import('./service/legacyService').Service[] = [];
+
+export function setRuntimeBuiltinServices(definitions: ServiceDefinition[]): void {
+  mockServices = definitionsToLegacyServices(definitions);
+}
 
 export const categoryLabels: Record<ServiceCategory, string> = {
   practice: 'התחלה כאן',
@@ -40,9 +45,13 @@ export const categoryQuestions: Record<ServiceCategory, string> = {
   shopping: 'באילו אתרי קניות אתה משתמש?',
 };
 
-export const categories: ServiceCategory[] = [
+const ALL_CATEGORIES: ServiceCategory[] = [
   'practice',
   'banking',
   'health',
   'shopping',
 ];
+
+export const categories: ServiceCategory[] = isDevBuild()
+  ? ALL_CATEGORIES
+  : ALL_CATEGORIES.filter((category) => category !== 'practice');

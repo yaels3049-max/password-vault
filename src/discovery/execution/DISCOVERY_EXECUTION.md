@@ -33,12 +33,22 @@ Outcomes: `success` (with `DiscoveryResult`), `unavailable` (executor cannot run
 
 **`ExtensionTabDiscoveryExecutor`** (`extensionTabDiscoveryExecutor`, id: `extension-tab`)
 
-1. Hub sends `HUB_LOGIN_ENTRY_DISCOVERY` to the extension
-2. Extension opens a **visible temporary tab** at `primaryUrl`
-3. After load, injects the bundled discovery engine and runs it on the live DOM
-4. Returns `DiscoveryResult` to the Hub and closes the tab when safe
+Used for **custom service add** discovery only in Phase 102 stabilization. Dashboard tile open does not call `discoverLogin`.
 
-### Temporary visible tabs
+1. Hub sends `HUB_LOGIN_ENTRY_DISCOVERY` to the extension
+2. Extension opens a **background** temporary tab at `primaryUrl` (`active: false`)
+3. After load, injects the bundled discovery engine and runs it on the live DOM
+4. Returns `DiscoveryResult` to the Hub, closes the tab, refocuses the Hub tab
+
+### Phase 102 stabilization vs Phase 103
+
+| Area | Phase 102 | Phase 103 |
+|---|---|---|
+| Tile open | Adapter registry (`generic`, `htzone`, `practice`) or open-only | Unified pipeline in `executeServiceFromTile` |
+| Autofill | `adapterId: generic` for Phase 2 validated sites (Shufersal, Clalit) | Remove POC host allowlist; one https policy |
+| `login_fields` seed shape | Must not branch tile execution | Same pipeline with or without seeded fields |
+
+### Temporary background tabs
 
 Visible temporary tabs are a **temporary implementation**. They work with today's extension permissions and scripting APIs without extra user setup.
 

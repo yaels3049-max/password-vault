@@ -1,4 +1,4 @@
-import { discoverLogin } from '../discovery/execution/discoverLogin';
+import { discoverAndPersistLoginUrl } from '../registry/loginUrlDiscovery';
 import type { DiscoveryResult } from '../discovery';
 import {
   validateServiceDefinition,
@@ -89,7 +89,7 @@ function failureResult(
 
 /**
  * Run login entry discovery for a newly created custom service.
- * Execution is delegated to the active {@link DiscoveryExecutor} via discoverLogin().
+ * Persists discovered URL to user registry row when Supabase is configured (Phase 102).
  */
 export async function discoverLoginForCustomService(
   definition: ServiceDefinition,
@@ -99,22 +99,33 @@ export async function discoverLoginForCustomService(
 
   logCustomDiscovery('discovery started');
 
-  const execution = await discoverLogin(primaryUrl);
+  const persistResult = await discoverAndPersistLoginUrl(definition, { primaryUrl });
 
-  if (execution.status === 'unavailable' || execution.status === 'error') {
-    logCustomDiscovery('discovery result', { ok: false, reason: execution.reason });
+  if (persistResult.skipped) {
+    logCustomDiscovery('discovery skipped — login URL already valid in registry');
+    return {
+      definition: persistResult.definition,
+      discovery: null,
+      outcome: {
+        status: 'success',
+        message: DISCOVERY_SUCCESS_MESSAGE,
+      },
+    };
+  }
+
+  const discovery = persistResult.discovery;
+  logCustomDiscovery('discovery result', discovery);
+
+  if (!discovery) {
     logCustomDiscovery('fallback to primary URL');
     return failureResult(definition, null, EXTENSION_UNAVAILABLE_MESSAGE);
   }
-
-  const discovery = execution.result;
-  logCustomDiscovery('discovery result', discovery);
 
   if (!shouldPersistDiscoveredLoginUrl(discovery)) {
     return failureResult(definition, discovery, DISCOVERY_FAILURE_MESSAGE);
   }
 
-  const enriched = applyDiscoveredLoginUrl(definition, discovery.loginUrl!);
+  const enriched = applyDiscoveredLoginUrl(persistResult.definition, discovery.loginUrl!);
   logCustomDiscovery('persisted loginUrl', enriched.loginUrl ?? null);
 
   return {

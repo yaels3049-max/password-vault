@@ -162,3 +162,23 @@ export function saltToBase64(salt: Uint8Array): string {
 export function saltFromBase64(salt: string): Uint8Array {
   return fromBase64(salt);
 }
+
+/** Encrypt a single profile credential object for Supabase dual-write (AES-256-GCM). */
+export async function encryptCredentialSet(
+  cryptoKey: CryptoKey,
+  credential: Credential,
+): Promise<{ ciphertext: string; iv: string; fieldIdsPresent: string[] }> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(JSON.stringify(credential));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    cryptoKey,
+    encoded,
+  );
+
+  return {
+    ciphertext: toBase64(new Uint8Array(encrypted)),
+    iv: toBase64(iv),
+    fieldIdsPresent: Object.keys(credential),
+  };
+}

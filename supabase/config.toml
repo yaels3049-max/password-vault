@@ -1,0 +1,8 @@
+# Supabase local development (Phase 101)
+project_id = "wbehjoraatkrpsbgyunx"
+
+[api]
+enabled = true
+
+[db]
+major_version = 15

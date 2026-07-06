@@ -1,21 +1,19 @@
 import type { Credential } from '../credentials';
+import { hasCompleteCredentials } from '../credentials';
 import {
   getLoginFields,
   getServiceOpenUrl,
-  hasLoginIntegrationMetadata,
   type LoginField,
   type Service,
 } from '../mockServices';
-import { hasCompleteCredentials } from '../credentials';
 import { getServiceAdapter } from './adapters/registry';
 import { openUrlInNewTab } from './extensionBridge';
-import { executeGenericAutofill } from './genericAutofill';
+
+const MISSING_CREDENTIALS_MESSAGE =
+  'הגדירו פרטי כניסה במסך «ניהול השירותים» — לחצו «הוסף שירותים נוספים».';
 
 const OPEN_ONLY_MESSAGE =
   'האתר נפתח. מילוי אוטומטי אינו זמין עבור אתר זה כרגע.';
-
-const EXTENSION_UNAVAILABLE_MESSAGE =
-  'דף ההתחברות נפתח. התקינו את תוסף הדפדפן כדי לאפשר מילוי אוטומטי.';
 
 export type ServiceExecutionStatus =
   | 'ok'
@@ -30,10 +28,12 @@ export interface ServiceExecutionResult {
 }
 
 /**
- * Unified tile execution for every service type.
- * Caller resolves Access Profile and supplies profile-scoped credentials.
+ * Phase 102 tile execution:
+ * - Services with `adapterId` (generic, htzone, practice) use the adapter registry.
+ * - All other services open `loginUrl ?? primaryUrl` only (banks, custom, catalog) until Phase 103.
+ * - Tabs are not closed automatically on tile click.
  *
- * Pipeline: open URL from metadata → generic autofill → adapter only when adapterId is set.
+ * Phase 103 unifies open + optional autofill without the extension POC host allowlist.
  */
 export function executeServiceFromTile(
   service: Service,
@@ -42,6 +42,7 @@ export function executeServiceFromTile(
 ): ServiceExecutionResult {
   const openUrl = getServiceOpenUrl(service);
   const adapterId = service.adapterId?.trim();
+  const credentialsComplete = hasCompleteCredentials(credential, loginFields);
 
   if (adapterId) {
     const adapter = getServiceAdapter(adapterId);
@@ -63,10 +64,12 @@ export function executeServiceFromTile(
     });
 
     if (!adapterResult.ok) {
+      openUrlInNewTab(openUrl);
       return {
         status: 'credentials_missing',
         extensionUsed: false,
-        autofillAttempted: true,
+        autofillAttempted: false,
+        userMessage: MISSING_CREDENTIALS_MESSAGE,
       };
     }
 
@@ -74,44 +77,23 @@ export function executeServiceFromTile(
       status: 'ok',
       extensionUsed: adapterResult.extensionUsed,
       autofillAttempted: adapterResult.autofillAttempted,
-      userMessage:
-        adapterResult.autofillAttempted && !adapterResult.extensionUsed
-          ? EXTENSION_UNAVAILABLE_MESSAGE
-          : undefined,
     };
   }
 
-  if (!hasLoginIntegrationMetadata(service)) {
-    openUrlInNewTab(openUrl);
+  openUrlInNewTab(openUrl);
+
+  if (!credentialsComplete) {
     return {
-      status: 'open_only',
+      status: 'credentials_missing',
       extensionUsed: false,
       autofillAttempted: false,
-      userMessage: OPEN_ONLY_MESSAGE,
-    };
-  }
-
-  if (!hasCompleteCredentials(credential, loginFields)) {
-    return {
-      status: 'credentials_missing',
-      extensionUsed: false,
-      autofillAttempted: true,
-    };
-  }
-
-  const result = executeGenericAutofill(openUrl, credential, loginFields);
-  if (!result.ok) {
-    return {
-      status: 'credentials_missing',
-      extensionUsed: false,
-      autofillAttempted: true,
+      userMessage: MISSING_CREDENTIALS_MESSAGE,
     };
   }
 
   return {
-    status: 'ok',
-    extensionUsed: result.extensionUsed,
-    autofillAttempted: true,
-    userMessage: result.extensionUsed ? undefined : EXTENSION_UNAVAILABLE_MESSAGE,
+    status: 'open_only',
+    extensionUsed: false,
+    autofillAttempted: false,
   };
 }

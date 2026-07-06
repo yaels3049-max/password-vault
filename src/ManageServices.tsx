@@ -2,6 +2,7 @@ import { useState } from 'react';
 import AddSiteModal from './AddSiteModal';
 import ServiceProfileManagementModal from './ServiceProfileManagementModal';
 import { createCustomServiceDefinition, discoverLoginForCustomService } from './catalog';
+import { isDevBuild } from './dev/devMode';
 import {
   categories,
   categoryLabels,
@@ -164,11 +165,18 @@ export default function ManageServices({
         )}
       </header>
 
-      {isFirstRun && (
+      {isFirstRun && isDevBuild() && (
         <p className="onboarding-first-run-note">
           אין צורך לבחור מכל הקטגוריות. שירות אחד מספיק כדי להתחיל.
           <strong> תרגול התחברות</strong> כבר נבחר — אפשר להמשיך או לבחור שירות אחר.
           לאחר הבחירה, לחצו <strong>פרופילים ופרטי כניסה</strong> כדי לשמור פרטי כניסה.
+        </p>
+      )}
+
+      {isFirstRun && !isDevBuild() && (
+        <p className="onboarding-first-run-note">
+          בחרו שירות אחד לפחות מהרשימה למטה. לאחר הבחירה, לחצו{' '}
+          <strong>פרופילים ופרטי כניסה</strong> כדי לשמור פרטי כניסה.
         </p>
       )}
 

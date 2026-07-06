@@ -1,0 +1,155 @@
+import { isDevBuild } from '../dev/devMode';
+import { BUILTIN_CATALOG_DEFINITIONS, HUB_PRACTICE_LOGIN_ID } from '../catalog/builtinCatalog';
+import { applyBuiltinCatalogOverlayAll } from '../catalog/builtinCatalogOverlay';
+import { isSupabaseConfigured } from '../supabase/env';
+import { ensureAnonymousUserId } from '../supabase/auth';
+import { getSupabaseClient } from '../supabase/client';
+import {
+  registryRowToServiceDefinition,
+  type ServiceRegistryRow,
+} from './registryMapper';
+import type { ServiceDefinition } from '../service/serviceModel';
+import { formatUnknownError } from '../formatErrorChain';
+
+export class CatalogLoadError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = 'CatalogLoadError';
+    if (options?.cause !== undefined) {
+      this.cause = options.cause;
+    }
+  }
+}
+
+let sessionCache: ServiceDefinition[] | null = null;
+
+const REGISTRY_SELECT =
+  'id, display_name, primary_url, login_url, login_url_status, category_id, icon, adapter_id, login_fields, source_type, service_status, metadata, owner_user_id';
+
+function getDevPracticeDefinition(): ServiceDefinition {
+  const practice = BUILTIN_CATALOG_DEFINITIONS.find(
+    (definition) => definition.id === HUB_PRACTICE_LOGIN_ID,
+  );
+
+  if (!practice) {
+    throw new CatalogLoadError('Dev practice service definition is missing');
+  }
+
+  return practice;
+}
+
+function injectDevPractice(definitions: ServiceDefinition[]): ServiceDefinition[] {
+  if (!isDevBuild()) {
+    return definitions;
+  }
+
+  if (definitions.some((definition) => definition.id === HUB_PRACTICE_LOGIN_ID)) {
+    return definitions;
+  }
+
+  return [getDevPracticeDefinition(), ...definitions];
+}
+
+async function ensureRegistryAuth(): Promise<void> {
+  try {
+    await ensureAnonymousUserId();
+  } catch (error) {
+    const detail = formatUnknownError(error);
+    throw new CatalogLoadError(`Supabase anonymous auth failed: ${detail}`, { cause: error });
+  }
+}
+
+async function fetchRegistryRows(): Promise<ServiceRegistryRow[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new CatalogLoadError('Supabase is not configured');
+  }
+
+  await ensureRegistryAuth();
+
+  const { data, error } = await supabase
+    .from('service_registry')
+    .select(REGISTRY_SELECT)
+    .eq('service_status', 'active');
+
+  if (error) {
+    throw new CatalogLoadError(`Registry fetch failed: ${error.message}`, { cause: error });
+  }
+
+  return (data ?? []) as ServiceRegistryRow[];
+}
+
+export function getCachedRegistryCatalog(): ServiceDefinition[] | null {
+  return sessionCache;
+}
+
+export function clearRegistryCatalogCache(): void {
+  sessionCache = null;
+}
+
+/**
+ * Load built-in + user registry catalog from Supabase (AC-102-2).
+ * Production never reads BUILTIN_CATALOG_DEFINITIONS for runtime catalog.
+ */
+export async function loadRegistryCatalog(): Promise<ServiceDefinition[]> {
+  if (!isSupabaseConfigured()) {
+    throw new CatalogLoadError('Supabase is not configured');
+  }
+
+  if (sessionCache) {
+    return sessionCache;
+  }
+
+  try {
+    const rows = await fetchRegistryRows();
+    const globalBuiltIns = rows.filter(
+      (row) => row.owner_user_id === null && row.source_type === 'built_in',
+    );
+    const userRows = rows.filter((row) => row.owner_user_id !== null);
+
+    const definitions = applyBuiltinCatalogOverlayAll(
+      [...globalBuiltIns, ...userRows].map(registryRowToServiceDefinition),
+    );
+
+    if (globalBuiltIns.length === 0 && !isDevBuild()) {
+      throw new CatalogLoadError(
+        'Registry has no built-in services. Apply Phase 102 seed migration (20260703120100_phase102_seed_builtin.sql).',
+      );
+    }
+
+    sessionCache = injectDevPractice(definitions);
+    return sessionCache;
+  } catch (error) {
+    if (sessionCache) {
+      return sessionCache;
+    }
+
+    if (error instanceof CatalogLoadError) {
+      throw error;
+    }
+
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new CatalogLoadError(`Failed to load service registry: ${detail}`, { cause: error });
+  }
+}
+
+export async function fetchRegistryRowById(serviceId: string): Promise<ServiceRegistryRow | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return null;
+  }
+
+  await ensureRegistryAuth();
+
+  const { data, error } = await supabase
+    .from('service_registry')
+    .select(REGISTRY_SELECT)
+    .eq('id', serviceId)
+    .maybeSingle();
+
+  if (error) {
+    throw new CatalogLoadError(`Registry row fetch failed: ${error.message}`, { cause: error });
+  }
+
+  return (data as ServiceRegistryRow | null) ?? null;
+}

@@ -643,6 +643,7 @@ const GENERIC_REAL_SITE_TAB_LOAD_TIMEOUT_MS = 120000;
 /** Time allowed for detect/fill once the login page is ready (retries included). */
 const GENERIC_REAL_SITE_OPERATION_TIMEOUT_MS = 90000;
 
+/** @deprecated Phase 102 stabilization — POC only. Phase 103 removes host allowlist branching. */
 const GENERIC_REAL_SITE_ALLOWED_HOSTS = {
   'www.shufersal.co.il': true,
   'shufersal.co.il': true,
@@ -1017,13 +1018,31 @@ function tabUrlMatchesDiscoveryPrimary(tabUrl, primaryUrl) {
   }
 }
 
-function closeDiscoveryTabSafely(tabId) {
+function refocusReturnTab(tabId) {
   if (!tabId) {
+    return;
+  }
+
+  chrome.tabs.update(tabId, { active: true }, function () {
+    if (chrome.runtime.lastError) {
+      console.log('[LoginEntryDiscovery] refocus skipped:', chrome.runtime.lastError.message);
+    }
+  });
+}
+
+function closeDiscoveryTabSafely(tabId, onClosed) {
+  if (!tabId) {
+    if (onClosed) {
+      onClosed();
+    }
     return;
   }
 
   chrome.tabs.get(tabId, function (tab) {
     if (chrome.runtime.lastError || !tab) {
+      if (onClosed) {
+        onClosed();
+      }
       return;
     }
 
@@ -1033,6 +1052,9 @@ function closeDiscoveryTabSafely(tabId) {
           '[LoginEntryDiscovery] tab close skipped:',
           chrome.runtime.lastError.message,
         );
+      }
+      if (onClosed) {
+        onClosed();
       }
     });
   });
@@ -1048,6 +1070,7 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
   var settled = false;
   var readyWorkStarted = false;
   var operationTimeout = null;
+  var returnTabId = null;
 
   function clearOperationTimeout() {
     if (operationTimeout) {
@@ -1063,6 +1086,7 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
     settled = true;
     clearTimeout(tabLoadTimeout);
     clearOperationTimeout();
+    refocusReturnTab(returnTabId);
     respond(result);
   }
 
@@ -1073,6 +1097,7 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
         return;
       }
       settled = true;
+      refocusReturnTab(returnTabId);
       respond({ ok: false, reason: 'operation_timeout' });
     }, LOGIN_ENTRY_DISCOVERY_OPERATION_TIMEOUT_MS);
   }
@@ -1084,19 +1109,22 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
     finishSession({ ok: false, reason: 'tab_load_timeout' });
   }, LOGIN_ENTRY_DISCOVERY_TAB_LOAD_TIMEOUT_MS);
 
-  chrome.tabs.create({ url: primaryUrl }, function (tab) {
-    if (chrome.runtime.lastError || !tab || !tab.id) {
-      clearTimeout(tabLoadTimeout);
-      finishSession({
-        ok: false,
-        reason: chrome.runtime.lastError
-          ? chrome.runtime.lastError.message
-          : 'no_tab',
-      });
-      return;
-    }
+  chrome.tabs.query({ active: true, lastFocusedWindow: true }, function (activeTabs) {
+    returnTabId = activeTabs && activeTabs[0] ? activeTabs[0].id : null;
 
-    var tabId = tab.id;
+    chrome.tabs.create({ url: primaryUrl, active: false }, function (tab) {
+      if (chrome.runtime.lastError || !tab || !tab.id) {
+        clearTimeout(tabLoadTimeout);
+        finishSession({
+          ok: false,
+          reason: chrome.runtime.lastError
+            ? chrome.runtime.lastError.message
+            : 'no_tab',
+        });
+        return;
+      }
+
+      var tabId = tab.id;
 
     function startReadyWork() {
       if (readyWorkStarted || settled) {
@@ -1124,7 +1152,9 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
         changeInfo.url === 'chrome-error://chromewebdata/'
       ) {
         chrome.tabs.onUpdated.removeListener(onTabUpdated);
-        finishSession({ ok: false, reason: 'tab_load_error' });
+        closeDiscoveryTabSafely(tabId, function () {
+          finishSession({ ok: false, reason: 'tab_load_error' });
+        });
         return;
       }
 
@@ -1160,6 +1190,7 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
         chrome.tabs.onUpdated.removeListener(onTabUpdated);
         startReadyWork();
       }
+    });
     });
   });
 
@@ -1241,22 +1272,22 @@ function runLoginEntryDiscoveryOnTab(tabId, primaryUrl, attempt, onDone) {
 function openPageAndDiscoverLoginEntry(primaryUrl, sendResponse) {
   return openLoginEntryDiscoveryTab(primaryUrl, sendResponse, function (tabId, finishSession) {
     runLoginEntryDiscoveryOnTab(tabId, primaryUrl, 0, function (discovery) {
-      closeDiscoveryTabSafely(tabId);
+      closeDiscoveryTabSafely(tabId, function () {
+        if (!discovery || typeof discovery !== 'object') {
+          finishSession({ ok: false, reason: 'discovery_no_result' });
+          return;
+        }
 
-      if (!discovery || typeof discovery !== 'object') {
-        finishSession({ ok: false, reason: 'discovery_no_result' });
-        return;
-      }
+        if (discovery.__transportError) {
+          finishSession({ ok: false, reason: discovery.reason || 'discovery_run_failed' });
+          return;
+        }
 
-      if (discovery.__transportError) {
-        finishSession({ ok: false, reason: discovery.reason || 'discovery_run_failed' });
-        return;
-      }
-
-      finishSession({
-        ok: true,
-        via: 'login-entry-discovery',
-        discovery: discovery,
+        finishSession({
+          ok: true,
+          via: 'login-entry-discovery',
+          discovery: discovery,
+        });
       });
     });
   });

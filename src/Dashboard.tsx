@@ -13,7 +13,6 @@ import Tile from './Tile';
 import { useServiceLogos } from './useServiceLogos';
 import {
   isExtensionAvailable,
-  isHubPracticeService,
   isPocControlsVisible,
   openDemo3FieldsAndFill,
   openDemoAndFill,
@@ -47,9 +46,7 @@ export default function Dashboard({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const showPocControls = isPocControlsVisible();
   const extensionAvailable = isExtensionAvailable();
-  const hasPracticeService = services.some((service) => isHubPracticeService(service));
-  const showExtensionBanner =
-    !extensionAvailable && (hasPracticeService || showMagicMomentHint);
+  const showExtensionBanner = !extensionAvailable && showMagicMomentHint;
 
   function clearStatusSoon(message: string) {
     setStatusMessage(message);
@@ -84,6 +81,7 @@ export default function Dashboard({
 
     const loginFields = getLoginFields(service);
     const credential = credentialsByProfileId[profileId];
+
     const result = executeServiceFromTile(service, credential, loginFields);
 
     if (result.status === 'credentials_missing') {
@@ -148,18 +146,8 @@ export default function Dashboard({
       {showMagicMomentHint && (
         <div className="dashboard-banner dashboard-banner--hint">
           <p>
-            {hasPracticeService ? (
-              <>
-                הגדירו פרטי כניסה ב<strong>ניהול השירותים</strong>, ואז לחצו על{' '}
-                <strong>תרגול התחברות</strong> לפתיחת דף ההתחברות. השלימו את ההתחברות
-                בעצמכם.
-              </>
-            ) : (
-              <>
-                הגדירו פרטי כניסה ב<strong>ניהול השירותים</strong>, ואז לחצו על האייקון
-                לפתיחת השירות.
-              </>
-            )}
+            הגדירו פרטי כניסה ב<strong>ניהול השירותים</strong>, ואז לחצו על האייקון
+            לפתיחת השירות.
           </p>
           <button
             type="button"

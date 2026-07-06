@@ -1,33 +1,24 @@
-import {
-  validateServiceDefinition,
-  type ServiceDefinition,
-} from '../service/serviceModel';
-import { BUILTIN_CATALOG_DEFINITIONS } from './builtinCatalog';
-
-let cachedValidatedCatalog: ServiceDefinition[] | null = null;
+import { CatalogLoadError, loadRegistryCatalog } from '../registry/registryLoader';
+import { isSupabaseConfigured } from '../supabase/env';
+import type { ServiceDefinition } from '../service/serviceModel';
 
 /**
- * Returns validated built-in catalog definitions.
- * Validation runs once per session on first access.
+ * Load runtime built-in catalog from Supabase service_registry (AC-102-2).
+ * Dev-only practice service is injected by registryLoader when isDevBuild().
  */
-export function getBuiltinCatalogDefinitions(): ServiceDefinition[] {
-  if (cachedValidatedCatalog) {
-    return cachedValidatedCatalog;
+export async function loadBuiltinCatalogDefinitions(): Promise<ServiceDefinition[]> {
+  if (!isSupabaseConfigured()) {
+    throw new CatalogLoadError('Supabase is not configured — cannot load registry catalog');
   }
 
-  const validated: ServiceDefinition[] = [];
+  return loadRegistryCatalog();
+}
 
-  for (const definition of BUILTIN_CATALOG_DEFINITIONS) {
-    const result = validateServiceDefinition(definition);
-    if (!result.valid) {
-      const details = result.issues
-        .map((issue) => `${issue.field}: ${issue.message}`)
-        .join('; ');
-      throw new Error(`Invalid built-in catalog entry "${definition.id}": ${details}`);
-    }
-    validated.push(result.definition);
-  }
-
-  cachedValidatedCatalog = validated;
-  return validated;
+/**
+ * @deprecated Runtime catalog must load from Supabase. Use loadBuiltinCatalogDefinitions().
+ */
+export function getBuiltinCatalogDefinitions(): never {
+  throw new Error(
+    'getBuiltinCatalogDefinitions() is removed in Phase 102. Use loadBuiltinCatalogDefinitions() instead.',
+  );
 }

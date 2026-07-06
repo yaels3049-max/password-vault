@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Israeli Vault Autofill POC",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Local demo autofill proof of concept only",
   "minimum_chrome_version": "93",
   "permissions": ["tabs", "scripting"],

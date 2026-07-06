@@ -16,6 +16,7 @@ import {
 } from './crypto';
 import { getVault, putVault, VAULT_ID, type VaultRecord } from './db';
 import { migrateVaultPayload } from './vaultMigration';
+import { syncVaultStateToSupabaseSafe } from '../supabase/persistence';
 
 let vaultKey: CryptoKey | null = null;
 
@@ -100,6 +101,9 @@ export async function persistVault(state: VaultState): Promise<void> {
   }
 
   await saveEncrypted(vaultKey, existing.kdf, payloadFromVaultState(state));
+
+  // Phase 101 dual-write: Supabase upsert is best-effort; local IndexedDB is authoritative.
+  void syncVaultStateToSupabaseSafe(vaultKey, state);
 }
 
 export async function vaultExists(): Promise<boolean> {

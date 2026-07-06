@@ -18,7 +18,7 @@ export {
   type CustomServiceDiscoveryOutcome,
   type CustomServiceDiscoveryResult,
 } from './customServiceDiscovery';
-export { getBuiltinCatalogDefinitions } from './catalogLoader';
+export { loadBuiltinCatalogDefinitions } from './catalogLoader';
 export {
   definitionToLegacyService,
   definitionsToLegacyServices,

@@ -1,7 +1,7 @@
 import type { Credential } from '../credentials';
 import { hasCompleteCredentials } from '../credentials';
 import type { LoginField } from '../mockServices';
-import { getExtensionId, openUrlInNewTab, sendExtensionMessage } from './extensionBridge';
+import { getExtensionId, isExtensionAvailable, openUrlInNewTab, sendExtensionMessage } from './extensionBridge';
 
 export type GenericAutofillResult =
   | { ok: true; extensionUsed: boolean }
@@ -18,7 +18,7 @@ function logGenericFillDev(message: string, detail?: unknown): void {
   console.log(message);
 }
 
-/** Open a login URL and fill credentials via the generic extension engine. */
+/** Open a login URL and fill credentials via the generic extension engine (POC / Phase 103). */
 export function executeGenericAutofill(
   url: string,
   credential: Credential | undefined,
@@ -40,7 +40,11 @@ export function executeGenericAutofill(
     credentials: vaultCredentials,
   };
 
-  logGenericFillDev('[Generic Fill] Hub: vault credentials prepared for extension');
+  logGenericFillDev('[Generic Fill] Hub: vault credentials prepared for extension', {
+    extensionConfigured: Boolean(getExtensionId()),
+    extensionAvailable: isExtensionAvailable(),
+    fieldIds: loginFields.map((field) => field.id),
+  });
 
   if (sendExtensionMessage(payload, url)) {
     logGenericFillDev('[Generic Fill] Hub: sending POC_GENERIC_FILL', {

@@ -42,7 +42,12 @@ export const htzoneAdapter: ServiceAdapter = {
 
     const mapped = toEmailPasswordPayload(credential, loginFields);
     if (!mapped) {
-      return { ok: false, reason: 'credentials_missing' };
+      openUrlInNewTab(openUrl);
+      return {
+        ok: true,
+        extensionUsed: false,
+        autofillAttempted: false,
+      };
     }
 
     const payload: Record<string, unknown> = {

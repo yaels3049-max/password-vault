@@ -41,8 +41,9 @@ export function hasConfiguredLoginFields(service: Service): boolean {
 }
 
 /**
- * True when the service has login integration metadata (explicit fields and/or discovered login URL).
- * Used by unified execution — origin-agnostic.
+ * Whether a service definition carries explicit login metadata from registry/catalog.
+ * Phase 102 tile open does not branch on this flag (stabilization).
+ * Phase 103 unified execution may use it for autofill eligibility only.
  */
 export function hasLoginIntegrationMetadata(service: Service): boolean {
   return hasConfiguredLoginFields(service) || Boolean(service.loginUrl?.trim());

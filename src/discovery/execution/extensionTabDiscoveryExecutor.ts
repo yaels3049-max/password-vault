@@ -78,12 +78,8 @@ function requestExtensionLoginDiscovery(
 /**
  * Production discovery executor (Iteration 3.3b / 3.6).
  *
- * Opens a visible temporary browser tab via the Hub extension, runs the discovery engine against
- * the live DOM, returns the result, and closes the tab when safe.
- *
- * **Temporary implementation:** Visible tabs are used because they are available today without
- * additional browser APIs. The production goal is non-intrusive discovery (background or hidden
- * execution) whenever browser capabilities allow — without changing the Hub API or discovery engine.
+ * Opens a **background** temporary tab via the Hub extension, runs the discovery engine against
+ * the live DOM, returns the result, closes the tab, and refocuses the Hub tab.
  */
 export const extensionTabDiscoveryExecutor: DiscoveryExecutor = {
   id: 'extension-tab',

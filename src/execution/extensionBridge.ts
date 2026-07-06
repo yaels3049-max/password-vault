@@ -38,7 +38,12 @@ export function sendExtensionMessage(
     return false;
   }
 
-  runtime.sendMessage(extensionId, payload, () => {
+  runtime.sendMessage(extensionId, payload, (response) => {
+    if (import.meta.env.DEV) {
+      const err = runtime.lastError?.message;
+      console.log('[Hub → Extension]', payload.type, { response, lastError: err ?? null });
+    }
+
     if (runtime.lastError && onErrorOpenUrl) {
       openUrlInNewTab(onErrorOpenUrl);
     }
