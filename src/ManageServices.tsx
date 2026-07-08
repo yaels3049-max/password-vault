@@ -27,6 +27,7 @@ import {
   saveCredentialForProfile,
   setDefaultAccessProfile,
 } from './vault/profileManagement';
+import { toFriendlySecurityError } from './trust';
 
 interface ManageServicesProps {
   allServices: Service[];
@@ -42,6 +43,8 @@ interface ManageServicesProps {
   onVaultStateChange: (state: VaultState) => Promise<void>;
   onRetryCatalog: () => void;
   onContinue: () => void;
+  onLockVault?: () => void;
+  vaultUnlocked?: boolean;
 }
 
 const CUSTOM_ADD_CATEGORIES: ServiceCategory[] = categories.filter(
@@ -62,6 +65,8 @@ export default function ManageServices({
   onVaultStateChange,
   onRetryCatalog,
   onContinue,
+  onLockVault,
+  vaultUnlocked = true,
 }: ManageServicesProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -187,10 +192,13 @@ export default function ManageServices({
       await onVaultStateChange(nextState);
     } catch (error) {
       if (error instanceof ProfileManagementError) {
-        setProfileError(toHebrewProfileError(error.message));
-        return;
+        const friendly = toHebrewProfileError(error.message);
+        setProfileError(friendly);
+        throw new Error(friendly);
       }
-      setProfileError(error instanceof Error ? error.message : 'שגיאה בלתי צפויה');
+      const friendly = toFriendlySecurityError(error);
+      setProfileError(friendly);
+      throw new Error(friendly);
     }
   }
 
@@ -480,6 +488,8 @@ export default function ManageServices({
           profiles={managingProfiles}
           credentials={vaultState.credentials}
           error={profileError}
+          vaultUnlocked={vaultUnlocked}
+          onLockVault={onLockVault}
           onClose={closeProfileManagement}
           onAddProfile={(displayName) =>
             void applyVaultUpdate((state) => addAccessProfile(state, managingService.id, displayName))
@@ -496,12 +506,12 @@ export default function ManageServices({
             void applyVaultUpdate((state) => deleteAccessProfile(state, profileId))
           }
           onSaveCredential={(profileId, credential: Credential) =>
-            void applyVaultUpdate((state) =>
+            applyVaultUpdate((state) =>
               saveCredentialForProfile(state, profileId, credential),
             )
           }
           onDeleteCredential={(profileId) =>
-            void applyVaultUpdate((state) => deleteCredentialForProfile(state, profileId))
+            applyVaultUpdate((state) => deleteCredentialForProfile(state, profileId))
           }
         />
       )}

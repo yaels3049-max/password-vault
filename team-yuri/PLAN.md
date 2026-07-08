@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | 2.4 |
+| **Version** | 4.1 |
 | **Status** | Production Ready |
 | **Last updated** | 2026-07-08 |
 
@@ -91,7 +91,7 @@ Detailed prototype plans remain in `docs/phases/` for historical reference only.
 | **Discovery is expensive and fragile** | Login URL discovery runs only when `loginUrl` is missing or invalid; results are cached in the registry. |
 | **POC/demo surfaces confuse users** | Phase 100 removes demo controls and POC wording from user-facing UI. |
 | **Local IndexedDB is not production persistence** | Phase 101 introduces Supabase with zero-knowledge ciphertext storage. |
-| **Account login ≠ vault unlock** | Phase 190 separates account session from vault decryption (see §9, Phase 190). |
+| **Account login ≠ vault unlock** | Phase 191 separates account session from vault decryption (see §9, Phase 191). |
 
 ### Prototype limitations (explicit)
 
@@ -166,7 +166,7 @@ flowchart TB
 
 | Component | Responsibility |
 |-----------|----------------|
-| **Web application** | Primary UX: Digital Home, Service Management, vault unlock, account session (Phase 190+) |
+| **Web application** | Primary UX: Digital Home, Service Management, vault unlock, account session (Phase 191+) |
 | **Digital Home** | Category-grouped tiles; one tile per service; execution-only |
 | **Profile resolution** | Choose Access Profile before open (auto when one profile; chooser when many) |
 | **Unified service execution** | Open URL, load profile credentials, invoke generic autofill or adapter fallback |
@@ -175,7 +175,7 @@ flowchart TB
 | **Browser extension** | Open tabs, bridge hub to page, DOM fill; not the primary vault |
 | **Service registry** | Authoritative catalog metadata: URLs, categories, icons, login field schemas |
 | **Admin platform** | Curate registry, approve user-submitted services, refresh login URLs, integration review |
-| **Supabase** | Auth (Phase 190+), relational metadata, ciphertext storage — never plaintext secrets |
+| **Supabase** | Auth (Phase 191+), relational metadata, ciphertext storage — never plaintext secrets |
 
 ### Autofill flow (production)
 
@@ -210,13 +210,13 @@ Supabase provides **relational metadata and ciphertext storage**. It does **not*
 
 | Table | Purpose |
 |-------|---------|
-| **users** | Account identity (Phase 190+); no vault secrets |
+| **users** | Account identity (Phase 191+); no vault secrets |
 | **service_registry** | Canonical catalog entries: names, URLs, categories, icons, login field schemas |
 | **categories** | Grouping for Digital Home and Service Management |
 | **user_services** | User’s selected services (catalog or custom reference) |
 | **access_profiles** | User-owned identity contexts bound to one `user_service` / service |
 | **encrypted_credentials** | Ciphertext credential sets keyed by `access_profile_id` |
-| **subscription_plans** | Plan definitions and capability flags (Phase 150+) |
+| **subscription_plans** | Plan definitions and capability flags (Phase 151+) |
 
 ### Data rules
 
@@ -233,7 +233,7 @@ Supabase provides **relational metadata and ciphertext storage**. It does **not*
 
 | Lives on client | Lives in Supabase |
 |-----------------|-------------------|
-| Master password / vault unlock secret | User account credentials (Phase 190) |
+| Master password / vault unlock secret | User account credentials (Phase 191) |
 | Decryption keys (in memory while unlocked) | Encrypted credential blobs |
 | Ephemeral fill payloads to extension | Service registry metadata |
 | Profile resolution UI state | Access profile display metadata |
@@ -493,7 +493,7 @@ erDiagram
 | S5 | **Strict site matching** — Autofill applies only when open URL matches declared domain and login path rules. |
 | S6 | **No site-internal invocation** — Do not call page JavaScript login functions; do not fill hidden fields; do not auto-submit. |
 | S7 | **Extension least privilege** — Minimal permissions; origin-checked messaging between hub and extension. |
-| S8 | **Account session ≠ vault unlock** — Signing into the product does not automatically decrypt the vault (Phase 190). |
+| S8 | **Account session ≠ vault unlock** — Signing into the product does not automatically decrypt the vault (Phase 191). |
 | S9 | **Defense in depth** — CSP/XSS hardening, unlock rate limiting, cautious memory lifetime in extension contexts. |
 | S10 | **Audit before public launch** — Penetration test, crypto review, extension security review, privacy review as release gates. |
 
@@ -512,7 +512,7 @@ Production must support **multiple authorized devices** per user while preservin
 | Principle | Meaning |
 |-----------|---------|
 | **Ciphertext only** | Only encrypted credential blobs and non-sensitive metadata sync across devices; vault unlock secret never leaves the client voluntarily |
-| **Authorized devices** | A device is trusted only after explicit user authorization tied to account session (Phase 190+) |
+| **Authorized devices** | A device is trusted only after explicit user authorization tied to account session (Phase 191+) |
 | **Offline operation** | Digital Home and vault unlock must function offline against locally cached ciphertext and registry snapshots |
 | **Eventual consistency** | The platform tolerates temporary divergence between devices; convergence is guaranteed within bounded sync windows |
 | **User-visible conflicts** | Credential and profile conflicts surface to the user — silent last-write-wins on secrets is forbidden |
@@ -790,7 +790,7 @@ Admins curate **registry metadata** and **integration health**. Admins never acc
 
 ## 16. Subscription and Capability Model
 
-Production commercialization (Phase 150+) uses a **data-driven capability engine**.
+Production commercialization (Phase 151+) uses a **data-driven capability engine**.
 
 ### Concepts
 
@@ -812,7 +812,7 @@ Production commercialization (Phase 150+) uses a **data-driven capability engine
 
 ## 17. Future Considerations
 
-Items explicitly **out of scope** for the early production roadmap (Phases 100–113) but architecturally anticipated:
+Items explicitly **out of scope** for the early production roadmap (Phases 100–113, with Digital Home extensions through Phases 122–124) but architecturally anticipated:
 
 | Topic | Notes |
 |-------|-------|
@@ -1051,12 +1051,13 @@ The Digital Home page should contain:
    - Clear navigation to Service Management
 
 2. Useful Services area
-   - Initially may show most-used, recently used, or placeholder content
-   - Must not be hardcoded permanently
+   - Architecturally reserved in Phase 105; user-visible functionality deferred to Phase 122
+   - Layout containers, component boundaries, and data contracts may exist without rendering
    - Future ranking must be user-specific and data-driven
 
 3. Notifications area
-   - Placeholder or empty state is acceptable initially
+   - Architecturally reserved in Phase 105; user-visible functionality deferred to Phase 123
+   - Layout containers, component boundaries, and data contracts may exist without rendering
    - Reserved for system notifications related to services, credentials, sync, security, or required user actions
 
 4. Category sections
@@ -1099,8 +1100,31 @@ The Digital Home page should contain:
 - No Service Registry editing in Digital Home
 - No admin actions in Digital Home
 - No new login discovery implementation in Phase 105
-- No advanced notification engine in Phase 105
-- No full ranking algorithm for Useful Services in Phase 105
+- Useful Services infrastructure only. User-visible functionality is deferred to Phase 122.
+- Notifications infrastructure only. User-visible functionality is deferred to Phase 123.
+
+#### Feature visibility
+
+The following Digital Home areas are architecturally reserved during Phase 105 but remain hidden from the user until their corresponding functionality is implemented and explicitly enabled by later phases.
+
+**Reserved areas:**
+
+- Useful Services
+- Notifications
+
+**Requirements:**
+
+- The required layout containers, routing, component boundaries and data contracts may exist.
+- The UI must not render these sections while they contain no meaningful content.
+- Hidden sections must not reserve screen space or affect page layout.
+- Digital Home should begin directly with the service categories whenever these sections are hidden.
+
+**Future enablement:**
+
+- Useful Services becomes visible only in **Phase 122**.
+- Notifications becomes visible only in **Phase 123**.
+
+Future phases own the business logic, ranking algorithms, notification engine and user-facing presentation of these areas.
 
 | Acceptance criteria | |
 |---------------------|---|
@@ -1113,8 +1137,8 @@ The Digital Home page should contain:
 | AC-105-7 | Missing credentials do not prevent opening the service when a URL is available |
 | AC-105-8 | Autofill failure does not prevent website opening and does not close the tab |
 | AC-105-9 | No profile, credential, remove, or management controls appear on tiles |
-| AC-105-10 | Useful Services area exists with placeholder or minimal data-driven content |
-| AC-105-11 | Notifications area exists with placeholder or empty state |
+| AC-105-10 | Useful Services infrastructure exists but remains hidden until Phase 122 unless meaningful approved content is available |
+| AC-105-11 | Notifications infrastructure exists but remains hidden until Phase 123 unless meaningful approved content is available |
 | AC-105-12 | Empty state guides the user to Service Management when no services are selected |
 | AC-105-13 | Loading state is stable and does not cause major layout jumps |
 | AC-105-14 | Offline/error states are friendly and do not expose technical errors |
@@ -1125,19 +1149,192 @@ The Digital Home page should contain:
 | AC-105-19 | No Digital Home tile opens a temporary discovery tab or closes a user-visible execution tab automatically |
 | AC-105-20 | Build passes |
 
+| Reserved Digital Home Area | Visible In |
+|----------------------------|------------|
+| Useful Services | Phase 122 |
+| Notifications | Phase 123 |
+
 ---
 
-### Phase 106 — Security and Trust UX
+### Phase 106 — Security and Trust Experience
 
-**Goal:** Make security visible and prevent browser password-manager interference.
+**Goal:** Build user trust by making security understandable, visible and consistent, while preserving the Zero-Knowledge architecture.
+
+**Architectural principles:**
+
+- Security must be understandable without technical knowledge.
+- The product must explain what happens to sensitive data without exposing implementation details.
+- Trust is created through consistent UX, not marketing claims.
+- All security messaging must accurately reflect the Zero-Knowledge architecture.
+- Security indicators must never contradict actual system behavior.
+
+**Scope:**
+
+- Security messaging
+- Vault state indicators
+- **Global vault chrome** — application-wide lock/unlock state and controls on every primary screen
+- Credential editor UX
+- Browser password manager suppression
+- Sensitive operation feedback
+- Session security indicators
+- Error messaging for security-related failures
+- First-time security onboarding
+- Consistent trust language across the product
+- Responsive RTL design
+- Security settings screen foundation
+- Privacy messaging
+- Security terminology consistency
+
+**Security UX:**
+
+- Clearly explain where credentials are stored.
+- Clearly explain that credentials are encrypted before leaving the device.
+- Explain that STRAIX cannot read user credentials.
+- Clearly explain that STRAIX cannot read, access, or sell user credentials.
+- Clearly distinguish between account information and encrypted Vault data.
+- Avoid technical jargon whenever possible.
+- Avoid security fatigue.
+- Do not display warnings or alerts when no user action is required.
+- Security language should reassure without creating false expectations.
+- Security messaging should reassure users without creating unnecessary fear.
+- Security messaging must explain user benefits rather than implementation details.
+- Prefer reassuring, user-oriented language over technical security terminology.
+- Users should understand what they can trust, not how encryption is implemented.
+- Terms such as "client-side encryption", "before storage", "device encryption" or similar implementation-specific wording should not appear in primary user flows unless required for advanced documentation.
+
+**Security terminology consistency:**
+
+The following terms must remain consistent throughout the application:
+
+- Vault
+- Master Password
+- Encrypted
+- Zero-Knowledge
+- Client-side Encryption
+
+The same concept must never appear under multiple names.
+
+**Vault behavior:**
+
+- Vault lock/unlock state and controls must be available from **every primary application screen** through a **consistent global UI element** (application shell — not per-screen duplicates).
+- Primary screens include at minimum: **הבית הדיגיטלי** (Digital Home), **ניהול שירותים** (Service Management), and any other top-level Hub route shown after unlock.
+- The global element must show current vault state (locked / unlocked) and expose **lock** while unlocked; **unlock** returns the user to the existing unlock flow when locked.
+- Vault lock/unlock state must always be visible during sensitive operations (credential management, save/update).
+- Lock state changes must be immediately reflected in the global UI without navigation.
+- Sensitive actions must not continue silently while the vault is locked.
+- Friendly guidance must be shown when user action is required.
+
+**Credential editor:**
+
+- Browser assistance must be **field-specific** (AC-106-20).
+- **Username and email fields** may leverage browser autocomplete where appropriate (`username`, `email`, or field-appropriate tokens).
+- **Password fields** must suppress password-manager **save**, **generation**, and **save/update** prompts (Chrome and Edge).
+- Prevent accidental browser password replacement on **password** inputs.
+- Preserve accessibility and keyboard navigation.
+
+**Sensitive operations:**
+
+Provide clear feedback for:
+
+- credential save
+- credential update
+- encryption in progress
+- encryption completed
+- vault unlock required
+- security-related errors
+
+Messages must be human-readable.
+
+**Trust indicators:**
+
+Security indicators may include:
+
+- Encrypted
+- Client-side encryption
+- Zero-Knowledge
+- Secure vault
+
+Indicators must remain visually consistent throughout the application.
+
+**Error handling:**
+
+Security-related errors must:
+
+- never expose technical details
+- never expose encryption state
+- never expose internal exceptions
+- provide friendly recovery guidance
+
+**First-use experience:**
+
+For new users:
+
+- Explain how credentials are protected.
+- Explain what the Master Password protects.
+- Explain that losing the Master Password may prevent credential recovery (according to the final architecture).
+- Avoid overwhelming the user with security information.
+
+**Security Settings Foundation:**
+
+Phase 106 establishes the architectural foundation for future security settings.
+
+The initial implementation may be minimal, but the UX and navigation must anticipate future capabilities such as:
+
+- Auto Lock
+- Trusted Devices
+- Biometric Unlock
+- Multi-Factor Authentication
+- Recovery Options
+
+These capabilities are implemented in later phases and are not part of Phase 106 functionality.
+
+**UX principles:**
+
+Security actions must:
+
+- explain consequences before execution
+- avoid technical language
+- clearly distinguish warnings from errors
+- never create unnecessary fear
+- always provide recovery guidance
+
+Security messaging should communicate outcomes ("your information is protected") rather than implementation mechanisms.
+
+**Regression protection:**
+
+Phase 106 must not:
+
+- change encryption algorithms
+- change vault architecture
+- change authentication architecture
+- change execution pipeline
+- change Access Profile behavior
+
+It defines only the user experience around security.
 
 | Acceptance criteria | |
 |---------------------|---|
-| AC-106-1 | Zero-knowledge explained in clear, non-technical Hebrew where credentials are saved |
-| AC-106-2 | Vault lock/unlock state always visible during sensitive operations |
-| AC-106-3 | Internal credential editor prevents Chrome and Edge password-manager save prompts |
-| AC-106-4 | Trust indicators present on credential save (encrypted, client-side) |
-| AC-106-5 | No security claims that contradict zero-knowledge architecture |
+| AC-106-1 | Zero-Knowledge is explained in clear, non-technical Hebrew where credentials are managed |
+| AC-106-2 | Vault lock/unlock state is always visible during sensitive operations |
+| AC-106-19 | Primary security messaging uses clear, non-technical language focused on user trust rather than implementation details |
+| AC-106-3 | Internal credential editor **password fields** prevent Chrome and Edge password-manager save, generation, and update prompts |
+| AC-106-4 | Username and email fields in the internal credential editor may use appropriate browser autocomplete; password fields must not trigger password-manager interference |
+| AC-106-20 | Browser assistance in the internal credential editor is field-specific — username/email autocomplete allowed; password fields suppress password-manager prompts |
+| AC-106-21 | Vault state and lock/unlock controls are available from every primary application screen through a consistent global UI element |
+| AC-106-5 | Trust indicators consistently communicate encrypted client-side storage |
+| AC-106-6 | Credential save/update operations provide clear success feedback |
+| AC-106-7 | Security-related errors are friendly and never expose technical implementation details |
+| AC-106-8 | Security messaging is consistent throughout the application |
+| AC-106-9 | First-time users receive a short explanation of how credentials are protected |
+| AC-106-10 | Vault state changes immediately update the UI |
+| AC-106-11 | No security claim contradicts the Zero-Knowledge architecture |
+| AC-106-12 | Phase 106 does not modify encryption, authentication, execution, or vault architecture |
+| AC-106-13 | Build passes |
+| AC-106-14 | Security terminology remains consistent across all application screens |
+| AC-106-15 | Security UX clearly distinguishes account information from encrypted Vault data |
+| AC-106-16 | Security messaging avoids unnecessary warnings and presents only actionable security information |
+| AC-106-17 | Security UX behaves consistently for catalog services, custom services, and future service types |
+| AC-106-18 | Security Settings foundation exists and can be extended in future phases without redesigning the user experience |
 
 ---
 
@@ -1305,32 +1502,1142 @@ The Digital Home page should contain:
 
 ---
 
-### Phase 150 — Commercial Platform
+### Phase 114 — Application Shell and Shared Layout
+
+**Goal:** Establish a single Application Shell that provides a consistent layout, navigation and global user experience across all primary application screens.
+
+**Architectural principles:**
+
+- The application behaves as one cohesive product rather than independent pages.
+- Every primary screen renders inside the same Application Shell.
+- Global navigation and global controls belong to the Application Shell.
+- Individual screens own only their page-specific content.
+- Layout consistency takes precedence over individual page optimizations.
+
+**Scope:**
+
+- Shared Application Shell
+- Shared page layout
+- Shared content container
+- Global header
+- Shared responsive behavior
+- Shared spacing system
+- Shared typography hierarchy
+- Shared alignment rules
+- Shared page margins
+- Stable layout behavior
+- Global Vault state indicator
+- Global Vault Lock / Unlock control
+- Future account menu foundation
+- Future notification center foundation
+- Future synchronization indicator foundation
+- Future global search foundation
+
+**Application Shell responsibilities:**
+
+The Application Shell owns:
+
+- Global Header
+- Shared content container
+- Global navigation
+- Vault state indicator
+- Vault Lock / Unlock control
+- Global loading indicator
+- Future account menu
+- Future synchronization status
+- Future notification center
+- Future global search
+
+Primary screens must never implement their own global header or duplicate global controls.
+
+**Shared Content Container:**
+
+- Define a shared maximum content width for primary application screens.
+- Global controls must align with the active content container rather than the browser viewport.
+- Exceptions require explicit architectural approval.
+
+**Layout consistency:**
+
+The Application Shell defines:
+
+- shared spacing
+- shared typography
+- shared component alignment
+- shared responsive breakpoints
+- shared margins
+- shared elevation rules
+- shared page rhythm
+
+All primary screens inherit these rules.
+
+**Stable layouts:**
+
+The layout should remain visually stable during:
+
+- loading
+- filtering
+- searching
+- asynchronous operations
+- empty states
+- state transitions
+
+Large layout jumps should be avoided.
+
+**Navigation ownership:**
+
+Application navigation belongs to the Application Shell.
+
+Business navigation belongs to individual screens.
+
+**Global state ownership:**
+
+The Application Shell owns application-wide state presentation for:
+
+- Vault state
+- Authentication state
+- Future synchronization state
+- Future notification state
+
+Screens consume these states but must not duplicate them.
+
+**Screen ownership:**
+
+Digital Home owns:
+
+- categories
+- service tiles
+
+Service Management owns:
+
+- selected services
+- discovery
+- service actions
+
+Credential Management owns:
+
+- credential editor
+- access profiles
+
+Screens own only business functionality.
+
+**Design consistency:**
+
+Primary screens must use the same:
+
+- spacing
+- typography
+- color hierarchy
+- button hierarchy
+- icon sizing
+- elevation
+- interaction patterns
+
+The user should experience the application as a single product regardless of which screen is currently displayed.
+
+**Regression protection:**
+
+Phase 114 must not:
+
+- modify execution logic
+- modify Service Registry
+- modify Access Profiles
+- modify Vault architecture
+- modify authentication
+- modify credential storage
+
+Only presentation architecture and shared application layout are introduced.
+
+| Acceptance criteria | |
+|---------------------|---|
+| AC-114-1 | Every primary screen renders inside the shared Application Shell |
+| AC-114-2 | A single global header is shared across all primary screens |
+| AC-114-3 | Global controls are rendered by the Application Shell rather than individual screens |
+| AC-114-4 | Vault state and Lock/Unlock control are available from every primary screen |
+| AC-114-5 | Global controls align with the shared content container rather than the browser viewport |
+| AC-114-6 | Primary screens follow a consistent spacing, typography and alignment system |
+| AC-114-7 | Layout remains visually stable during loading, filtering, searching and asynchronous operations |
+| AC-114-8 | Individual screens no longer implement their own application header |
+| AC-114-9 | Future screens integrate into the shared Application Shell without redesigning global navigation |
+| AC-114-10 | Build passes |
+
+---
+
+### Phase 122 — Useful Services Intelligence
+
+**Goal:** Introduce a personalized **Useful Services** area that intelligently surfaces the services most relevant to the current user.
+
+**Architectural name:** Useful Services
+
+The user-facing title may use a localized UX label (for example "גישה מהירה") without changing the underlying architecture or data model.
+
+**Architectural principles:**
+
+- Useful Services is a personalization layer, not a replacement for category navigation.
+- Recommendations are user-specific and data-driven.
+- The feature never changes Service Registry metadata.
+- Users always retain access to the complete categorized Digital Home.
+- Ranking logic must be deterministic and explainable.
+
+**Scope:**
+
+- Enable the previously hidden Useful Services section.
+- Personalized service ranking.
+- Frequently used services.
+- Recently used services.
+- User-pinned favorite services.
+- Time-aware suggestions (future extension).
+- Context-aware suggestions (future extension).
+- Empty state behavior.
+- Loading state.
+- Offline behavior.
+- Responsive RTL layout.
+
+**Ranking sources (initial implementation):**
+
+Priority order:
+
+1. User pinned favorites.
+2. Recently used services.
+3. Frequently used services.
+4. Administrator recommendations (future extension).
+5. Context-aware recommendations (future extension).
+
+**Eligibility rules:**
+
+A service may appear in Useful Services only when at least one of the following conditions is true:
+
+- The user explicitly pinned the service.
+- The service was recently used.
+- The service exceeds the minimum usage threshold.
+- A future recommendation engine explicitly promotes the service.
+
+Services that satisfy none of these conditions must not appear.
+
+**Duplicate prevention:**
+
+Each service may appear at most once in the Useful Services area, regardless of how many ranking signals selected it.
+
+Ranking sources influence ordering only.
+They must never create duplicate tiles.
+
+**Relationship to category navigation:**
+
+Useful Services is an additional personalization layer.
+
+It must never replace category navigation.
+
+Every service shown in Useful Services must also continue to exist in its original category.
+
+Showing a service in Useful Services must never remove, move or duplicate it inside category sections.
+
+**Service lifecycle:**
+
+Removing a service from the user's selected services automatically removes it from:
+
+- Useful Services
+- Favorites
+- Usage history used for personalization
+
+Personalization data must never reference services that are no longer selected by the user.
+
+**User interactions:**
+
+- Pin service to Useful Services.
+- Unpin service.
+- Open service.
+- Reorder pinned services (optional if implemented).
+- All execution continues through the Phase 103 execution pipeline.
+
+**Regression protection:**
+
+Phase 122 must not modify or replace the Phase 103 unified execution pipeline.
+
+Opening a service from Useful Services must execute exactly the same execution flow as opening the same service from its category.
+
+**Layout stability:**
+
+Showing or hiding the Useful Services section must not introduce disruptive layout shifts.
+
+When the section is hidden, the Digital Home layout should remain visually stable.
+
+**UX rules:**
+
+- Display only meaningful services.
+- Hide the section when there are no useful services.
+- Maximum visible tiles should remain limited (for example 4–8).
+- Remaining services continue to appear in their categories.
+- Useful Services never replaces category browsing.
+- Large visual tiles are acceptable.
+- Preserve Digital Home visual language.
+
+**Data rules:**
+
+- Usage statistics belong to the user only.
+- Statistics never modify Service Registry.
+- Recommendations must not expose private information.
+- Clearing user data also clears personalization.
+
+**Data ownership:**
+
+Useful Services owns only personalization metadata.
+
+It does not own service metadata, execution metadata, Access Profiles, encrypted credentials or Service Registry records.
+
+Ownership remains:
+
+- Service Registry → service metadata
+- Access Profiles → profile definitions
+- Credentials → encrypted user credentials
+- Useful Services → personalization metadata only
+
+Useful Services must consume these data sources without duplicating ownership.
+
+**Presentation metadata:**
+
+Useful Services must always render the current Service Registry presentation metadata.
+
+This includes:
+
+- service name
+- service icon
+- category
+- future presentation attributes
+
+Useful Services must never maintain duplicated presentation metadata.
+
+Changes in Service Registry presentation should automatically be reflected in Useful Services.
+
+**First-use experience:**
+
+New users should not be presented with an empty Useful Services area.
+
+Until meaningful personalization data exists, Digital Home should rely entirely on normal category navigation.
+
+Useful Services becomes visible only after its eligibility rules are satisfied.
+
+**Performance and resiliency:**
+
+Useful Services must not noticeably increase Digital Home loading time.
+
+Personalization loading should execute independently from category loading.
+
+If personalization data cannot be loaded:
+
+- Digital Home must continue rendering normally.
+- Category navigation must remain fully usable.
+- Useful Services should simply remain hidden until personalization becomes available.
+
+Failure of personalization must never block Digital Home.
+
+**Future extensibility:**
+
+Reserved for future phases:
+
+- AI recommendations.
+- Calendar-aware suggestions.
+- Location-aware suggestions.
+- Reminder-driven suggestions.
+- Seasonal recommendations.
+
+**Non-goals:**
+
+- No AI ranking in Phase 122.
+- No machine learning.
+- No advertisement or sponsored services.
+- No cross-user recommendation sharing.
+- No automatic removal of services from Useful Services based solely on temporary inactivity.
+- No modification of category organization.
+- No replacement of Digital Home category navigation.
+
+| Acceptance criteria | |
+|---------------------|---|
+| AC-122-1 | Useful Services section becomes visible |
+| AC-122-2 | Only meaningful services are displayed |
+| AC-122-3 | User may pin and unpin favorite services |
+| AC-122-4 | Frequently used services are ranked correctly |
+| AC-122-5 | Recently used services are ranked correctly |
+| AC-122-6 | Opening a service uses the Phase 103 execution pipeline |
+| AC-122-7 | Hiding or showing the section does not affect category layout |
+| AC-122-8 | Empty state hides the section completely |
+| AC-122-9 | Personalization is user-specific |
+| AC-122-10 | Responsive RTL layout preserved |
+| AC-122-11 | Build passes |
+| AC-122-12 | Each service appears at most once in Useful Services regardless of how many ranking signals selected it |
+| AC-122-13 | Removing a selected service immediately removes it from Useful Services and all personalization collections |
+| AC-122-14 | Useful Services never replaces or removes category sections. Category navigation remains complete and unchanged |
+| AC-122-15 | Showing or hiding the Useful Services section does not introduce disruptive layout shifts |
+| AC-122-16 | Useful Services executes services through the exact same Phase 103 execution pipeline used by category tiles |
+| AC-122-17 | Useful Services always renders the current Service Registry presentation metadata without maintaining duplicated presentation data |
+| AC-122-18 | Failure to load personalization data does not prevent Digital Home from rendering category navigation or executing services normally |
+
+---
+
+### Phase 123 — Notifications Center
+
+**Goal:** Introduce a personalized **Notifications Center** that surfaces only meaningful, actionable events related to the user's Digital Home.
+
+**Architectural name:** Notifications
+
+The user-facing title may use a localized UX label without changing the underlying architecture.
+
+User-facing title may use localized labels such as:
+
+- עדכונים
+- לתשומת לבך
+
+without changing the underlying architecture or data model.
+
+**Architectural principles:**
+
+- Notifications provide awareness, never interrupt normal Digital Home usage.
+- Every notification must represent an actionable event or meaningful information.
+- Notifications are user-specific.
+- Notifications never modify Service Registry, credentials or execution behavior.
+- Notification generation is deterministic and rule-based.
+- Users must never be overwhelmed by unnecessary notifications.
+
+**Scope:**
+
+- Enable the previously hidden Notifications area.
+- Notification generation engine.
+- Notification lifecycle management.
+- Read / unread state.
+- Notification dismissal.
+- Notification prioritization.
+- Notification categorization.
+- Empty state.
+- Loading state.
+- Offline behavior.
+- Responsive RTL layout.
+
+**Notification categories:**
+
+Initial supported categories:
+
+- Missing credentials
+- Service requires attention
+- Login URL changed
+- Synchronization failed
+- Service unavailable
+- Security recommendation
+- Future administrative announcements
+
+Future categories may be added without redesign.
+
+**Notification priorities:**
+
+Notifications shall support priority levels:
+
+- Critical
+- Warning
+- Information
+
+Priority determines visual emphasis only.
+
+It must never block Digital Home usage.
+
+**Notification lifecycle:**
+
+Each notification progresses through:
+
+```text
+Generated
+↓
+Visible
+↓
+Read
+↓
+Dismissed
+↓
+Archived (optional future phase)
+```
+
+Notifications must never remain permanently visible once dismissed unless regenerated by a new event.
+
+**Notification retention:**
+
+Notifications may expire according to their notification type.
+
+Expired notifications must automatically disappear from the active notification list.
+
+Historical retention and archival policies belong to future phases.
+
+**Notification ownership:**
+
+Notifications own only notification metadata.
+
+Source systems remain owners of their respective data:
+
+- Service Registry
+- Access Profiles
+- Credentials
+- Execution Pipeline
+- Synchronization Engine
+
+Notifications consume events but never own them.
+
+**Notification identity:**
+
+Each notification must have a stable unique identifier.
+
+The identifier must remain stable while the notification represents the same active condition.
+
+Notification identifiers are implementation details and must never be exposed to the user.
+
+Notification identity must support:
+
+- read/unread state
+- dismissal
+- deduplication
+- future synchronization
+- future notification history
+
+**Notification navigation:**
+
+Every notification type must define a deterministic navigation destination.
+
+Examples:
+
+- Missing credentials → Service Management → Manage Service
+- Service requires attention → Service Management
+- Login URL changed → Service Management
+- Synchronization failed → Synchronization status screen (future)
+- Security recommendation → Security details (future)
+
+Notifications must never leave the user without a clear next action.
+
+Notifications may navigate the user but must never automatically execute services.
+
+**User interactions:**
+
+Users may:
+
+- Open related service
+- Mark notification as read
+- Dismiss notification
+- View notification details (future)
+
+Notifications must never automatically execute services.
+
+**UX rules:**
+
+- Display only actionable notifications.
+- Maximum visible notifications should remain limited.
+- Collapse older informational notifications when appropriate.
+- Empty notification area remains hidden.
+- Loading state should not block Digital Home.
+- Friendly wording only.
+- Never expose technical error messages.
+
+**Notification ordering:**
+
+Notifications must always be displayed in a deterministic order.
+
+Ordering priority:
+
+1. Notification priority (Critical → Warning → Information)
+2. Creation time (newest first)
+3. Service name (deterministic tie-breaker)
+
+Refreshing the page must not randomly reorder notifications representing the same state.
+
+**Presentation limits:**
+
+To preserve a clean Digital Home experience:
+
+- Display up to five active notifications by default.
+- Additional notifications remain hidden until a future notification expansion mechanism is introduced.
+- Hidden notifications must not be discarded.
+- Future phases may introduce "View all", grouping or pagination without changing the underlying notification model.
+
+**Duplicate prevention:**
+
+Equivalent notifications generated by the same event must be merged.
+
+Repeated failures should update the existing notification rather than creating duplicates.
+
+**Duplicate identification:**
+
+Equivalent notifications are identified by:
+
+- Notification type
+- Affected service
+- Active notification state
+
+Only one active notification may exist for the same notification condition.
+
+Repeated events should update the existing notification rather than creating duplicates.
+
+**Performance and resiliency:**
+
+Failure of the notification engine must never prevent Digital Home from loading.
+
+Notifications load independently.
+
+If notification data cannot be retrieved:
+
+- Digital Home renders normally.
+- Notification area remains hidden.
+
+**Regression protection:**
+
+Phase 123 must not modify:
+
+- Phase 103 Unified Execution Pipeline
+- Phase 104 Service Management
+- Phase 122 Useful Services ranking
+
+Notifications observe system state.
+
+They never modify execution behavior, Service Registry, Access Profiles or credentials.
+
+**Future extensibility:**
+
+Reserved for future phases:
+
+- Push notifications
+- Mobile notifications
+- Email notifications
+- SMS notifications
+- AI-generated recommendations
+- Scheduled reminders
+- User notification preferences
+- Quiet Hours
+- Per-category notification preferences
+- Notification grouping
+- Notification history
+
+These capabilities are reserved for future dedicated phases.
+
+**Non-goals:**
+
+- No push notifications
+- No email delivery
+- No SMS delivery
+- No AI-generated notifications
+- No marketing messages
+- No advertisements
+- No mandatory popups
+- No notification-driven execution
+
+| Acceptance criteria | |
+|---------------------|---|
+| AC-123-1 | Notifications section becomes visible |
+| AC-123-2 | Only actionable notifications are displayed |
+| AC-123-3 | Notifications are user-specific |
+| AC-123-4 | Users can mark notifications as read |
+| AC-123-5 | Users can dismiss notifications |
+| AC-123-6 | Dismissed notifications disappear from the active list |
+| AC-123-7 | Duplicate notifications are merged |
+| AC-123-8 | Notification priority affects presentation only |
+| AC-123-9 | Notifications never execute services automatically |
+| AC-123-10 | Clicking a notification opens the relevant service or management screen when appropriate |
+| AC-123-11 | Empty notification state hides the Notifications section |
+| AC-123-12 | Notification engine failure does not affect Digital Home availability |
+| AC-123-13 | Notifications do not expose technical implementation details |
+| AC-123-14 | Responsive RTL layout preserved |
+| AC-123-15 | Build passes |
+| AC-123-16 | Every notification type has a deterministic navigation destination |
+| AC-123-17 | Expired notifications are automatically removed from the active notification list according to their retention policy |
+| AC-123-18 | At most one active notification exists for the same notification condition |
+| AC-123-19 | Notifications observe system state but never modify execution behavior, Service Registry, Access Profiles or credentials |
+| AC-123-20 | Each notification has a stable unique identifier throughout its active lifecycle |
+| AC-123-21 | Notifications are presented in a deterministic order based on priority, creation time and service name |
+| AC-123-22 | The Notifications area initially displays a maximum of five active notifications while preserving additional notifications for future presentation mechanisms |
+
+---
+
+### Phase 124 — Digital Home View Modes
+
+**Goal:** Allow users to choose how services are visually organized in Digital Home without changing execution behavior or service data.
+
+**Architectural principles:**
+
+- Digital Home remains an execution surface.
+- View mode affects presentation only.
+- View mode must never change Service Registry, user_services, Access Profiles, credentials, or execution logic.
+- Every selected service appears exactly once in the active view.
+- The default view remains the simple app-launcher grid.
+
+**Scope:**
+
+- Add Digital Home view mode preference.
+- Supported view modes:
+  - Grid view — app-launcher style, all services together.
+  - Category view — services grouped by category.
+- Persist user view preference.
+- Allow switching between views from Digital Home.
+- Preserve RTL responsive layout.
+- Preserve Phase 103 execution behavior.
+- Preserve Phase 122 Useful Services and Phase 123 Notifications integration.
+
+**View rules:**
+
+- Grid view is the default for new users.
+- Category view is optional.
+- Category view shows only categories that contain selected services.
+- Empty categories are hidden.
+- Switching view mode must not duplicate services.
+- Switching view mode must not change service order, profiles, credentials, or metadata.
+- View preference is user-specific.
+
+**Presentation boundary:**
+
+Changing the view mode affects presentation only.
+
+The following must remain identical across all view modes:
+
+- Available services
+- Service execution
+- Profile selection
+- Credentials
+- Useful Services
+- Notifications
+- Service ordering rules, unless the view explicitly defines visual grouping
+
+View modes are different visual representations of the same Digital Home data.
+
+**Relationship to Useful Services and Notifications:**
+
+Useful Services and Notifications are not view modes.
+
+When enabled:
+
+- Useful Services remains a separate personalization area above the main services layout.
+- Notifications remains a separate awareness area above or near the main services layout.
+- View mode selection affects only the main services area below these sections.
+
+Phase 122 owns Useful Services.
+Phase 123 owns Notifications.
+Phase 124 owns only how the main selected services are visually organized.
+
+**State preservation:**
+
+Switching view modes must preserve user context whenever reasonably possible, including:
+
+- Scroll position
+- Active dialogs
+- Selected service context
+- Future filters or search state
+
+Changing the view mode must not reload the entire Digital Home unnecessarily.
+
+**Performance:**
+
+Switching between view modes should reuse already loaded data.
+
+Changing the view mode must not trigger unnecessary network requests or reload Service Registry data.
+
+**Layout preference:**
+
+Digital Home stores a single user-specific layout preference.
+
+Requirements:
+
+- The preference determines presentation only.
+- The preference must persist across sessions and devices (when user data is synchronized).
+- Changing the preference takes effect immediately.
+- No page reload is required.
+- No service reload is required.
+
+**Migration strategy:**
+
+Existing users must be migrated safely to the default Grid layout when no Digital Home layout preference already exists.
+
+If a valid layout preference already exists, it must be preserved.
+
+Migration must never modify:
+
+- Service Registry
+- user_services
+- Access Profiles
+- Credentials
+- Personalization data
+- Notification data
+
+Migration affects layout preference only.
+
+**UX rules:**
+
+- View switch should be simple and non-intrusive.
+- Suggested labels:
+  - רשת
+  - קטגוריות
+- The selected view should be visually clear.
+- The switch must not look like service management.
+- The layout must remain stable when switching views.
+
+**UX responsiveness:**
+
+Changing layout mode should feel immediate.
+
+Requirements:
+
+- No visible flicker.
+- No loading spinner unless absolutely required.
+- Existing tiles should transition smoothly whenever possible.
+- Switching layouts must preserve user orientation.
+- The active layout must always be visually obvious.
+
+**Future extensibility:**
+
+The architecture shall allow future view modes without redesign.
+
+Examples:
+
+- Compact list
+- Large tiles
+- Favorites-first
+- Accessibility mode
+
+Possible future layouts include:
+
+- Compact list
+- Large tiles
+- Accessibility layout
+- Favorites-first layout
+- Adaptive layout based on device size
+
+Future layouts must integrate without changing the underlying Digital Home data model.
+
+**Regression protection:**
+
+Phase 124 must not modify:
+
+- Phase 103 execution pipeline
+- Phase 104 Service Management
+- Phase 122 Useful Services
+- Phase 123 Notifications
+
+View modes affect presentation only.
+
+**Accessibility:**
+
+View mode switching must remain fully keyboard accessible.
+
+Both view modes must preserve readability and RTL correctness.
+
+Touch targets must remain accessible on mobile devices.
+
+**Non-goals:**
+
+- No service management in Digital Home.
+- No editing categories.
+- No drag-and-drop organization.
+- No custom folders.
+- No changes to execution logic.
+- No changes to Service Registry.
+
+| Acceptance criteria | |
+|---------------------|---|
+| AC-124-1 | Digital Home supports Grid view and Category view |
+| AC-124-2 | Grid view is the default for new users |
+| AC-124-3 | User can switch between views |
+| AC-124-4 | User view preference is persisted |
+| AC-124-5 | Each selected service appears exactly once in the active view |
+| AC-124-6 | Category view hides empty categories |
+| AC-124-7 | Switching views does not affect execution behavior |
+| AC-124-8 | Switching views does not modify Service Registry, profiles, credentials, or user_services |
+| AC-124-9 | Useful Services and Notifications remain compatible with both views |
+| AC-124-10 | Responsive RTL layout is preserved |
+| AC-124-11 | Build passes |
+| AC-124-12 | Switching view modes does not reload Service Registry or execution metadata unnecessarily |
+| AC-124-13 | View mode changes preserve user context whenever reasonably possible |
+| AC-124-14 | Additional future view modes can be introduced without changing the underlying Digital Home data model |
+| AC-124-15 | Accessibility and RTL behavior remain consistent across all supported view modes |
+| AC-124-16 | View mode affects presentation only and never changes service execution, Useful Services, Notifications, profile selection, credentials, or personalization behavior |
+| AC-124-17 | Existing users are automatically migrated to the default Grid layout when no layout preference exists |
+| AC-124-18 | A user's selected layout preference persists across sessions and synchronized devices |
+| AC-124-19 | Changing layout mode takes effect immediately without page reload or unnecessary service reload |
+| AC-124-20 | Switching layouts does not introduce visible flicker or unnecessary loading indicators |
+| AC-124-21 | The currently active layout is always visually distinguishable |
+| AC-124-22 | Future layout modes can be added without changing the Digital Home data model or execution pipeline |
+
+---
+
+### Phase 151 — Commercial Platform
 
 **Goal:** Subscription and capability foundation without mandatory billing integration.
 
 | Acceptance criteria | |
 |---------------------|---|
-| AC-150-1 | `subscription_plans` populated with at least free and one paid-capable tier |
-| AC-150-2 | Capability engine evaluates plan features at runtime |
-| AC-150-3 | Plan limits (profiles, custom services, etc.) read from data — not hardcoded |
-| AC-150-4 | Billing provider integration deferred with documented extension points |
-| AC-150-5 | Trial and pricing UX deferred; architecture supports both |
+| AC-151-1 | `subscription_plans` populated with at least free and one paid-capable tier |
+| AC-151-2 | Capability engine evaluates plan features at runtime |
+| AC-151-3 | Plan limits (profiles, custom services, etc.) read from data — not hardcoded |
+| AC-151-4 | Billing provider integration deferred with documented extension points |
+| AC-151-5 | Trial and pricing UX deferred; architecture supports both |
 
 ---
 
-### Phase 190 — Account, Registration and Secure Sign-In
+### Phase 191 — Account, Registration and Secure Sign-In
 
 **Goal:** Real user accounts separate from vault unlock.
 
 | Acceptance criteria | |
 |---------------------|---|
-| AC-190-1 | User registration and secure login implemented |
-| AC-190-2 | MFA supported for account sign-in |
-| AC-190-3 | Account session management (sign out, session expiry) |
-| AC-190-4 | Vault unlock remains a **separate** step from account login |
-| AC-190-5 | Account compromise does not expose vault plaintext without vault secret |
-| AC-190-6 | Supabase Auth (or equivalent) integrated without storing vault master secret server-side |
+| AC-191-1 | User registration and secure login implemented |
+| AC-191-2 | MFA supported for account sign-in |
+| AC-191-3 | Account session management (sign out, session expiry) |
+| AC-191-4 | Vault unlock remains a **separate** step from account login |
+| AC-191-5 | Account compromise does not expose vault plaintext without vault secret |
+| AC-191-6 | Supabase Auth (or equivalent) integrated without storing vault master secret server-side |
+
+---
+
+### Phase 192 — Account and Vault Security
+
+**Goal:** Provide production-grade account, vault and device security while preserving the Zero-Knowledge architecture.
+
+> **Prerequisite:** All credential storage, execution and Trust UX phases (100–191) are complete and stable.
+
+**Architectural principles:**
+
+- Security features must never weaken the Zero-Knowledge model.
+- STRAIX must never gain access to plaintext credentials.
+- Security must be configurable without overwhelming typical users.
+- Safe defaults are mandatory.
+- Advanced security remains optional but easily accessible.
+
+Phase 192 is limited to **account, vault, authentication, session, device and security capabilities** only.
+
+**Scope:**
+
+Phase 192 is responsible only for:
+
+- Vault Security
+- Session Security
+- Authentication Security
+- Device Management
+- Security Monitoring
+- Security Notifications
+- Recovery
+- Security Health
+- Security Settings
+
+#### Vault Security
+
+- Manual vault lock
+- Automatic vault lock after configurable inactivity
+- Lock on browser close
+- Lock on operating system lock/sleep
+- Lock after restart
+- Lock after configurable idle timeout
+- Vault unlock confirmation
+- Secure memory cleanup after lock
+
+#### Session Security
+
+The account session and the Vault are independent security concepts.
+
+Session Security includes:
+
+- Session timeout
+- Session validation
+- Re-authentication for sensitive operations
+- Session invalidation
+- Session state visibility
+
+The application may keep the user authenticated while the Vault remains locked.
+
+#### Authentication Security
+
+- Master Password verification
+- Multi-Factor Authentication (future-ready)
+- Passkey support (future-ready)
+- Biometric unlock integration
+  - Windows Hello
+  - Touch ID
+  - Face ID (where supported)
+
+#### Device Management
+
+- Trusted devices
+- Device approval
+- Device naming
+- Device rename
+- Device expiration
+- Device revocation
+- Current device identification
+- Last active timestamp
+- Session expiration
+- Logout from all devices
+
+Trusted devices must support their complete lifecycle, not only revocation.
+
+#### Security Monitoring
+
+- Login history
+- Vault unlock history
+- Failed unlock attempts
+- New device detection
+- Suspicious activity detection
+- Security event timeline
+
+#### Security Notifications
+
+Notify users when:
+
+- Master Password changes
+- New trusted device added
+- Device removed
+- Multiple failed unlock attempts
+- Security-sensitive settings changed
+- Vault exported
+- Recovery configuration changed
+
+#### Recovery
+
+Support future recovery architecture:
+
+- Recovery Kit
+- Recovery Key
+- Emergency recovery flow
+- Account recovery policies
+
+Recovery must never violate the approved Zero-Knowledge architecture.
+
+#### Security Health
+
+Provide an overall Security Health dashboard **framework** for account, vault, device and session security posture.
+
+The initial implementation focuses on account, vault, device and session security posture.
+
+- Missing MFA
+- Missing recovery configuration
+- Vault inactivity
+- Trusted device review
+- Unreviewed security events
+
+Password content intelligence (strength, reuse, breach exposure) belongs to the **Future Architecture Roadmap**, not Phase 192.
+
+#### Security Settings
+
+Centralized security settings page including:
+
+- Auto-lock timeout
+- Biometric unlock
+- Trusted devices
+- Session management
+- Notification preferences
+- Security history
+- Recovery options
+
+**UX principles:**
+
+Security actions must:
+
+- explain consequences before execution
+- avoid technical language
+- clearly distinguish warnings from errors
+- never create unnecessary fear
+- always provide recovery guidance
+
+**Non-goals:**
+
+Phase 192 must **not** expand into unrelated future product capabilities, including:
+
+- Secure Notes
+- Payment Cards
+- Identity Documents
+- File Attachments
+- Password Sharing
+- Family Vault
+- Organization Vault
+- Software Licenses
+- Password Generator
+- Password History
+- Breach Monitoring
+
+These belong to the **Future Architecture Roadmap** (see §19), not Account and Vault Security.
+
+**Regression protection:**
+
+Phase 192 must not:
+
+- modify credential encryption
+- modify Service Registry
+- modify execution pipeline
+- modify Access Profiles
+- modify autofill behavior
+
+Only account, vault and security capabilities are introduced.
+
+| Acceptance criteria | |
+|---------------------|---|
+| AC-192-1 | Manual vault lock is available from the application UI |
+| AC-192-2 | Automatic vault locking is configurable and reliable |
+| AC-192-3 | Vault locks after browser close or configured inactivity |
+| AC-192-4 | Trusted devices can be viewed and revoked |
+| AC-192-5 | Session history is available |
+| AC-192-6 | Security-sensitive events generate appropriate notifications |
+| AC-192-7 | Security Health dashboard framework exists |
+| AC-192-8 | Future MFA, Passkeys and Biometrics integrate without architectural changes |
+| AC-192-9 | Recovery architecture preserves Zero-Knowledge guarantees |
+| AC-192-10 | No security feature exposes plaintext credentials |
+| AC-192-11 | Security settings are centralized in one location |
+| AC-192-12 | Build passes |
+| AC-192-13 | Vault security and account session security remain independent. Locking or unlocking the Vault must never implicitly authenticate, invalidate or modify the user's account session unless explicitly configured by future security settings |
+
+---
+
+## 19. Future Architecture Roadmap
+
+The capabilities listed below are intentionally outside the current implementation roadmap.
+
+They are documented to guide long-term architectural decisions and to ensure today's implementation remains extensible.
+
+Their presence here does **not** represent a commitment or implementation schedule.
+
+Implementation order is intentionally undefined.
+
+### Password Intelligence
+
+- Password Health
+- Password Strength Analysis
+- Password History
+- Password Reuse Detection
+- Breach Monitoring
+
+### Authentication
+
+- TOTP Authenticator
+- Passkeys
+- Advanced Multi-Factor Authentication
+- Hardware Security Keys
+
+### Vault Content
+
+- Secure Notes
+- Payment Cards
+- Identity Documents
+- File Attachments
+- Software Licenses
+
+### Collaboration
+
+- Password Sharing
+- Family Vault
+- Organization Vault
+- Shared Collections
+
+### Recovery
+
+- Emergency Access
+- Recovery Kit
+- Account Recovery
+
+### Automation
+
+- Password Generator
+- Automatic Password Rotation
+- Credential Expiration Policies
+
+### Security Intelligence
+
+- Security Score
+- Device Risk Analysis
+- Login Risk Detection
+- Behavioral Anomaly Detection
 
 ---
 
@@ -1344,15 +2651,20 @@ flowchart LR
   P103[Phase 103 Execution]
   P104[Phase 104 Service Mgmt UX]
   P105[Phase 105 Digital Home UX]
-  P106[Phase 106 Security UX]
+  P106[Phase 106 Security Trust]
   P107[Phase 107 Admin]
   P108[Phase 108 Browsers]
   P109[Phase 109 Credential Lifecycle]
   P111[Phase 111 Service Assets and Icons]
   P112[Phase 112 Login Intelligence]
   P113[Phase 113 Service Identity]
-  P150[Phase 150 Commercial]
-  P190[Phase 190 Accounts]
+  P114[Phase 114 Application Shell]
+  P122[Phase 122 Useful Services]
+  P123[Phase 123 Notifications]
+  P124[Phase 124 View Modes]
+  P151[Phase 151 Commercial]
+  P191[Phase 191 Accounts]
+  P192[Phase 192 Account Vault Security]
 
   P100 --> P101
   P101 --> P102
@@ -1370,11 +2682,25 @@ flowchart LR
   P108 --> P112
   P102 --> P113
   P104 --> P113
+  P103 --> P114
+  P114 --> P104
+  P114 --> P105
+  P114 --> P106
+  P105 --> P122
+  P103 --> P122
+  P105 --> P123
+  P109 --> P123
+  P105 --> P124
+  P122 --> P124
+  P123 --> P124
   P111 --> P104
   P111 --> P105
   P105 --> P109
-  P101 --> P150
-  P101 --> P190
+  P101 --> P151
+  P101 --> P191
+  P191 --> P192
+  P106 --> P192
+  P123 --> P192
 ```
 
 ---
@@ -1400,5 +2726,23 @@ flowchart LR
 | **2.2** | 2026-07-07 | **Phase 104 — AC-104-10 refined.** Usability when discovery/search unavailable; selected services remain manageable. |
 | **2.3** | 2026-07-07 | **Phase 104 completion criteria.** Production-grade layout, unified execution, regression protection, concurrent-update resilience, and AC-104-17 through AC-104-23. |
 | **2.4** | 2026-07-08 | **Phase 105 rewritten — Digital Home Experience.** Execution-surface principles, layout architecture, execution/UX rules, non-goals, and AC-105-1 through AC-105-20. |
+| **2.5** | 2026-07-08 | **Phase 105 feature visibility.** Useful Services and Notifications are reserved infrastructure (hidden UI) until Phases 121 and 122; AC-105-10/11 and roadmap note updated. |
+| **2.6** | 2026-07-08 | **Phase 122 — Useful Services Intelligence.** Personalized ranking, pin/unpin, usage-based ranking, and visible Useful Services section enabled from Phase 105 reserved area. |
+| **2.7** | 2026-07-08 | **Phase 122 refined.** Eligibility, duplicate prevention, category relationship, lifecycle, regression protection, layout stability, and AC-122-12 through AC-122-16. |
+| **2.8** | 2026-07-08 | **Phase 122 ownership and resiliency.** Data ownership, first-use, presentation metadata sourcing, performance isolation, and AC-122-17/18. |
+| **2.9** | 2026-07-08 | **Phase 123 — Notifications Center.** Actionable notifications, lifecycle, ownership, duplicate merge, priority presentation-only, and Digital Home fail-open resiliency. |
+| **3.0** | 2026-07-08 | **Phase 123 refined.** Deterministic navigation, retention, duplicate identification, regression protection, extended future extensibility, and AC-123-16 through AC-123-19. |
+| **3.1** | 2026-07-08 | **Phase 123 identity and presentation.** Stable notification identifiers, deterministic ordering, five-item presentation limit, and AC-123-20 through AC-123-22. |
+| **3.2** | 2026-07-08 | **Phase 124 — Digital Home View Modes.** Grid and Category presentation-only views with persisted preference; execution and data ownership unchanged. |
+| **3.3** | 2026-07-08 | **Phase 124 refined.** Presentation boundary, Useful Services/Notifications relationship, state preservation, performance, future extensibility, regression protection, accessibility, and AC-124-12 through AC-124-16. |
+| **3.4** | 2026-07-08 | **Phase 124 layout preference complete.** Migration strategy, layout preference persistence, UX responsiveness, extended future layouts, and AC-124-17 through AC-124-22. |
+| **3.5** | 2026-07-08 | **Phase 106 rewritten — Security and Trust Experience.** Trust UX, vault indicators, credential editor browser-PM suppression, sensitive operation feedback, and AC-106-1 through AC-106-13. |
+| **3.6** | 2026-07-08 | **Phase 192 — Account and Vault Security.** Vault lock policies, trusted devices, security monitoring, notifications, recovery readiness, Security Health framework, and AC-192-1 through AC-192-12. |
+| **3.9** | 2026-07-08 | **Phase 106 refined — field-specific browser assistance.** Username/email may use autocomplete; password fields suppress PM save/generation/update; AC-106-3/4 amended; AC-106-20 added. |
+| **3.8** | 2026-07-08 | **Phase 106 refined — global vault chrome.** Vault state and lock/unlock controls must be application-wide on every primary screen via a consistent global UI element; AC-106-19 added. |
+| **3.8** | 2026-07-08 | **Phase 192 scope boundary and Future Architecture Roadmap (§19).** Account/vault security focus clarified; long-term capabilities documented outside implementation roadmap. |
+| **3.9** | 2026-07-08 | **Phase 192 refined.** Session Security subsection, device lifecycle, Security Health wording, and AC-192-13 vault/session independence. |
+| **4.0** | 2026-07-08 | **Phase 114 — Application Shell and Shared Layout.** New phase after 113; renumbered 121→122, 122→123, 123→124, 150→151, 190→191, 191→192. |
+| **4.1** | 2026-07-08 | **Phase 106 — user-trust messaging.** Benefit-oriented Security UX guidance, UX principles section, AC-106-19; global vault chrome AC renumbered to AC-106-21. |
 
 Implementation plans for individual production phases may be authored separately; they must align with this document and must not duplicate it as a second architecture source.

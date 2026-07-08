@@ -10,7 +10,7 @@ export interface OpenServiceDeps {
 
 export type OpenServiceOutcome =
   | { status: 'cancelled' }
-  | { status: 'credentials_missing' }
+  | { status: 'credentials_missing'; userMessage?: string }
   | { status: 'ok'; userMessage?: string }
   | { status: 'open_only'; userMessage?: string };
 
@@ -36,7 +36,8 @@ export async function openServiceWithProfile(
   const result = executeServiceFromTile(service, credential, loginFields);
 
   if (result.status === 'credentials_missing') {
-    return { status: 'credentials_missing' };
+    // Site may already be open (AC-105-7); surface guidance without blocking.
+    return { status: 'credentials_missing', userMessage: result.userMessage };
   }
 
   return { status: result.status, userMessage: result.userMessage };

@@ -38,9 +38,11 @@ import {
   shouldForcePersistFailure,
 } from './serviceManagement/serviceSelection';
 
-import { persistVault, unlockVault, type VaultState } from './vault/vault';
+import { lockVault, persistVault, unlockVault, type VaultState } from './vault/vault';
 
 import { ProfileResolution } from './profile';
+
+import { AppVaultShell } from './trust';
 
 import './App.css';
 
@@ -312,6 +314,11 @@ function App() {
 
 
 
+  function handleLockVault() {
+    lockVault();
+    setIsUnlocked(false);
+  }
+
   async function handleUnlock(password: string) {
 
     const loaded = await unlockVault(password);
@@ -482,7 +489,9 @@ function App() {
 
 
 
-  if (catalogLoading) {
+  // Soft loading: with an unlocked empty selection, still allow Digital Home shells
+  // (AC-105-13). Only block the whole app before unlock completes catalog for first paint.
+  if (catalogLoading && !isUnlocked) {
 
     return (
 
@@ -569,43 +578,51 @@ function App() {
 
     return (
 
-      <ProfileResolution
+      <AppVaultShell vaultUnlocked={isUnlocked} onLockVault={handleLockVault}>
 
-        accessProfiles={vaultState.accessProfiles}
+        <ProfileResolution
 
-        serviceNameById={serviceNameById}
+          accessProfiles={vaultState.accessProfiles}
 
-      >
+          serviceNameById={serviceNameById}
 
-        {(resolveProfile) => (
+        >
 
-          <Dashboard
+          {(resolveProfile) => (
 
-            services={selectedServices}
+            <Dashboard
 
-            credentials={credentials}
+              services={selectedServices}
 
-            credentialsByProfileId={vaultState.credentials}
+              credentials={credentials}
 
-            resolveProfile={resolveProfile}
+              credentialsByProfileId={vaultState.credentials}
 
-            showMagicMomentHint={showMagicMomentHint}
+              resolveProfile={resolveProfile}
 
-            onDismissMagicMomentHint={() => setShowMagicMomentHint(false)}
+              showMagicMomentHint={showMagicMomentHint}
 
-            onAddMore={() => {
+              onDismissMagicMomentHint={() => setShowMagicMomentHint(false)}
 
-              setManageIsFirstRun(false);
+              catalogLoading={catalogLoading}
 
-              setScreen('manage');
+              catalogError={catalogError}
 
-            }}
+              onAddMore={() => {
 
-          />
+                setManageIsFirstRun(false);
 
-        )}
+                setScreen('manage');
 
-      </ProfileResolution>
+              }}
+
+            />
+
+          )}
+
+        </ProfileResolution>
+
+      </AppVaultShell>
 
     );
 
@@ -614,25 +631,33 @@ function App() {
 
 
   return (
-    <ManageServices
-      allServices={allServices}
-      selectedIds={selectedIds}
-      isFirstRun={manageIsFirstRun}
-      vaultState={vaultState}
-      pendingIds={pendingIds}
-      selectionError={selectionError}
-      catalogError={catalogError}
-      onAddService={addService}
-      onRemoveService={removeService}
-      onAddCustom={(definition) => addCustomService(definition)}
-      onVaultStateChange={handleVaultStateChange}
-      onRetryCatalog={() => void retryCatalogLoad()}
-      onContinue={() => {
-        void saveVaultState(vaultState);
-        setShowMagicMomentHint(manageIsFirstRun);
-        setScreen('dashboard');
-      }}
-    />
+
+    <AppVaultShell vaultUnlocked={isUnlocked} onLockVault={handleLockVault}>
+
+      <ManageServices
+        allServices={allServices}
+        selectedIds={selectedIds}
+        isFirstRun={manageIsFirstRun}
+        vaultState={vaultState}
+        pendingIds={pendingIds}
+        selectionError={selectionError}
+        catalogError={catalogError}
+        onAddService={addService}
+        onRemoveService={removeService}
+        onAddCustom={(definition) => addCustomService(definition)}
+        onVaultStateChange={handleVaultStateChange}
+        onRetryCatalog={() => void retryCatalogLoad()}
+        onContinue={() => {
+          void saveVaultState(vaultState);
+          setShowMagicMomentHint(manageIsFirstRun);
+          setScreen('dashboard');
+        }}
+        onLockVault={handleLockVault}
+        vaultUnlocked={isUnlocked}
+      />
+
+    </AppVaultShell>
+
   );
 
 }

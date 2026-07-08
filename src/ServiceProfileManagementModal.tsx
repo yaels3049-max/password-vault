@@ -3,19 +3,31 @@ import type { Credential } from './credentials';
 import type { AccessProfile } from './profile/accessProfileModel';
 import { hasCompleteCredentials } from './credentials';
 import type { LoginField, Service } from './mockServices';
+import {
+  HubCredentialInput,
+  isFirstTimeSecurityTipDismissed,
+  SecurityExplanationBanner,
+  TRUST_COPY,
+  TrustIndicator,
+  VaultStateBadge,
+} from './trust';
+
 interface ServiceProfileManagementModalProps {
   service: Service;
   loginFields: LoginField[];
   profiles: AccessProfile[];
   credentials: Record<string, Credential>;
-  onSaveCredential: (profileId: string, credential: Credential) => void;
-  onDeleteCredential: (profileId: string) => void;
+  onSaveCredential: (profileId: string, credential: Credential) => Promise<void>;
+  onDeleteCredential: (profileId: string) => Promise<void>;
   onAddProfile: (displayName: string) => void;
   onRenameProfile: (profileId: string, displayName: string) => void;
   onSetDefaultProfile: (profileId: string) => void;
   onDeleteProfile: (profileId: string) => void;
   onClose: () => void;
+  onLockVault?: () => void;
   error?: string | null;
+  /** True when credential existed before this edit (updates vs first save). */
+  vaultUnlocked?: boolean;
 }
 
 function emptyValues(
@@ -41,7 +53,9 @@ export default function ServiceProfileManagementModal({
   onSetDefaultProfile,
   onDeleteProfile,
   onClose,
+  onLockVault,
   error = null,
+  vaultUnlocked = true,
 }: ServiceProfileManagementModalProps) {
   const sortedProfiles = useMemo(
     () => [...profiles].sort((a, b) => a.displayName.localeCompare(b.displayName, 'he')),
@@ -55,12 +69,13 @@ export default function ServiceProfileManagementModal({
   const [newProfileName, setNewProfileName] = useState('');
   const [renameValue, setRenameValue] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
-  // Progressive disclosure (D-104-19): single-profile services stay simple — the
-  // "add another profile" affordance is revealed only on demand.
   const [showAddProfile, setShowAddProfile] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showSecurityTip, setShowSecurityTip] = useState(
+    () => !isFirstTimeSecurityTipDismissed(),
+  );
 
-  // D-104-19: a single (implicit default) profile means the user should never be
-  // forced to understand profiles — show credential editing directly.
   const isMultiProfile = sortedProfiles.length > 1;
 
   const selectedProfile =
@@ -88,18 +103,24 @@ export default function ServiceProfileManagementModal({
     setCredentialValues(emptyValues(loginFields, credentials[selectedProfile.id]));
     setRenameValue(selectedProfile.displayName);
     setIsRenaming(false);
+    setSuccessMessage(null);
   }, [selectedProfile, loginFields, credentials]);
 
   function handleCredentialChange(id: string, value: string) {
     setCredentialValues((prev) => ({ ...prev, [id]: value }));
+    if (successMessage) setSuccessMessage(null);
   }
 
-  function handleSaveCredentials(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedProfile) return;
+  async function handleSaveCredentials() {
+    if (!selectedProfile || saving) return;
 
     const complete = loginFields.every((field) => credentialValues[field.id]?.trim());
     if (!complete) return;
+
+    const hadExisting = hasCompleteCredentials(
+      credentials[selectedProfile.id],
+      loginFields,
+    );
 
     const credential: Credential = {};
     for (const field of loginFields) {
@@ -109,12 +130,30 @@ export default function ServiceProfileManagementModal({
           : credentialValues[field.id].trim();
     }
 
-    onSaveCredential(selectedProfile.id, credential);
+    setSaving(true);
+    setSuccessMessage(null);
+    try {
+      await onSaveCredential(selectedProfile.id, credential);
+      setSuccessMessage(hadExisting ? TRUST_COPY.updateSuccess : TRUST_COPY.saveSuccess);
+    } catch {
+      // Friendly error is surfaced via `error` prop from ManageServices.
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleDeleteCredentials() {
-    if (!selectedProfile) return;
-    onDeleteCredential(selectedProfile.id);
+  async function handleDeleteCredentials() {
+    if (!selectedProfile || saving) return;
+    setSaving(true);
+    setSuccessMessage(null);
+    try {
+      await onDeleteCredential(selectedProfile.id);
+      setSuccessMessage(TRUST_COPY.deleteSuccess);
+    } catch {
+      // Friendly error via `error` prop.
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleAddProfile(e: React.FormEvent) {
@@ -147,14 +186,35 @@ export default function ServiceProfileManagementModal({
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="profile-management-trust-bar">
+          <VaultStateBadge unlocked={vaultUnlocked} onLock={onLockVault} />
+          <TrustIndicator />
+        </div>
+
         <h2 className="modal-title">
           {isMultiProfile ? 'פרופילים ופרטי כניסה' : 'פרטי כניסה'}
         </h2>
         <p className="modal-subtitle">{service.name}</p>
 
+        {showSecurityTip && (
+          <SecurityExplanationBanner onDismiss={() => setShowSecurityTip(false)} />
+        )}
+
         {error && (
           <p className="modal-field-error" role="alert">
             {error}
+          </p>
+        )}
+
+        {successMessage && (
+          <p className="modal-field-success" role="status">
+            {successMessage}
+          </p>
+        )}
+
+        {saving && (
+          <p className="modal-field-progress" role="status">
+            {TRUST_COPY.savingEncrypted}
           </p>
         )}
 
@@ -182,13 +242,14 @@ export default function ServiceProfileManagementModal({
               ))}
             </ul>
 
-            <form className="profile-management-add" onSubmit={handleAddProfile}>
+            <form className="profile-management-add" onSubmit={handleAddProfile} autoComplete="off">
               <input
                 type="text"
                 value={newProfileName}
                 onChange={(e) => setNewProfileName(e.target.value)}
                 placeholder="שם פרופיל חדש"
                 aria-label="שם פרופיל חדש"
+                autoComplete="off"
               />
               <button type="submit" className="modal-btn modal-btn-secondary">
                 הוספת פרופיל נוסף
@@ -206,12 +267,17 @@ export default function ServiceProfileManagementModal({
                     שנה שם
                   </button>
                 ) : (
-                  <form className="profile-management-rename" onSubmit={handleRenameSubmit}>
+                  <form
+                    className="profile-management-rename"
+                    onSubmit={handleRenameSubmit}
+                    autoComplete="off"
+                  >
                     <input
                       type="text"
                       value={renameValue}
                       onChange={(e) => setRenameValue(e.target.value)}
                       aria-label="שם פרופיל"
+                      autoComplete="off"
                     />
                     <button type="submit" className="modal-btn modal-btn-secondary">
                       שמור שם
@@ -258,23 +324,35 @@ export default function ServiceProfileManagementModal({
             <h3 className="profile-management-heading">
               {isMultiProfile ? `פרטי כניסה — ${selectedProfile.displayName}` : 'פרטי כניסה'}
             </h3>
-            <form onSubmit={handleSaveCredentials}>
+            {/* D-106-5: per-field assist — email/username browser help; password PM-hardened. */}
+            <form onSubmit={(e) => e.preventDefault()}>
               {loginFields.map((field, index) => (
                 <label key={field.id} className="modal-field">
                   <span>{field.label}</span>
-                  <input
-                    type={field.type}
+                  <HubCredentialInput
+                    serviceId={service.id}
+                    fieldId={field.id}
+                    fieldType={field.type}
                     value={credentialValues[field.id] ?? ''}
                     onChange={(e) => handleCredentialChange(field.id, e.target.value)}
                     autoFocus={index === 0}
-                    autoComplete={
-                      field.type === 'password' ? 'current-password' : 'username'
-                    }
+                    disabled={saving}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleSaveCredentials();
+                      }
+                    }}
                   />
                 </label>
               ))}
               <div className="modal-actions">
-                <button type="submit" className="modal-btn modal-btn-primary">
+                <button
+                  type="button"
+                  className="modal-btn modal-btn-primary"
+                  disabled={saving}
+                  onClick={() => void handleSaveCredentials()}
+                >
                   שמור פרטי כניסה
                 </button>
               </div>
@@ -282,7 +360,8 @@ export default function ServiceProfileManagementModal({
                 <button
                   type="button"
                   className="modal-delete-btn"
-                  onClick={handleDeleteCredentials}
+                  onClick={() => void handleDeleteCredentials()}
+                  disabled={saving}
                 >
                   מחק פרטי כניסה
                 </button>
@@ -302,13 +381,18 @@ export default function ServiceProfileManagementModal({
                 הוספת פרופיל נוסף
               </button>
             ) : (
-              <form className="profile-management-add" onSubmit={handleAddProfile}>
+              <form
+                className="profile-management-add"
+                onSubmit={handleAddProfile}
+                autoComplete="off"
+              >
                 <input
                   type="text"
                   value={newProfileName}
                   onChange={(e) => setNewProfileName(e.target.value)}
                   placeholder="שם פרופיל חדש"
                   aria-label="שם פרופיל חדש"
+                  autoComplete="off"
                 />
                 <button type="submit" className="modal-btn modal-btn-secondary">
                   הוספת פרופיל נוסף
