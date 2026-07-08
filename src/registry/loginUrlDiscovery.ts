@@ -30,6 +30,20 @@ function loginFieldsToJson(loginFields?: LoginField[]): LoginField[] {
   return loginFields ?? DEFAULT_LOGIN_FIELDS;
 }
 
+/** Registry reads are best-effort — local vault add must not block on auth/proxy failures. */
+async function fetchRegistryRowByIdSafe(
+  serviceId: string,
+): Promise<ServiceRegistryRow | null> {
+  try {
+    return await fetchRegistryRowById(serviceId);
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('[registry] Registry lookup skipped — Supabase unavailable:', error);
+    }
+    return null;
+  }
+}
+
 async function persistUserOwnedLoginUrl(
   serviceId: string,
   loginUrl: string,
@@ -110,7 +124,7 @@ export async function discoverAndPersistLoginUrl(
   const primaryUrl = (options?.primaryUrl ?? definition.url).trim();
 
   if (!options?.force && isSupabaseConfigured()) {
-    const row = await fetchRegistryRowById(definition.id);
+    const row = await fetchRegistryRowByIdSafe(definition.id);
     if (row && !shouldRunLoginUrlDiscovery(row)) {
       return {
         definition: row.login_url
@@ -165,27 +179,40 @@ export async function discoverAndPersistLoginUrl(
     };
   }
 
-  await ensureAnonymousUserId();
-  const row = await fetchRegistryRowById(definition.id);
-  const loginFieldsJson = loginFieldsToJson(enriched.loginFields);
+  try {
+    await ensureAnonymousUserId();
+    const row = await fetchRegistryRowById(definition.id);
+    const loginFieldsJson = loginFieldsToJson(enriched.loginFields);
 
-  if (row?.owner_user_id) {
-    await persistUserOwnedLoginUrl(definition.id, discovery.loginUrl, loginFieldsJson);
-  } else if (row && row.owner_user_id === null && row.source_type === 'built_in') {
-    await persistGlobalBuiltInLoginUrl(definition.id, discovery.loginUrl, loginFieldsJson);
+    if (row?.owner_user_id) {
+      await persistUserOwnedLoginUrl(definition.id, discovery.loginUrl, loginFieldsJson);
+    } else if (row && row.owner_user_id === null && row.source_type === 'built_in') {
+      await persistGlobalBuiltInLoginUrl(definition.id, discovery.loginUrl, loginFieldsJson);
+    }
+
+    if (row) {
+      clearRegistryCatalogCache();
+      await loadRegistryCatalog();
+    }
+
+    return {
+      definition: enriched,
+      discovery,
+      persisted: Boolean(row),
+      skipped: false,
+    };
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('[registry] Discovery persist skipped — Supabase unavailable:', error);
+    }
+
+    return {
+      definition: enriched,
+      discovery,
+      persisted: false,
+      skipped: false,
+    };
   }
-
-  if (row) {
-    clearRegistryCatalogCache();
-    await loadRegistryCatalog();
-  }
-
-  return {
-    definition: enriched,
-    discovery,
-    persisted: true,
-    skipped: false,
-  };
 }
 
 export function registryRowNeedsDiscovery(row: ServiceRegistryRow): boolean {

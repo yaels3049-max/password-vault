@@ -821,3 +821,738 @@
   color: #dc2626;
   text-align: center;
 }
+
+/* ---------- Service Management (Phase 104) ---------- */
+.service-management {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+}
+
+.service-management-header {
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.service-management-header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.service-management-header p {
+  margin: 0;
+  color: #555;
+  line-height: 1.5;
+}
+
+.sm-banner {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  line-height: 1.45;
+}
+
+.sm-banner p {
+  margin: 0;
+}
+
+.sm-banner--error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+.sm-banner--success {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #047857;
+}
+
+.sm-section {
+  margin-bottom: 2rem;
+  padding: 1.25rem 1.5rem;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.sm-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.sm-section-title {
+  margin: 0 0 1rem;
+  font-size: 1.1875rem;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.sm-section-head .sm-section-title {
+  margin: 0;
+}
+
+/* Add section toolbar — aligns with cards grid width.
+   Desktop: treat as 4 card-units: search spans ~3, add-site spans ~1. */
+.sm-add-toolbar {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  gap: 0.75rem; /* match .sm-grid--compact gap */
+  align-items: center;
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+.sm-search-form {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.sm-add-site-btn {
+  width: 100%;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .sm-add-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sm-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.sm-chips-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.sm-search {
+  width: 100%;
+  padding: 0.5rem 0.75rem 0.5rem 2.1rem;
+  border: 1px solid #d5d9e0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.sm-search-submit {
+  position: absolute;
+  top: 50%;
+  left: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.sm-search-submit:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.sm-search-submit:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.sm-search-icon {
+  display: block;
+}
+
+.sm-search:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.sm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.sm-chip {
+  padding: 0.35rem 0.85rem;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s;
+}
+
+.sm-chip:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.sm-chip:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.sm-chip--active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.28);
+}
+
+.sm-chip--active:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.sm-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+/* My Services: transparent fixed-grid rows — column template shared across all services. */
+.sm-grid--rows {
+  --sm-row-cols: 28px minmax(72px, 1.6fr) 40px 76px 152px 54px 30px;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+}
+
+/* Discover: medium cards, smaller than the current management/home tiles. */
+.sm-grid--compact {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+/* Stabilize Add Services results height so the footer doesn't jump on small filters. */
+.sm-add-results {
+  /* Roughly 2 rows of compact cards on desktop, plus one grid gap. */
+  min-height: 360px;
+}
+
+@media (max-width: 900px) {
+  .sm-add-results {
+    min-height: 280px;
+  }
+}
+
+@media (max-width: 520px) {
+  .sm-add-results {
+    min-height: 0; /* allow natural stacking on small screens */
+  }
+}
+
+.service-card {
+  display: flex;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  transition: box-shadow 0.15s, opacity 0.15s;
+}
+
+/* Compact (Discover) card: vertical, medium size. */
+.service-card--compact {
+  flex-direction: column;
+  padding: 0.85rem;
+}
+
+/* Row (My Services): single-line transparent grid — RTL columns:
+   Icon | Name | Profiles | Category | Status | Manage | ⋮ */
+.service-card--row {
+  display: grid;
+  grid-template-columns: var(--sm-row-cols);
+  align-items: center;
+  column-gap: 0.45rem;
+  padding: 0.26rem 0.45rem;
+  min-height: 0;
+}
+
+.service-row-col {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 0;
+}
+
+.service-row-col-icon {
+  justify-content: center;
+}
+
+.service-row-col-name {
+  overflow: hidden;
+}
+
+.service-row-col-profiles {
+  justify-content: center;
+}
+
+.service-row-col-category {
+  overflow: hidden;
+}
+
+.service-row-col-status {
+  justify-content: flex-start; /* inline-start = right in RTL */
+}
+
+.service-row-col-manage {
+  justify-content: center;
+}
+
+.service-row-col-more {
+  justify-content: center;
+  position: relative;
+}
+
+.service-card:hover {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.07);
+}
+
+.service-card--pending {
+  opacity: 0.6;
+}
+
+.service-card--compact .service-card-media {
+  margin-bottom: 0.6rem;
+}
+
+.service-card--row .service-card-logo,
+.service-card--row .service-card-letter {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.service-card--row .service-card-letter {
+  font-size: 0.75rem;
+}
+
+.service-card-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: #fff;
+}
+
+.service-card-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.25rem;
+}
+
+.service-card--compact .service-card-logo,
+.service-card--compact .service-card-letter {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+}
+
+.service-card--compact .service-card-letter {
+  font-size: 1.05rem;
+}
+
+.service-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.service-card--compact .service-card-body {
+  margin-bottom: 0.6rem;
+}
+
+.service-card-name {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.service-card--compact .service-card-name {
+  font-size: 0.9375rem;
+}
+
+.service-card--row .service-card-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #111827;
+}
+
+.service-row-category {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+
+.service-row-profiles {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.7rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.service-row-profiles-icon {
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
+/* Status chip: dot on the right (RTL), text on the left; background hugs content only. */
+.service-row-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.service-row-status-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.service-row-status-text {
+  flex: 0 1 auto;
+}
+
+.service-row-status--ready {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.service-row-status--ready .service-row-status-dot {
+  background: #047857;
+}
+
+.service-row-status--warn {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.service-row-status--warn .service-row-status-dot {
+  background: #d97706;
+}
+
+.service-row-status--attention {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.service-row-status--attention .service-row-status-dot {
+  background: #ea580c;
+}
+
+.service-row-status--neutral {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.service-row-status--neutral .service-row-status-dot {
+  background: #9ca3af;
+}
+
+.service-card-category {
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+.service-card-badge {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.service-card-profile-count {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.service-card-badge--ready {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.service-card-badge--warn {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.service-card-badge--info {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.service-card-badge--neutral {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.service-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: auto;
+}
+
+.sm-action {
+  padding: 0.4rem 0.7rem;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.875rem;
+  color: #374151;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.sm-action:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.service-card--row .sm-action {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* Kebab (⋮) secondary-actions menu — keeps destructive actions from competing with ניהול. */
+.sm-row-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.sm-kebab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.sm-kebab:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.sm-kebab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sm-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.sm-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  inset-inline-start: 0;
+  z-index: 21;
+  min-width: 132px;
+  padding: 0.25rem;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.sm-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: start;
+  color: #374151;
+  cursor: pointer;
+}
+
+.sm-menu-item:hover {
+  background: #f3f4f6;
+}
+
+.sm-menu-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sm-menu-item--danger {
+  color: #b91c1c;
+}
+
+.sm-menu-item--danger:hover {
+  background: #fef2f2;
+}
+
+.sm-action:hover {
+  background: #e5e7eb;
+}
+
+.sm-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sm-action--primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  font-weight: 600;
+}
+
+.sm-action--primary:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.sm-action--secondary {
+  background: #fff;
+  border-color: #c7d2fe;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.sm-action--secondary:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+/* Passive already-added state (add section cards). */
+.sm-action--passive,
+.sm-action--added {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #047857;
+  font-weight: 600;
+  opacity: 1;
+  cursor: default;
+}
+
+.sm-action--passive:disabled,
+.sm-action--added:disabled {
+  opacity: 1;
+}
+
+.sm-action--danger {
+  background: #fff;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.sm-action--danger:hover {
+  background: #fef2f2;
+}
+
+.sm-empty {
+  margin: 0;
+  padding: 1rem;
+  color: #6b7280;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.sm-discover-error {
+  padding: 1rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+}
+
+.sm-discover-error p {
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+}
+
+.service-management-footer {
+  text-align: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Screen-level navigation action (secondary) for Service Management. */
+.sm-footer-nav {
+  padding: 0.6rem 1.4rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+}
+
+.modal-field select {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #d5d9e0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.95rem;
+  background: #fff;
+}

@@ -6,8 +6,8 @@ const BUILTIN_BY_ID = new Map(
 );
 
 /**
- * Merge execution-critical fields from builtinCatalog when registry rows are stale
- * (e.g. migration 20260706120000 not yet applied).
+ * Merge presentation-only gaps from builtinCatalog when registry rows are stale
+ * (icon, category, favicon metadata). Execution fields come from registry seed only (D-103-13).
  */
 export function applyBuiltinCatalogOverlay(definition: ServiceDefinition): ServiceDefinition {
   if (definition.source !== 'built-in-catalog') {
@@ -19,13 +19,17 @@ export function applyBuiltinCatalogOverlay(definition: ServiceDefinition): Servi
     return definition;
   }
 
+  const metadata = { ...(definition.metadata ?? {}) };
+  const builtinFavicon = builtin.metadata?.faviconSiteUrl;
+  if (!metadata.faviconSiteUrl && builtinFavicon) {
+    metadata.faviconSiteUrl = builtinFavicon;
+  }
+
   return {
     ...definition,
-    adapterId: definition.adapterId ?? builtin.adapterId,
-    loginUrl: definition.loginUrl ?? builtin.loginUrl,
-    loginFields: definition.loginFields ?? builtin.loginFields,
     category: definition.category ?? builtin.category,
     icon: definition.icon ?? builtin.icon,
+    metadata: Object.keys(metadata).length > 0 ? metadata : definition.metadata,
   };
 }
 

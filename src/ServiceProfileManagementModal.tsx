@@ -55,6 +55,13 @@ export default function ServiceProfileManagementModal({
   const [newProfileName, setNewProfileName] = useState('');
   const [renameValue, setRenameValue] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
+  // Progressive disclosure (D-104-19): single-profile services stay simple — the
+  // "add another profile" affordance is revealed only on demand.
+  const [showAddProfile, setShowAddProfile] = useState(false);
+
+  // D-104-19: a single (implicit default) profile means the user should never be
+  // forced to understand profiles — show credential editing directly.
+  const isMultiProfile = sortedProfiles.length > 1;
 
   const selectedProfile =
     sortedProfiles.find((profile) => profile.id === selectedProfileId) ?? null;
@@ -140,7 +147,9 @@ export default function ServiceProfileManagementModal({
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="modal-title">פרופילים ופרטי כניסה</h2>
+        <h2 className="modal-title">
+          {isMultiProfile ? 'פרופילים ופרטי כניסה' : 'פרטי כניסה'}
+        </h2>
         <p className="modal-subtitle">{service.name}</p>
 
         {error && (
@@ -149,103 +158,105 @@ export default function ServiceProfileManagementModal({
           </p>
         )}
 
-        <section className="profile-management-section">
-          <h3 className="profile-management-heading">פרופילי גישה</h3>
-          <ul className="profile-management-list">
-            {sortedProfiles.map((profile) => (
-              <li key={profile.id}>
-                <label className="profile-management-item">
-                  <input
-                    type="radio"
-                    name={`profile-${service.id}`}
-                    checked={selectedProfileId === profile.id}
-                    onChange={() => setSelectedProfileId(profile.id)}
-                  />
-                  <span className="profile-management-item-label">
-                    {profile.displayName}
-                    {profile.isDefault && (
-                      <span className="profile-default-badge">ברירת מחדל</span>
-                    )}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
+        {isMultiProfile && (
+          <section className="profile-management-section">
+            <h3 className="profile-management-heading">ניהול פרופילים</h3>
+            <ul className="profile-management-list">
+              {sortedProfiles.map((profile) => (
+                <li key={profile.id}>
+                  <label className="profile-management-item">
+                    <input
+                      type="radio"
+                      name={`profile-${service.id}`}
+                      checked={selectedProfileId === profile.id}
+                      onChange={() => setSelectedProfileId(profile.id)}
+                    />
+                    <span className="profile-management-item-label">
+                      {profile.displayName}
+                      {profile.isDefault && (
+                        <span className="profile-default-badge">ברירת מחדל</span>
+                      )}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
 
-          <form className="profile-management-add" onSubmit={handleAddProfile}>
-            <input
-              type="text"
-              value={newProfileName}
-              onChange={(e) => setNewProfileName(e.target.value)}
-              placeholder="שם פרופיל חדש"
-              aria-label="שם פרופיל חדש"
-            />
-            <button type="submit" className="modal-btn modal-btn-secondary">
-              הוסף פרופיל
-            </button>
-          </form>
+            <form className="profile-management-add" onSubmit={handleAddProfile}>
+              <input
+                type="text"
+                value={newProfileName}
+                onChange={(e) => setNewProfileName(e.target.value)}
+                placeholder="שם פרופיל חדש"
+                aria-label="שם פרופיל חדש"
+              />
+              <button type="submit" className="modal-btn modal-btn-secondary">
+                הוספת פרופיל נוסף
+              </button>
+            </form>
 
-          {selectedProfile && (
-            <div className="profile-management-actions">
-              {!isRenaming ? (
-                <button
-                  type="button"
-                  className="modal-btn modal-btn-secondary"
-                  onClick={() => setIsRenaming(true)}
-                >
-                  שנה שם
-                </button>
-              ) : (
-                <form className="profile-management-rename" onSubmit={handleRenameSubmit}>
-                  <input
-                    type="text"
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    aria-label="שם פרופיל"
-                  />
-                  <button type="submit" className="modal-btn modal-btn-secondary">
-                    שמור שם
-                  </button>
+            {selectedProfile && (
+              <div className="profile-management-actions">
+                {!isRenaming ? (
                   <button
                     type="button"
                     className="modal-btn modal-btn-secondary"
-                    onClick={() => {
-                      setIsRenaming(false);
-                      setRenameValue(selectedProfile.displayName);
-                    }}
+                    onClick={() => setIsRenaming(true)}
                   >
-                    ביטול
+                    שנה שם
                   </button>
-                </form>
-              )}
+                ) : (
+                  <form className="profile-management-rename" onSubmit={handleRenameSubmit}>
+                    <input
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      aria-label="שם פרופיל"
+                    />
+                    <button type="submit" className="modal-btn modal-btn-secondary">
+                      שמור שם
+                    </button>
+                    <button
+                      type="button"
+                      className="modal-btn modal-btn-secondary"
+                      onClick={() => {
+                        setIsRenaming(false);
+                        setRenameValue(selectedProfile.displayName);
+                      }}
+                    >
+                      ביטול
+                    </button>
+                  </form>
+                )}
 
-              {!selectedProfile.isDefault && (
-                <button
-                  type="button"
-                  className="modal-btn modal-btn-secondary"
-                  onClick={() => onSetDefaultProfile(selectedProfile.id)}
-                >
-                  קבע כברירת מחדל
-                </button>
-              )}
+                {!selectedProfile.isDefault && (
+                  <button
+                    type="button"
+                    className="modal-btn modal-btn-secondary"
+                    onClick={() => onSetDefaultProfile(selectedProfile.id)}
+                  >
+                    קבע כברירת מחדל
+                  </button>
+                )}
 
-              {canDeleteProfile && (
-                <button
-                  type="button"
-                  className="modal-delete-btn profile-management-delete"
-                  onClick={() => onDeleteProfile(selectedProfile.id)}
-                >
-                  מחק פרופיל
-                </button>
-              )}
-            </div>
-          )}
-        </section>
+                {canDeleteProfile && (
+                  <button
+                    type="button"
+                    className="modal-delete-btn profile-management-delete"
+                    onClick={() => onDeleteProfile(selectedProfile.id)}
+                  >
+                    מחק פרופיל
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
+        )}
 
         {selectedProfile && (
           <section className="profile-management-section">
             <h3 className="profile-management-heading">
-              פרטי כניסה — {selectedProfile.displayName}
+              {isMultiProfile ? `פרטי כניסה — ${selectedProfile.displayName}` : 'פרטי כניסה'}
             </h3>
             <form onSubmit={handleSaveCredentials}>
               {loginFields.map((field, index) => (
@@ -277,6 +288,33 @@ export default function ServiceProfileManagementModal({
                 </button>
               )}
             </form>
+          </section>
+        )}
+
+        {!isMultiProfile && (
+          <section className="profile-management-section profile-management-advanced">
+            {!showAddProfile ? (
+              <button
+                type="button"
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowAddProfile(true)}
+              >
+                הוספת פרופיל נוסף
+              </button>
+            ) : (
+              <form className="profile-management-add" onSubmit={handleAddProfile}>
+                <input
+                  type="text"
+                  value={newProfileName}
+                  onChange={(e) => setNewProfileName(e.target.value)}
+                  placeholder="שם פרופיל חדש"
+                  aria-label="שם פרופיל חדש"
+                />
+                <button type="submit" className="modal-btn modal-btn-secondary">
+                  הוספת פרופיל נוסף
+                </button>
+              </form>
+            )}
           </section>
         )}
 

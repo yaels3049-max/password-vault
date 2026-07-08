@@ -44,9 +44,11 @@ Used for **custom service add** discovery only in Phase 102 stabilization. Dashb
 
 | Area | Phase 102 | Phase 103 |
 |---|---|---|
-| Tile open | Adapter registry (`generic`, `htzone`, `practice`) or open-only | Unified pipeline in `executeServiceFromTile` |
-| Autofill | `adapterId: generic` for Phase 2 validated sites (Shufersal, Clalit) | Remove POC host allowlist; one https policy |
+| Tile open | Adapter registry (`generic`, `htzone`, `practice`) or open-only | **Unified** `executeServiceFromTile` — open first, metadata-driven generic autofill |
+| Autofill | `adapterId: generic` for Shufersal/Clalit (interim) | Registry `loginFields` + `loginUrl`; no `generic` adapter |
+| Extension policy | `GENERIC_REAL_SITE_ALLOWED_HOSTS` (POC hosts only) | `isAllowedGenericAutofillUrl` — https for internet; http localhost only |
 | `login_fields` seed shape | Must not branch tile execution | Same pipeline with or without seeded fields |
+| Tile-click discovery | Not on Dashboard (custom add only) | Unchanged — no discovery on tile click (D-103-11) |
 
 ### Temporary background tabs
 

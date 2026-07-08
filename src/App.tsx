@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import Dashboard from './Dashboard';
 
@@ -22,9 +22,21 @@ import { formatErrorChain } from './formatErrorChain';
 
 import { resetSupabaseAuthSession } from './supabase/auth';
 
-import { upsertCustomServiceRegistryRow } from './supabase/registryPersistence';
+import {
+  deleteCustomServiceRegistryRow,
+  DuplicateCustomServiceError,
+  normalizeCustomServiceUrl,
+  upsertCustomServiceRegistryRow,
+} from './supabase/registryPersistence';
 
 import { credentialsByServiceId } from './vault/credentialAccess';
+
+import {
+  addToSelection,
+  removeFromSelection,
+  SELECTION_PERSIST_FAILED_MESSAGE,
+  shouldForcePersistFailure,
+} from './serviceManagement/serviceSelection';
 
 import { persistVault, unlockVault, type VaultState } from './vault/vault';
 
@@ -35,6 +47,12 @@ import './App.css';
 
 
 type Screen = 'manage' | 'dashboard';
+
+const CUSTOM_SERVICE_CLOUD_FAIL_MESSAGE =
+  'לא ניתן להוסיף את האתר כרגע. בדקו חיבור לרשת ונסו שוב.';
+
+const CUSTOM_SERVICE_DUPLICATE_MESSAGE =
+  'האתר כבר קיים ברשימת השירותים שלך.';
 
 
 
@@ -113,6 +131,12 @@ function App() {
   const selectedIds = useMemo(() => new Set(vaultState.selectedIds), [vaultState.selectedIds]);
 
   const customServices = vaultState.customServices;
+
+  const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
+
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+
+  const selectionLockRef = useRef<Set<string>>(new Set());
 
   const credentials = useMemo(
 
@@ -338,73 +362,103 @@ function App() {
 
 
 
-  function toggleService(id: string) {
-
-    const nextIds = new Set(selectedIds);
-
-    if (nextIds.has(id)) {
-
-      nextIds.delete(id);
-
-    } else {
-
-      nextIds.add(id);
-
+  async function persistSelectionState(next: VaultState) {
+    if (shouldForcePersistFailure()) {
+      throw new Error('Forced persist failure (Phase 104 test hook)');
     }
+    await saveVaultState(next);
+  }
 
-    const nextState: VaultState = {
+  // Idempotent, persist-first selection change (D-104-4, D-104-5, D-104-14).
+  // Digital Home reflects the change only after persistVault succeeds (AC-104-15).
+  async function changeSelection(id: string, mode: 'add' | 'remove') {
+    if (selectionLockRef.current.has(id)) {
+      return;
+    }
+    selectionLockRef.current.add(id);
+    setPendingIds((prev) => new Set(prev).add(id));
+    setSelectionError(null);
 
-      ...vaultState,
+    const next =
+      mode === 'add' ? addToSelection(vaultState, id) : removeFromSelection(vaultState, id);
 
-      selectedIds: [...nextIds],
+    try {
+      await persistSelectionState(next);
+      setVaultState(next);
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('[serviceManagement] selection persist failed:', error);
+      }
+      setSelectionError(SELECTION_PERSIST_FAILED_MESSAGE);
+    } finally {
+      selectionLockRef.current.delete(id);
+      setPendingIds((prev) => {
+        const nextPending = new Set(prev);
+        nextPending.delete(id);
+        return nextPending;
+      });
+    }
+  }
 
-    };
+  function addService(id: string): Promise<void> {
+    return changeSelection(id, 'add');
+  }
 
-    setVaultState(nextState);
-
-    void saveVaultState(nextState);
-
+  function removeService(id: string): Promise<void> {
+    return changeSelection(id, 'remove');
   }
 
 
 
   async function addCustomService(definition: ServiceDefinition) {
+    // Local idempotency: reject a second tile for the same normalized primary URL.
+    const normalizedUrl = normalizeCustomServiceUrl(definition.url);
+    const alreadyExistsLocally = customServices.some(
+      (existing) => normalizeCustomServiceUrl(existing.url) === normalizedUrl,
+    );
+    if (alreadyExistsLocally) {
+      throw new Error(CUSTOM_SERVICE_DUPLICATE_MESSAGE);
+    }
+
+    // Cloud-first: do not create a local tile unless service_registry write succeeds.
+    try {
+      await upsertCustomServiceRegistryRow(definition);
+    } catch (error) {
+      if (error instanceof DuplicateCustomServiceError) {
+        throw new Error(CUSTOM_SERVICE_DUPLICATE_MESSAGE);
+      }
+      if (import.meta.env.DEV) {
+        console.warn('[vault] Custom service registry upsert failed:', error);
+      }
+      throw new Error(CUSTOM_SERVICE_CLOUD_FAIL_MESSAGE);
+    }
 
     const nextState: VaultState = {
-
       ...vaultState,
-
       customServices: [...customServices, definition],
-
       selectedIds: [...new Set([...selectedIds, definition.id])],
-
     };
 
-    setVaultState(nextState);
-
-    await saveVaultState(nextState);
-
-
-
+    // Persist-first: only commit the tile after persistVault succeeds (AC-104-14, AC-104-15).
     try {
-
-      await upsertCustomServiceRegistryRow(definition);
-
-      clearRegistryCatalogCache();
-
-      const refreshed = await loadBuiltinCatalogDefinitions();
-
-      setCatalogDefinitions(refreshed);
-
+      await saveVaultState(nextState);
     } catch (error) {
-
-      if (import.meta.env.DEV) {
-
-        console.warn('[vault] Custom service registry upsert failed:', error);
-
+      // Best-effort rollback to avoid a registry row without a tile.
+      try {
+        await deleteCustomServiceRegistryRow(definition.id);
+      } catch (rollbackError) {
+        if (import.meta.env.DEV) {
+          console.warn('[vault] Custom service registry rollback failed:', rollbackError);
+        }
       }
-
+      throw error;
     }
+
+    setVaultState(nextState);
+    setSelectionError(null);
+    clearRegistryCatalogCache();
+    const refreshed = await loadBuiltinCatalogDefinitions();
+    setCatalogDefinitions(refreshed);
 
   }
 
@@ -474,7 +528,10 @@ function App() {
 
 
 
-  if (catalogError) {
+  // Full-screen catalog error only when there is nothing to manage yet.
+  // With existing selected services, Service Management stays usable and the
+  // Discover section shows a friendly error inline (AC-104-10).
+  if (catalogError && selectedIds.size === 0) {
 
     return (
 
@@ -557,39 +614,25 @@ function App() {
 
 
   return (
-
     <ManageServices
-
       allServices={allServices}
-
       selectedIds={selectedIds}
-
       isFirstRun={manageIsFirstRun}
-
       vaultState={vaultState}
-
-      onToggle={toggleService}
-
-      onAddCustom={(definition) => {
-
-        void addCustomService(definition);
-
-      }}
-
+      pendingIds={pendingIds}
+      selectionError={selectionError}
+      catalogError={catalogError}
+      onAddService={addService}
+      onRemoveService={removeService}
+      onAddCustom={(definition) => addCustomService(definition)}
       onVaultStateChange={handleVaultStateChange}
-
+      onRetryCatalog={() => void retryCatalogLoad()}
       onContinue={() => {
-
         void saveVaultState(vaultState);
-
         setShowMagicMomentHint(manageIsFirstRun);
-
         setScreen('dashboard');
-
       }}
-
     />
-
   );
 
 }

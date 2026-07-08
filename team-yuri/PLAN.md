@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Version** | 1.5 |
+| **Version** | 2.4 |
 | **Status** | Production Ready |
-| **Last updated** | 2026-07-06 |
+| **Last updated** | 2026-07-08 |
 
 This document describes *what* the product is and *how* it is shaped at a system level. It does not prescribe implementation details, file layouts, or step-by-step build plans.
 
@@ -812,7 +812,7 @@ Production commercialization (Phase 150+) uses a **data-driven capability engine
 
 ## 17. Future Considerations
 
-Items explicitly **out of scope** for the early production roadmap (Phases 100–111) but architecturally anticipated:
+Items explicitly **out of scope** for the early production roadmap (Phases 100–113) but architecturally anticipated:
 
 | Topic | Notes |
 |-------|-------|
@@ -950,7 +950,38 @@ Updating stale `loginUrl` values belongs to Service Registry / Admin metadata fl
 
 ### Phase 104 — Service Management Experience
 
-**Goal:** Production Service Management UX (**ניהול שירותים**).
+**Goal:** Complete production-grade Service Management UX (**ניהול שירותים**) — regression protection, state consistency, and baseline UX requirements for managing selected services and discovery.
+
+**Architectural principles:**
+
+- Service Management is the single source of truth for the user's selected services.
+- Any change made in Service Management must be immediately reflected in Digital Home.
+- Service Management consumes Service Registry metadata but does not own it.
+
+**Scope:**
+
+- **My Services** section
+- **Discover Services** section
+- Service state representation (Added, Not Added, Missing Credentials, Multiple Profiles)
+- Search by service name
+- Search by domain
+- Empty state behavior
+- Offline/error state behavior
+- Service card actions (Open, Manage Profiles, Edit Credentials, Remove)
+- Exactly one “add custom service” entry point globally
+- Category filtering in discovery
+- Modern service card UX for browse and select
+- Profile and credential management from selected service context
+- Dependencies: **Phase 102** (Service Registry metadata), **Phase 103** (execution entry points), **Phase 111** (service icons), **Phase 113** (canonical identity and duplicate prevention)
+- Idempotent add/remove service operations
+- Duplicate-click prevention during pending operations
+- No partial UI success on failed persistence
+- Digital Home derives selected services only from persisted `user_services` state
+- Clear loading and disabled states for service actions
+- Regression protection for existing execution, profile, and credential flows
+- Basic production-ready layout structure
+- Unified execution entry point shared with Digital Home
+- Consistent loading, empty, offline and error states across all Service Management sections
 
 | Acceptance criteria | |
 |---------------------|---|
@@ -961,22 +992,138 @@ Updating stale `loginUrl` values belongs to Service Registry / Admin metadata fl
 | AC-104-5 | Category filtering available in discovery |
 | AC-104-6 | Service cards used for browse and select (modern card UX) |
 | AC-104-7 | Profile and credential management reachable from selected service context |
+| AC-104-8 | Every service card displays its current management state |
+| AC-104-9 | Changes made in Service Management are immediately reflected in Digital Home |
+| AC-104-10 | Service Management remains usable when discovery/search is temporarily unavailable: existing selected services can still be viewed and managed, while unavailable discovery/search actions show a friendly error or empty state |
+| AC-104-11 | Service Management uses Service Registry as metadata source but never modifies registry identity directly |
+| AC-104-12 | Add/remove service operations are idempotent. Repeated clicks or repeated submit events must not create duplicate `user_services` rows or duplicate Digital Home tiles |
+| AC-104-13 | While a service add/remove/update operation is pending, relevant action controls are disabled or ignored to prevent duplicate writes |
+| AC-104-14 | If persistence fails, Service Management must show a friendly error and must not leave a phantom service card or Digital Home tile |
+| AC-104-15 | Digital Home must reflect only persisted selected services, not optimistic local-only state that failed to sync |
+| AC-104-16 | Removing a service updates Service Management and Digital Home consistently without orphaning Access Profiles or encrypted credentials |
+| AC-104-17 | Opening a service from Service Management must use exactly the same execution entry point as Digital Home. No separate execution path may exist |
+| AC-104-18 | The Service Management layout must provide a production-ready baseline UX:<br>— Clear separation between "My Services" and "Discover Services"<br>— Consistent service card layout<br>— Visible service status<br>— Loading indicators<br>— Empty states<br>— Error states<br>— Offline states<br>— Responsive layout consistent with the rest of the application |
+| AC-104-19 | Phase 104 must not regress existing profile or credential management. Adding, removing or updating services must preserve: Access Profiles, Default Profile selection, Encrypted Credentials, and Service associations |
+| AC-104-20 | Removing a service must affect only the user's association with that service. It must never delete or modify the global Service Registry entry |
+| AC-104-21 | Service Management must remain resilient during concurrent updates. Refreshing data, synchronization, or background updates must not duplicate cards, lose selection state, or overwrite newer persisted data |
+| AC-104-22 | Every user-visible operation must produce a deterministic UI outcome: success confirmation, friendly validation message, or friendly error message. No silent failures are permitted |
+| AC-104-23 | Navigation away from Service Management during a pending operation must not leave partial UI state or inconsistent persisted data |
 
 ---
 
 ### Phase 105 — Digital Home Experience
 
-**Goal:** Production Digital Home UX (**הבית הדיגיטלי**).
+**Goal:** Production Digital Home UX (**הבית הדיגיטלי**) as the user’s daily execution surface.
+
+**Architectural principles:**
+
+- Digital Home is an execution surface, not a management surface.
+- Digital Home consumes Service Registry, user_services, Access Profiles and encrypted credentials, but does not own or modify them.
+- Service execution must use the Phase 103 unified execution pipeline.
+- One tile represents one service. Multiple identities are resolved through profile selection, not duplicated tiles.
+- Digital Home must remain simple for single-profile users and progressively reveal complexity only when needed.
+
+**Scope:**
+
+- Screen title: **הבית הדיגיטלי**
+- Category-grouped service tiles
+- One tile per selected service
+- Profile chooser on tile open when multiple profiles exist
+- Useful Services area foundation
+- Notifications area foundation
+- Empty state when no services exist
+- Loading state while services are loading
+- Offline/error state behavior
+- Stable layout that does not jump during loading or filtering
+- Execution-only tile behavior
+- No credential/profile management controls on tiles
+- Responsive RTL layout
+- Regression protection for Phase 103 execution
+- Dependency on Phase 102, Phase 103, Phase 104, Phase 111 and Phase 113
+
+**Layout architecture:**
+
+The Digital Home page should contain:
+
+1. Header
+   - Page title
+   - Optional short reassurance/security message
+   - Clear navigation to Service Management
+
+2. Useful Services area
+   - Initially may show most-used, recently used, or placeholder content
+   - Must not be hardcoded permanently
+   - Future ranking must be user-specific and data-driven
+
+3. Notifications area
+   - Placeholder or empty state is acceptable initially
+   - Reserved for system notifications related to services, credentials, sync, security, or required user actions
+
+4. Category sections
+   - Show only categories that contain selected user services
+   - Categories without services must not appear
+   - Each category contains service tiles
+
+5. Service tiles
+   - Show service icon and service name
+   - Optional minimal state indicator only when useful
+   - Tile click initiates execution
+   - No edit/remove/manage buttons on tile
+
+**Execution rules:**
+
+- Clicking a tile must call the same execution entry point defined in Phase 103.
+- Digital Home must not implement its own service-specific execution logic.
+- If a service has multiple Access Profiles, show profile chooser attached to the tile/open action.
+- If a service has one profile, execute directly without forcing the user to understand profiles.
+- If credentials are missing, the service should still open when possible and show friendly guidance.
+- Execution failure must never silently do nothing.
+- Autofill failure must never prevent opening the website.
+- No tab opened from Digital Home may auto-close as part of normal execution.
+
+**UX rules:**
+
+- Digital Home is visually calmer and more execution-oriented than Service Management.
+- Tiles may be larger and more visual than Service Management rows.
+- Tile layout must support categories, icons, and readable Hebrew names.
+- Hover/focus states should make tiles feel interactive.
+- The page must avoid management clutter.
+- Empty, loading, offline and error states must be friendly and non-technical.
+- Responsive behavior must preserve RTL correctness.
+
+**Non-goals:**
+
+- No credential editing in Digital Home
+- No profile CRUD in Digital Home
+- No service removal in Digital Home
+- No Service Registry editing in Digital Home
+- No admin actions in Digital Home
+- No new login discovery implementation in Phase 105
+- No advanced notification engine in Phase 105
+- No full ranking algorithm for Useful Services in Phase 105
 
 | Acceptance criteria | |
 |---------------------|---|
 | AC-105-1 | Screen titled **הבית הדיגיטלי** |
-| AC-105-2 | Services grouped by category |
-| AC-105-3 | Exactly one tile per service |
-| AC-105-4 | Profile chooser attached to tile open when multiple profiles exist |
-| AC-105-5 | **Useful services** area present (content may be minimal initially) |
-| AC-105-6 | **Notifications** area foundation present (placeholder or empty state) |
-| AC-105-7 | No profile or credential management controls on tiles |
+| AC-105-2 | Services are grouped by category; empty categories are hidden |
+| AC-105-3 | Exactly one tile per selected service |
+| AC-105-4 | Tile click uses the Phase 103 unified execution entry point |
+| AC-105-5 | Profile chooser appears only when multiple profiles exist for the selected service |
+| AC-105-6 | Single-profile services open without profile-management friction |
+| AC-105-7 | Missing credentials do not prevent opening the service when a URL is available |
+| AC-105-8 | Autofill failure does not prevent website opening and does not close the tab |
+| AC-105-9 | No profile, credential, remove, or management controls appear on tiles |
+| AC-105-10 | Useful Services area exists with placeholder or minimal data-driven content |
+| AC-105-11 | Notifications area exists with placeholder or empty state |
+| AC-105-12 | Empty state guides the user to Service Management when no services are selected |
+| AC-105-13 | Loading state is stable and does not cause major layout jumps |
+| AC-105-14 | Offline/error states are friendly and do not expose technical errors |
+| AC-105-15 | Category and tile layout is responsive and RTL-correct |
+| AC-105-16 | Digital Home does not mutate Service Registry, Access Profiles, credentials, or user_services except through approved execution telemetry/future signals |
+| AC-105-17 | Shufersal and Clalit validated autofill behavior remains preserved |
+| AC-105-18 | Custom and admin-managed services appear and execute identically to catalog services when selected |
+| AC-105-19 | No Digital Home tile opens a temporary discovery tab or closes a user-visible execution tab automatically |
+| AC-105-20 | Build passes |
 
 ---
 
@@ -1081,6 +1228,83 @@ Updating stale `loginUrl` values belongs to Service Registry / Admin metadata fl
 
 ---
 
+### Phase 112 — Login Intelligence & Advanced Autofill
+
+**Goal:** Improve the platform’s ability to discover, classify, and autofill login experiences beyond simple login forms.
+
+**Scope:**
+
+- Login field detection
+- Username/email/id/user-code field classification
+- Password field detection
+- Multi-step login flows
+- Modal/popup login flows
+- iframe evaluation
+- `loginUrl` quality signals
+- Metadata enrichment for Service Registry
+- Adapter recommendation rules
+- Autofill success/failure classification
+
+**Rules:**
+
+- Generic engine remains first priority.
+- Adapters are used only when generic intelligence is insufficient.
+- No auto-submit.
+- No hidden-field filling.
+- User navigation must not be blocked by detection failure.
+- Discovered metadata must update registry/admin flows, not bypass governance.
+
+| Acceptance criteria | |
+|---------------------|---|
+| AC-112-1 | The system can classify common login form patterns |
+| AC-112-2 | The system can enrich registry metadata when safe |
+| AC-112-3 | Failed generic autofill produces actionable integration health signals |
+| AC-112-4 | Complex sites can be marked as adapter-needed |
+| AC-112-5 | Existing Phase 103 execution flow remains unchanged |
+
+---
+
+### Phase 113 — Service Identity and URL Canonicalization
+
+**Goal:** Establish a canonical identity for every service by normalizing user-provided URLs before creating or reusing Service Registry entries. Prevent duplicate services while preserving correct execution behavior.
+
+**Scope:**
+
+- Canonical service identity
+- URL normalization
+- Canonical `primaryUrl` resolution
+- Existing Service Registry lookup
+- Duplicate prevention
+- HTTP/HTTPS normalization
+- WWW / non-WWW normalization
+- Trailing slash normalization
+- URL case normalization
+- Deep-link normalization
+- Query-string removal for identity comparison
+- Fragment (`#`) removal for identity comparison
+- Canonical domain extraction
+- Safe handling of subdomains (do not automatically collapse all subdomains into the root domain)
+- Linking `user_services` to existing registry entries when appropriate
+- Preserve private vs global ownership rules
+- Canonical identity is used only for service identification, never for execution target selection
+
+**Execution boundary:** Canonicalization must never determine which page is opened. Execution continues to use `loginUrl` when available, otherwise `primaryUrl` (Phase 103).
+
+| Acceptance criteria | |
+|---------------------|---|
+| AC-113-1 | Adding an existing service URL does not create a duplicate registry row |
+| AC-113-2 | Adding www/non-www/http/https variants resolves to the same canonical service when appropriate |
+| AC-113-3 | Adding a deep link attempts to resolve the service homepage before registry insert |
+| AC-113-4 | User receives clear feedback when an existing service is reused |
+| AC-113-5 | Custom private services remain private unless approved by admin |
+| AC-113-6 | Canonicalization must never change the execution target. It is used only for service identity, matching and duplicate detection |
+| AC-113-7 | Equivalent URL variants (HTTP/HTTPS, WWW/non-WWW, trailing slash, letter case, query parameters and fragments) resolve to the same canonical service identity when appropriate |
+| AC-113-8 | Subdomains must not automatically be merged into the root domain. Canonical identity must preserve service boundaries unless explicitly defined by Service Registry metadata |
+| AC-113-9 | When an existing Service Registry entry matches the canonical identity, no duplicate registry row is created. The user's `user_services` record references the existing registry entry |
+| AC-113-10 | Canonical Service Identity is stable. It may be recomputed only through the approved normalization process. User edits or execution behavior must never implicitly change canonical identity |
+
+---
+
 ### Phase 150 — Commercial Platform
 
 **Goal:** Subscription and capability foundation without mandatory billing integration.
@@ -1125,6 +1349,8 @@ flowchart LR
   P108[Phase 108 Browsers]
   P109[Phase 109 Credential Lifecycle]
   P111[Phase 111 Service Assets and Icons]
+  P112[Phase 112 Login Intelligence]
+  P113[Phase 113 Service Identity]
   P150[Phase 150 Commercial]
   P190[Phase 190 Accounts]
 
@@ -1139,6 +1365,11 @@ flowchart LR
   P108 --> P103
   P101 --> P107
   P107 --> P111
+  P103 --> P112
+  P102 --> P112
+  P108 --> P112
+  P102 --> P113
+  P104 --> P113
   P111 --> P104
   P111 --> P105
   P105 --> P109
@@ -1160,5 +1391,14 @@ flowchart LR
 | **1.3** | 2026-07-06 | **Phase 102 / 103 boundary clarification.** Phase 102 owns registry metadata and login URL cache; Phase 103 owns execution and autofill orchestration — not per-site login URL discovery. |
 | **1.4** | 2026-07-06 | **Phase 103 acceptance criteria refined.** AC-103-7 updated; AC-103-9 and AC-103-10 added for deterministic outcomes and origin-independent execution. |
 | **1.5** | 2026-07-06 | **Phase 103 execution pipeline.** Unified pipeline diagram, loginUrl discovery boundary, stale-metadata health signals, and Phase 102/107/109 ownership split documented. |
+| **1.6** | 2026-07-06 | **Phase 112 — Login Intelligence & Advanced Autofill.** Advanced login detection, registry metadata enrichment, integration health signals, and adapter recommendation — without changing Phase 103 execution contract. |
+| **1.7** | 2026-07-07 | **Phase 113 — Service URL Normalization and Duplicate Prevention.** Canonical URL resolution, duplicate detection, deep-link homepage resolution, and reuse feedback for custom service creation. |
+| **1.8** | 2026-07-07 | **Phase 113 refined — Service Identity and URL Canonicalization.** Canonical identity scope, execution boundary, subdomain rules, and AC-113-6 through AC-113-9. |
+| **1.9** | 2026-07-07 | **Phase 113 — AC-113-10.** Canonical Service Identity stability; recomputation only via approved normalization process. |
+| **2.0** | 2026-07-07 | **Phase 104 refined — Service Management Experience.** Architectural principles, extended scope, management state, and AC-104-8 through AC-104-11. |
+| **2.1** | 2026-07-07 | **Phase 104 bug-prevention.** Idempotent operations, pending-state guards, persistence failure handling, and AC-104-12 through AC-104-16. |
+| **2.2** | 2026-07-07 | **Phase 104 — AC-104-10 refined.** Usability when discovery/search unavailable; selected services remain manageable. |
+| **2.3** | 2026-07-07 | **Phase 104 completion criteria.** Production-grade layout, unified execution, regression protection, concurrent-update resilience, and AC-104-17 through AC-104-23. |
+| **2.4** | 2026-07-08 | **Phase 105 rewritten — Digital Home Experience.** Execution-surface principles, layout architecture, execution/UX rules, non-goals, and AC-105-1 through AC-105-20. |
 
 Implementation plans for individual production phases may be authored separately; they must align with this document and must not duplicate it as a second architecture source.

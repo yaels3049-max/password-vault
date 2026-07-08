@@ -12,6 +12,8 @@ import {
 import { htzoneAdapter } from './execution/adapters/htzoneAdapter';
 import { practiceAdapter } from './execution/adapters/practiceAdapter';
 import { executeGenericAutofill } from './execution/genericAutofill';
+import { executeServiceFromTile } from './execution/serviceExecution';
+import type { ServiceExecutionResult } from './execution/serviceExecution';
 import {
   isExtensionAvailable,
   openUrlInNewTab,
@@ -91,28 +93,49 @@ export function openIsraeliSiteAutofillTest(): void {
   }
 }
 
-/** Dev-only: exercise generic autofill against Shufersal login URL. */
+function tileExecutionToGenericResult(
+  result: ServiceExecutionResult,
+): ReturnType<typeof executeGenericAutofill> {
+  if (result.status === 'credentials_missing') {
+    return { ok: false, reason: 'credentials_missing' };
+  }
+  return { ok: true, extensionUsed: result.extensionUsed };
+}
+
+/** Dev-only: same orchestrator path as Dashboard tile open (D-103-15). */
 export function openShufersalLoginFromTile(
   credential: Credential | undefined,
   loginFields: LoginField[] = DEFAULT_LOGIN_FIELDS,
 ): ReturnType<typeof executeGenericAutofill> {
   const shufersalService = findRuntimeService(SHUFERSAL_SERVICE_ID);
-  const url = shufersalService
-    ? getServiceOpenUrl(shufersalService)
-    : 'https://www.shufersal.co.il/online/he/login';
-  return executeGenericAutofill(url, credential, loginFields);
+  if (!shufersalService) {
+    return executeGenericAutofill(
+      'https://www.shufersal.co.il/online/he/login',
+      credential,
+      loginFields,
+    );
+  }
+  return tileExecutionToGenericResult(
+    executeServiceFromTile(shufersalService, credential, loginFields),
+  );
 }
 
-/** Dev-only: exercise generic autofill against Clalit login URL. */
+/** Dev-only: same orchestrator path as Dashboard tile open (D-103-15). */
 export function openClalitLoginFromTile(
   credential: Credential | undefined,
   loginFields: LoginField[] = DEFAULT_LOGIN_FIELDS,
 ): ReturnType<typeof executeGenericAutofill> {
   const clalitService = findRuntimeService(CLALIT_SERVICE_ID);
-  const url = clalitService
-    ? getServiceOpenUrl(clalitService)
-    : 'https://e-services.clalit.co.il/onlineweb/general/login.aspx';
-  return executeGenericAutofill(url, credential, loginFields);
+  if (!clalitService) {
+    return executeGenericAutofill(
+      'https://e-services.clalit.co.il/onlineweb/general/login.aspx',
+      credential,
+      loginFields,
+    );
+  }
+  return tileExecutionToGenericResult(
+    executeServiceFromTile(clalitService, credential, loginFields),
+  );
 }
 
 /** Dev-only: exercise HTZone adapter directly. */

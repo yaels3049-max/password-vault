@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Credential } from './credentials';
 import { hasCompleteCredentials } from './credentials';
-import { executeServiceFromTile } from './execution/serviceExecution';
+import { openServiceWithProfile } from './serviceManagement/openWithProfile';
 import {
   categories,
   categoryLabels,
@@ -59,38 +59,23 @@ export default function Dashboard({
     clearStatusSoon(MISSING_CREDENTIALS_MESSAGE);
   }
 
-  async function resolveProfileForOpen(serviceId: string): Promise<string | null> {
-    const result = await resolveProfile(serviceId);
-    if (result === 'cancelled') {
-      return null;
-    }
-    if (result === 'unavailable') {
-      promptMissingCredentials();
-      return null;
-    }
-    return result;
-  }
-
   async function handleServiceOpen(service: Service) {
     onDismissMagicMomentHint();
 
-    const profileId = await resolveProfileForOpen(service.id);
-    if (!profileId) {
+    const outcome = await openServiceWithProfile(service, {
+      resolveProfile,
+      credentialsByProfileId,
+    });
+
+    if (outcome.status === 'cancelled') {
       return;
     }
-
-    const loginFields = getLoginFields(service);
-    const credential = credentialsByProfileId[profileId];
-
-    const result = executeServiceFromTile(service, credential, loginFields);
-
-    if (result.status === 'credentials_missing') {
+    if (outcome.status === 'credentials_missing') {
       promptMissingCredentials();
       return;
     }
-
-    if (result.userMessage) {
-      clearStatusSoon(result.userMessage);
+    if (outcome.userMessage) {
+      clearStatusSoon(outcome.userMessage);
     }
   }
 

@@ -643,20 +643,21 @@ const GENERIC_REAL_SITE_TAB_LOAD_TIMEOUT_MS = 120000;
 /** Time allowed for detect/fill once the login page is ready (retries included). */
 const GENERIC_REAL_SITE_OPERATION_TIMEOUT_MS = 90000;
 
-/** @deprecated Phase 102 stabilization — POC only. Phase 103 removes host allowlist branching. */
-const GENERIC_REAL_SITE_ALLOWED_HOSTS = {
-  'www.shufersal.co.il': true,
-  'shufersal.co.il': true,
-  'e-services.clalit.co.il': true,
-};
-
-function isAllowedGenericRealSiteUrl(urlString) {
+/** Phase 103 URL safety policy — user-initiated tile click is the trust boundary. */
+function isAllowedGenericAutofillUrl(urlString) {
   try {
     var url = new URL(urlString);
-    return (
-      url.protocol === 'https:' &&
-      GENERIC_REAL_SITE_ALLOWED_HOSTS[url.hostname] === true
-    );
+    if (url.protocol === 'https:') {
+      return true;
+    }
+    if (url.protocol === 'http:') {
+      return (
+        url.hostname === 'localhost' ||
+        url.hostname === '127.0.0.1' ||
+        url.hostname === '[::1]'
+      );
+    }
+    return false;
   } catch (_error) {
     return false;
   }
@@ -690,7 +691,7 @@ function tabUrlMatchesGenericTarget(tabUrl, urlString) {
 }
 
 function openGenericRealSiteTab(urlString, sendResponse, sessionLabel, onTabReady) {
-  if (!isAllowedGenericRealSiteUrl(urlString)) {
+  if (!isAllowedGenericAutofillUrl(urlString)) {
     sendResponse({ ok: false, reason: 'url_not_allowed' });
     return false;
   }

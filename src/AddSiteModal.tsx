@@ -1,9 +1,16 @@
 import { useState } from 'react';
 import { validateCustomPrimaryUrl } from './catalog';
+import { categoryLabels, type ServiceCategory } from './mockServices';
 
 interface AddSiteModalProps {
-  onAdd: (displayName: string, primaryUrl: string) => void | Promise<void>;
+  onAdd: (
+    displayName: string,
+    primaryUrl: string,
+    category: ServiceCategory,
+  ) => void | Promise<void>;
   onCancel: () => void;
+  /** Selectable categories (practice is dev-only and excluded by the caller). */
+  categoryOptions: ServiceCategory[];
   error?: string | null;
   isDiscovering?: boolean;
   discoveryMessage?: string | null;
@@ -13,6 +20,7 @@ interface AddSiteModalProps {
 export default function AddSiteModal({
   onAdd,
   onCancel,
+  categoryOptions,
   error,
   isDiscovering = false,
   discoveryMessage = null,
@@ -20,6 +28,9 @@ export default function AddSiteModal({
 }: AddSiteModalProps) {
   const [displayName, setDisplayName] = useState('');
   const [primaryUrl, setPrimaryUrl] = useState('');
+  const [category, setCategory] = useState<ServiceCategory>(
+    categoryOptions[0] ?? 'shopping',
+  );
   const [urlError, setUrlError] = useState<string | null>(null);
 
   function validateUrlField(url: string): boolean {
@@ -41,7 +52,7 @@ export default function AddSiteModal({
     const trimmedUrl = primaryUrl.trim();
     if (!trimmedName || !trimmedUrl) return;
     if (!validateUrlField(trimmedUrl)) return;
-    void onAdd(trimmedName, trimmedUrl);
+    void onAdd(trimmedName, trimmedUrl, category);
   }
 
   return (
@@ -84,6 +95,20 @@ export default function AddSiteModal({
               disabled={isDiscovering}
             />
           </label>
+          <label className="modal-field">
+            <span>קטגוריה</span>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as ServiceCategory)}
+              disabled={isDiscovering}
+            >
+              {categoryOptions.map((option) => (
+                <option key={option} value={option}>
+                  {categoryLabels[option]}
+                </option>
+              ))}
+            </select>
+          </label>
           {(urlError || error) && !isDiscovering && !discoveryMessage && (
             <p className="modal-field-error" role="alert">
               {urlError ?? error}
@@ -112,7 +137,7 @@ export default function AddSiteModal({
             <button
               type="submit"
               className="modal-btn modal-btn-primary"
-              disabled={isDiscovering}
+              disabled={isDiscovering || Boolean(discoveryMessage)}
             >
               {isDiscovering ? 'מוסיף…' : 'הוסף'}
             </button>
