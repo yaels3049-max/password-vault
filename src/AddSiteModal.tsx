@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { validateCustomPrimaryUrl } from './catalog';
-import { categoryLabels, type ServiceCategory } from './mockServices';
+import { categoryLabels, runtimeCategoryLabels, type ServiceCategory } from './mockServices';
 
 interface AddSiteModalProps {
   onAdd: (
@@ -104,7 +104,7 @@ export default function AddSiteModal({
             >
               {categoryOptions.map((option) => (
                 <option key={option} value={option}>
-                  {categoryLabels[option]}
+                  {runtimeCategoryLabels[option] ?? categoryLabels[option] ?? option}
                 </option>
               ))}
             </select>

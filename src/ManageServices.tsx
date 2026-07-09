@@ -4,8 +4,8 @@ import ServiceProfileManagementModal from './ServiceProfileManagementModal';
 import ServiceCard from './components/ServiceCard';
 import { createCustomServiceDefinition, discoverLoginForCustomService } from './catalog';
 import {
-  categories,
-  categoryLabels,
+  runtimeCategoryLabels,
+  runtimeCategoryOrder,
   getLoginFields,
   type Service,
   type ServiceCategory,
@@ -47,7 +47,7 @@ interface ManageServicesProps {
   vaultUnlocked?: boolean;
 }
 
-const CUSTOM_ADD_CATEGORIES: ServiceCategory[] = categories.filter(
+const CUSTOM_ADD_CATEGORIES: ServiceCategory[] = runtimeCategoryOrder.filter(
   (category) => category !== 'practice',
 );
 
@@ -258,7 +258,7 @@ export default function ManageServices({
                 <ServiceCard
                   key={service.id}
                   name={service.name}
-                  categoryLabel={categoryLabels[service.category]}
+                  categoryLabel={runtimeCategoryLabels[service.category] ?? service.category}
                   logoSrc={logos[service.id]}
                   state={deriveServiceManagementState(service, managementContext)}
                   profileCount={profileCount}
@@ -395,7 +395,7 @@ export default function ManageServices({
                 >
                   הכל
                 </button>
-                {categories.map((category) => (
+                {runtimeCategoryOrder.map((category) => (
                   <button
                     key={category}
                     type="button"
@@ -404,7 +404,7 @@ export default function ManageServices({
                     }`}
                     onClick={() => setCategoryFilter(category)}
                   >
-                    {categoryLabels[category]}
+                    {runtimeCategoryLabels[category] ?? category}
                   </button>
                 ))}
               </div>
@@ -422,7 +422,7 @@ export default function ManageServices({
                       <ServiceCard
                         key={service.id}
                         name={service.name}
-                        categoryLabel={categoryLabels[service.category]}
+                        categoryLabel={runtimeCategoryLabels[service.category] ?? service.category}
                         logoSrc={logos[service.id]}
                         state={deriveServiceManagementState(service, managementContext)}
                         showBadge={false}

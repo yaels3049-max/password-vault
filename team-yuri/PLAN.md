@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Version** | 4.1 |
+| **Version** | 4.5 |
 | **Status** | Production Ready |
-| **Last updated** | 2026-07-08 |
+| **Last updated** | 2026-07-09 |
 
 This document describes *what* the product is and *how* it is shaped at a system level. It does not prescribe implementation details, file layouts, or step-by-step build plans.
 
@@ -1354,9 +1354,139 @@ It defines only the user experience around security.
 
 ---
 
-### Phase 108 — Browser Compatibility
+### Phase 108 — Browser Integration and Login Discovery
 
-**Goal:** Chrome and Edge support with abstraction and store-ready packaging.
+**Goal:** Provide Chrome and Edge browser support and establish the browser-based login page discovery mechanism used to enrich `service_registry` with `loginUrl` metadata.
+
+**Scope:**
+
+#### 1. Browser Compatibility
+
+- Chrome support
+- Microsoft Edge support
+- Browser integration abstraction layer
+- Extension messaging abstraction
+- Tab API abstraction
+- Store packaging strategy for Chrome Web Store and Edge Add-ons
+- Graceful Hub behavior when extension is missing
+
+#### 2. Login Page Discovery
+
+When a user adds a new service, the system should attempt to discover the service login page and store it in `service_registry`.
+
+Discovery must:
+
+- start from the user-provided URL or `primaryUrl`
+- detect common login/sign-in links
+- follow safe redirects
+- identify candidate `loginUrl`
+- validate that the candidate looks like a login page
+- store `loginUrl` in `service_registry` when confidence is sufficient
+- store `primaryUrl` even when `loginUrl` is not found
+- never block service creation solely because `loginUrl` discovery failed
+- never perform autofill during discovery
+- never submit forms during discovery
+- never use user credentials during discovery
+
+#### 3. `service_registry` metadata
+
+`service_registry` should support login discovery metadata such as:
+
+- `primaryUrl`
+- `loginUrl`
+- `loginUrlSource`: auto | admin | user | unknown
+- `loginUrlConfidence`
+- `loginUrlStatus`: valid | missing | stale | failed | needs_review
+- `loginUrlLastDiscoveredAt`
+- `loginUrlLastCheckedAt`
+- `loginUrlDiscoveryError`
+
+Exact column names may follow existing schema conventions.
+
+#### 4. Custom Service Creation Flow
+
+When a user adds a custom service:
+
+- normalize/validate the provided URL according to Phase 113 rules where available
+- create or reuse `service_registry` entry
+- attempt login discovery
+- save `loginUrl` if found
+- if not found, save service with `primaryUrl` and mark `loginUrlStatus` appropriately
+- link `user_services` to the registry entry
+- avoid phantom tiles and partial local-only success
+
+#### 5. Admin Login URL Management
+
+Admin Management must support:
+
+- viewing current `loginUrl` per service
+- editing `loginUrl` manually
+- marking `loginUrl` as verified
+- marking `loginUrl` as stale/needs review
+- triggering rediscovery for a single service
+- triggering bulk refresh for all services
+- seeing last discovery/check date
+- seeing discovery failure reason
+- preserving manual admin override unless explicitly refreshed
+
+#### 6. Bulk Refresh Rules
+
+Bulk `loginUrl` refresh must:
+
+- be rate-limited
+- avoid blocking the application
+- support partial success
+- report failures clearly
+- not overwrite verified manual admin `loginUrl` values without explicit approval
+- not affect credentials, access profiles, or `user_services`
+- update only service metadata
+
+#### 7. Discovery UX Rules
+
+- Discovery should be non-intrusive.
+- Avoid visible temporary tabs where possible.
+- If a temporary tab is technically required, it must be isolated in a DiscoveryExecutor and must close reliably on success, failure, timeout, or cancellation.
+- Normal Digital Home execution tabs must never reuse discovery close behavior.
+- User should receive friendly messages when discovery fails.
+
+#### 8. Relationship to Other Phases
+
+- Phase 102 owns Service Registry persistence.
+- Phase 108 owns browser integration and `loginUrl` discovery.
+- Phase 110 uses discovered `loginUrl` for standard autofill.
+- Phase 112 handles complex authentication flows once a valid login entry point is available, whether through a discovered `loginUrl`, an admin-managed `loginUrl`, or approved Service Registry metadata.
+- Phase 113 owns service identity and URL canonicalization.
+- Phase 107 owns admin registry management UI.
+
+**Discovery boundary**
+
+Phase 108 is responsible only for discovering and maintaining the service login entry point.
+
+Phase 108 must not:
+
+- perform credential autofill
+- interact with authentication flows
+- execute login sequences
+- solve CAPTCHA
+- handle OTP
+- execute service-specific adapters
+- interpret complex authentication logic
+
+Its responsibility ends once a valid login entry point has been identified (or discovery has failed gracefully and the service has been created with the appropriate metadata status).
+
+Phase 110 consumes the discovered login entry point for generic autofill.
+
+Phase 112 extends the same execution architecture to complex authentication scenarios that cannot be handled safely by generic autofill.
+
+**Non-goals:**
+
+- No credential autofill
+- No auto-submit
+- No password handling
+- No complex multi-step login intelligence
+- No iframe/modal/OTP/CAPTCHA handling
+- No service-specific adapters
+- No canonical identity redesign
 
 | Acceptance criteria | |
 |---------------------|---|
@@ -1364,7 +1494,19 @@ It defines only the user experience around security.
 | AC-108-2 | Extension functions on current Edge stable |
 | AC-108-3 | Browser integration abstraction layer isolates messaging and tab APIs |
 | AC-108-4 | Packaging strategy documented for Chrome Web Store and Edge Add-ons |
-| AC-108-5 | Hub degrades gracefully when extension not installed |
+| AC-108-5 | Hub degrades gracefully when extension is not installed |
+| AC-108-6 | Adding a custom service attempts `loginUrl` discovery |
+| AC-108-7 | `service_registry` stores `loginUrl` when discovery succeeds |
+| AC-108-8 | `service_registry` stores `primaryUrl` and a clear `loginUrl` status when discovery fails |
+| AC-108-9 | Discovery failure does not prevent service creation |
+| AC-108-10 | Discovery never uses credentials, never autofills, and never submits forms |
+| AC-108-11 | Admin can manually edit `loginUrl` for a service |
+| AC-108-12 | Admin can trigger rediscovery for a single service |
+| AC-108-13 | Admin can trigger bulk `loginUrl` refresh |
+| AC-108-14 | Bulk refresh is rate-limited and reports partial failures |
+| AC-108-15 | Manual admin `loginUrl` overrides are not overwritten without explicit approval |
+| AC-108-16 | Temporary discovery tabs, if used, close reliably and are never confused with user-opened execution tabs |
+| AC-108-17 | Build passes |
 
 ---
 
@@ -1379,6 +1521,157 @@ It defines only the user experience around security.
 | AC-109-3 | Explicit “update credentials” flow in Service Management |
 | AC-109-4 | Credential updates require user confirmation — no silent overwrite |
 | AC-109-5 | Lifecycle events do not weaken zero-knowledge rules |
+
+---
+
+### Phase 110 — Standard Login Autofill Coverage
+
+**Goal:** Expand autofill support from validated examples only to all standard login forms across catalog, custom, and admin-managed services.
+
+**Architectural purpose:**
+
+Phase 103 established one execution pipeline.
+Phase 110 makes that pipeline useful for normal websites.
+Phase 112 remains responsible for complex login intelligence and advanced cases.
+
+**Scope:**
+
+- Standard single-page login forms
+- Username/email/user-id fields
+- Password fields
+- Basic login button detection
+- Catalog services
+- Custom services with `loginUrl`
+- Admin-managed services
+- Services with simple `loginFields`
+- Services where standard login fields can be detected using conservative, safe heuristics
+- Generic autofill coverage beyond Shufersal and Clalit
+
+The heuristics must be deterministic and limited to common HTML login forms.
+
+Phase 110 must not introduce AI-based detection, advanced DOM analysis, visual recognition or adaptive learning.
+
+**Standard login definition:**
+
+A standard login form is:
+
+- one visible login page
+- one username/email/id field
+- one password field
+- optional visible login button
+- no iframe requirement
+- no multi-step login
+- no CAPTCHA dependency
+- no heavy dynamic authentication flow
+- no special adapter requirement
+
+A standard login page may contain:
+
+- username
+- email
+- user ID
+- customer number
+- password
+- visible login button
+
+provided that all fields exist on the same page and follow a conventional HTML login structure.
+
+**Execution rules:**
+
+- All services must use the Phase 103 unified execution pipeline.
+- Autofill must not depend on Shufersal/Clalit allowlists.
+- Generic autofill must be attempted when:
+  - `loginUrl` exists
+  - credentials exist
+  - standard login fields are known or safely detectable
+- If field detection fails, the site must still open.
+- Autofill failure must never close the tab.
+- Autofill failure must never block user navigation.
+- No auto-submit.
+- No hidden-field filling.
+- No filling into unrelated fields.
+
+Generic autofill must remain deterministic.
+
+It must never:
+
+- guess credentials
+- guess field meaning when confidence is low
+- interact with hidden elements
+- bypass browser security
+- execute custom JavaScript specific to a service
+- rely on timing-sensitive hacks
+
+**Metadata rules:**
+
+- Prefer explicit `loginFields` from Service Registry.
+- If safe field detection succeeds, discovered metadata may be proposed for registry enrichment.
+- Metadata enrichment must follow governance rules and must not bypass admin review where required.
+- Phase 110 must not redefine canonical service identity; URL normalization remains Phase 113.
+
+**Out of scope:**
+
+- Multi-step login
+- OTP flows
+- CAPTCHA
+- iframe login forms
+- popup/modal login forms
+- bank-specific complex adapters
+- automatic password rotation
+- loginUrl discovery for missing login pages
+- canonical URL normalization
+- duplicate service detection
+
+These belong to Phase 112 or Phase 113.
+
+**Relationship to Phase 112:**
+
+Phase 110 provides broad coverage for conventional login forms.
+
+Phase 112 extends the same execution architecture to advanced authentication scenarios that cannot be handled safely by generic autofill.
+
+Phase 112 includes, but is not limited to:
+
+- multi-step login flows
+- iframe-based login
+- modal login dialogs
+- dynamically generated forms
+- CAPTCHA-aware orchestration
+- OTP orchestration
+- service-specific adapters
+- complex JavaScript-driven authentication
+- bank-specific authentication flows
+- advanced field detection strategies
+
+Phase 112 builds on Phase 110 and must not replace or duplicate its generic capabilities.
+
+**Regression protection:**
+
+Phase 110 must not:
+
+- change the unified execution pipeline defined in Phase 103
+- change Service Registry ownership
+- introduce service-specific branching outside approved adapters
+- modify URL canonicalization rules (Phase 113)
+- introduce advanced login intelligence reserved for Phase 112
+
+| Acceptance criteria | |
+|---------------------|---|
+| AC-110-1 | Generic autofill is no longer limited to Shufersal and Clalit |
+| AC-110-2 | Standard login forms can be autofilled for catalog services when metadata and credentials exist |
+| AC-110-3 | Standard login forms can be autofilled for custom services when metadata and credentials exist |
+| AC-110-4 | Standard login forms can be autofilled for admin-managed services when metadata and credentials exist |
+| AC-110-5 | Username/email/id and password fields are handled through the same generic autofill engine |
+| AC-110-6 | Autofill never auto-submits the login form |
+| AC-110-7 | Autofill never writes into hidden or unrelated fields |
+| AC-110-8 | If autofill cannot run safely, the website remains open |
+| AC-110-9 | Autofill failure produces a friendly non-blocking indication or integration health signal |
+| AC-110-10 | Shufersal and Clalit validated autofill behavior remains preserved |
+| AC-110-11 | No service-specific branching is introduced outside approved adapters |
+| AC-110-12 | Phase 110 does not modify Service Identity or URL canonicalization rules |
+| AC-110-13 | Build passes |
+| AC-110-14 | Generic autofill uses deterministic matching rules and never relies on AI, probabilistic guessing or service-specific heuristics |
+| AC-110-15 | Phase 110 remains fully compatible with the advanced authentication architecture introduced by Phase 112 |
 
 ---
 
@@ -2653,8 +2946,9 @@ flowchart LR
   P105[Phase 105 Digital Home UX]
   P106[Phase 106 Security Trust]
   P107[Phase 107 Admin]
-  P108[Phase 108 Browsers]
+  P108[Phase 108 Browser Integration]
   P109[Phase 109 Credential Lifecycle]
+  P110[Phase 110 Standard Login Autofill]
   P111[Phase 111 Service Assets and Icons]
   P112[Phase 112 Login Intelligence]
   P113[Phase 113 Service Identity]
@@ -2677,6 +2971,10 @@ flowchart LR
   P108 --> P103
   P101 --> P107
   P107 --> P111
+  P103 --> P110
+  P102 --> P110
+  P108 --> P110
+  P110 --> P112
   P103 --> P112
   P102 --> P112
   P108 --> P112
@@ -2744,5 +3042,9 @@ flowchart LR
 | **3.9** | 2026-07-08 | **Phase 192 refined.** Session Security subsection, device lifecycle, Security Health wording, and AC-192-13 vault/session independence. |
 | **4.0** | 2026-07-08 | **Phase 114 — Application Shell and Shared Layout.** New phase after 113; renumbered 121→122, 122→123, 123→124, 150→151, 190→191, 191→192. |
 | **4.1** | 2026-07-08 | **Phase 106 — user-trust messaging.** Benefit-oriented Security UX guidance, UX principles section, AC-106-19; global vault chrome AC renumbered to AC-106-21. |
+| **4.2** | 2026-07-09 | **Phase 110 — Standard Login Autofill Coverage.** Generic autofill for standard login forms across all service types; Phase 112 remains advanced intelligence. |
+| **4.3** | 2026-07-09 | **Phase 110 refined.** Conservative field detection, deterministic autofill constraints, Phase 112 boundary, regression protection, and AC-110-14/15. |
+| **4.4** | 2026-07-09 | **Phase 108 rewritten — Browser Integration and Login Discovery.** Chrome/Edge abstraction plus loginUrl discovery, registry metadata, admin refresh, and DiscoveryExecutor tab isolation. |
+| **4.5** | 2026-07-09 | **Phase 108 discovery boundary.** Clarified Phase 112 entry-point sources and explicit Phase 108 vs 110 vs 112 responsibility split. |
 
 Implementation plans for individual production phases may be authored separately; they must align with this document and must not duplicate it as a second architecture source.

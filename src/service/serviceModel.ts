@@ -9,12 +9,7 @@ export const SERVICE_SCHEMA_VERSION = 1;
 
 export const DISPLAY_NAME_MAX_LENGTH = 120;
 
-export type ServiceCategory =
-  | 'practice'
-  | 'banking'
-  | 'health'
-  | 'shopping'
-  | 'custom';
+export type ServiceCategory = string;
 
 export type LoginFieldType = 'text' | 'password';
 
@@ -282,15 +277,8 @@ export function validateServiceDefinition(
   }
 
   const category = input.category;
-  if (
-    category !== undefined &&
-    category !== 'practice' &&
-    category !== 'banking' &&
-    category !== 'health' &&
-    category !== 'shopping' &&
-    category !== 'custom'
-  ) {
-    issues.push({ field: 'category', message: 'category is not a recognized value' });
+  if (category !== undefined && !isNonEmptyString(category)) {
+    issues.push({ field: 'category', message: 'category must be a non-empty string when provided' });
   }
 
   const icon = input.icon;

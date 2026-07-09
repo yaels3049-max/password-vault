@@ -87,19 +87,26 @@ function failureResult(
   };
 }
 
+export type RegistryLoginDiscoveryResult = CustomServiceDiscoveryResult;
+
 /**
- * Run login entry discovery for a newly created custom service.
- * Persists discovered URL to user registry row when Supabase is configured (Phase 102).
+ * Run login entry discovery for any service_registry row (user or global).
+ * Shared pipeline for custom service add and admin global catalog create.
  */
-export async function discoverLoginForCustomService(
+export async function discoverLoginForRegistryService(
   definition: ServiceDefinition,
-  options?: { primaryUrl?: string },
-): Promise<CustomServiceDiscoveryResult> {
+  options?: { primaryUrl?: string; force?: boolean; source?: 'auto' | 'admin' | 'user' },
+): Promise<RegistryLoginDiscoveryResult> {
   const primaryUrl = (options?.primaryUrl ?? definition.url).trim();
+  const source = options?.source ?? (definition.source === 'user-created' ? 'user' : 'auto');
 
   logCustomDiscovery('discovery started');
 
-  const persistResult = await discoverAndPersistLoginUrl(definition, { primaryUrl });
+  const persistResult = await discoverAndPersistLoginUrl(definition, {
+    primaryUrl,
+    force: options?.force,
+    source,
+  });
 
   if (persistResult.skipped) {
     logCustomDiscovery('discovery skipped — login URL already valid in registry');
@@ -133,7 +140,12 @@ export async function discoverLoginForCustomService(
     discovery,
     outcome: {
       status: 'success',
-      message: DISCOVERY_SUCCESS_MESSAGE,
+      message: persistResult.persisted
+        ? DISCOVERY_SUCCESS_MESSAGE
+        : 'גילוי הצליח אך לא נשמר בקטלוג. ניתן לערוך ידנית או לנסות שוב.',
     },
   };
 }
+
+/** @deprecated Use discoverLoginForRegistryService — kept for ManageServices import stability. */
+export const discoverLoginForCustomService = discoverLoginForRegistryService;

@@ -10,6 +10,7 @@ import {
 } from './registryMapper';
 import type { ServiceDefinition } from '../service/serviceModel';
 import { formatUnknownError } from '../formatErrorChain';
+import { clearRegistryCategoryCache } from './categoryCatalog';
 
 export class CatalogLoadError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -25,6 +26,28 @@ let sessionCache: ServiceDefinition[] | null = null;
 
 const REGISTRY_SELECT =
   'id, display_name, primary_url, login_url, login_url_status, category_id, icon, adapter_id, login_fields, source_type, service_status, metadata, owner_user_id';
+
+/** Global rows eligible for end-user catalog discovery (Hub). */
+const GLOBAL_CATALOG_SOURCE_TYPES = new Set(['built_in', 'approved_global', 'admin']);
+
+/**
+ * End-user catalog visibility — enforced client-side so admin RLS (SELECT all rows)
+ * does not leak other users' private services into Manage Services discovery.
+ */
+export function isCatalogVisibleRegistryRow(
+  row: ServiceRegistryRow,
+  currentUserId: string | null,
+): boolean {
+  if (row.service_status !== 'active') {
+    return false;
+  }
+
+  if (row.owner_user_id === null) {
+    return GLOBAL_CATALOG_SOURCE_TYPES.has(row.source_type);
+  }
+
+  return currentUserId !== null && row.owner_user_id === currentUserId;
+}
 
 function getDevPracticeDefinition(): ServiceDefinition {
   const practice = BUILTIN_CATALOG_DEFINITIONS.find(
@@ -85,6 +108,7 @@ export function getCachedRegistryCatalog(): ServiceDefinition[] | null {
 
 export function clearRegistryCatalogCache(): void {
   sessionCache = null;
+  clearRegistryCategoryCache();
 }
 
 /**
@@ -102,13 +126,16 @@ export async function loadRegistryCatalog(): Promise<ServiceDefinition[]> {
 
   try {
     const rows = await fetchRegistryRows();
-    const globalBuiltIns = rows.filter(
+    const currentUserId = await ensureAnonymousUserId();
+    const catalogRows = rows.filter((row) =>
+      isCatalogVisibleRegistryRow(row, currentUserId),
+    );
+    const globalBuiltIns = catalogRows.filter(
       (row) => row.owner_user_id === null && row.source_type === 'built_in',
     );
-    const userRows = rows.filter((row) => row.owner_user_id !== null);
 
     const definitions = applyBuiltinCatalogOverlayAll(
-      [...globalBuiltIns, ...userRows].map(registryRowToServiceDefinition),
+      catalogRows.map(registryRowToServiceDefinition),
     );
 
     if (globalBuiltIns.length === 0 && !isDevBuild()) {

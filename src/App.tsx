@@ -12,9 +12,10 @@ import { isDevBuild } from './dev/devMode';
 
 import { preloadServiceLogos } from './logoCache';
 
-import { HUB_PRACTICE_LOGIN_ID, setRuntimeBuiltinServices } from './mockServices';
+import { HUB_PRACTICE_LOGIN_ID, setRuntimeBuiltinServices, setRuntimeCategoryCatalog } from './mockServices';
 
 import { clearRegistryCatalogCache } from './registry/registryLoader';
+import { loadRegistryCategories } from './registry/categoryCatalog';
 
 import type { ServiceDefinition } from './service/serviceModel';
 
@@ -45,6 +46,9 @@ import { ProfileResolution } from './profile';
 import { AppVaultShell } from './trust';
 
 import './App.css';
+
+// Phase 107: Admin console at #/admin — gated shell mounts from main.tsx (AdminGate).
+export { isAdminRoute, ADMIN_ROUTE_HASH } from './admin/adminRoutes';
 
 
 
@@ -263,6 +267,11 @@ function App() {
 
 
     loadBuiltinCatalogDefinitions()
+      .then(async (definitions) => {
+        const registryCategories = await loadRegistryCategories();
+        setRuntimeCategoryCatalog(registryCategories);
+        return definitions;
+      })
 
       .then((definitions) => {
 
@@ -465,6 +474,7 @@ function App() {
     setSelectionError(null);
     clearRegistryCatalogCache();
     const refreshed = await loadBuiltinCatalogDefinitions();
+    setRuntimeCategoryCatalog(await loadRegistryCategories());
     setCatalogDefinitions(refreshed);
 
   }
@@ -520,7 +530,7 @@ function App() {
     try {
 
       const definitions = await loadBuiltinCatalogDefinitions();
-
+      setRuntimeCategoryCatalog(await loadRegistryCategories());
       setCatalogDefinitions(definitions);
 
     } catch (error) {

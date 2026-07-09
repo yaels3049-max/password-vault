@@ -14,9 +14,11 @@ export {
 export { normalizeStoredCustomService, normalizeStoredCustomServices } from './customServiceStorage';
 export {
   discoverLoginForCustomService,
+  discoverLoginForRegistryService,
   shouldPersistDiscoveredLoginUrl,
   type CustomServiceDiscoveryOutcome,
   type CustomServiceDiscoveryResult,
+  type RegistryLoginDiscoveryResult,
 } from './customServiceDiscovery';
 export { loadBuiltinCatalogDefinitions } from './catalogLoader';
 export {

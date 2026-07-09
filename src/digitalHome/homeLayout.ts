@@ -1,5 +1,7 @@
 import {
   categoryLabels,
+  runtimeCategoryLabels,
+  runtimeCategoryOrder,
   type Service,
   type ServiceCategory,
 } from '../mockServices';
@@ -12,18 +14,6 @@ import {
  * Useful Services / Notifications are not part of this count.
  */
 export const CATEGORY_LAYOUT_MIN_SERVICES = 13;
-
-/**
- * Stable Digital Home category display order (all registry categories).
- * Independent of Service Management's soft-hidden practice filter so every
- * selected service still appears when category layout is active.
- */
-const HOME_CATEGORY_ORDER: ServiceCategory[] = [
-  'practice',
-  'banking',
-  'health',
-  'shopping',
-];
 
 export type HomeServicesLayoutMode = 'flat' | 'category';
 
@@ -52,9 +42,16 @@ export interface CategoryServiceGroup {
 export function groupSelectedServicesByCategory(
   selectedServices: Service[],
 ): CategoryServiceGroup[] {
-  return HOME_CATEGORY_ORDER.map((category) => ({
-    category,
-    label: categoryLabels[category],
-    services: selectedServices.filter((service) => service.category === category),
-  })).filter((group) => group.services.length > 0);
+  const order =
+    runtimeCategoryOrder.length > 0
+      ? runtimeCategoryOrder
+      : ['practice', 'banking', 'health', 'shopping'];
+
+  return order
+    .map((category) => ({
+      category,
+      label: runtimeCategoryLabels[category] ?? categoryLabels[category] ?? category,
+      services: selectedServices.filter((service) => service.category === category),
+    }))
+    .filter((group) => group.services.length > 0);
 }

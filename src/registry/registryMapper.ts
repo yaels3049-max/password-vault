@@ -61,17 +61,11 @@ function mapSourceType(sourceType: string): ServiceSource {
 }
 
 function mapCategory(categoryId: string | null): ServiceCategory | undefined {
-  if (
-    categoryId === 'practice' ||
-    categoryId === 'banking' ||
-    categoryId === 'health' ||
-    categoryId === 'shopping' ||
-    categoryId === 'custom'
-  ) {
-    return categoryId;
+  if (!categoryId) {
+    return undefined;
   }
 
-  return categoryId ? 'custom' : undefined;
+  return categoryId;
 }
 
 export function registryRowToServiceDefinition(row: ServiceRegistryRow): ServiceDefinition {

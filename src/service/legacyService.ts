@@ -1,4 +1,4 @@
-export type ServiceCategory = 'practice' | 'banking' | 'health' | 'shopping';
+export type ServiceCategory = string;
 
 export type LoginFieldType = 'text' | 'password';
 
