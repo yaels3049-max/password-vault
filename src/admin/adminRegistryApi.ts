@@ -1,5 +1,11 @@
 import { DEFAULT_LOGIN_FIELDS, type LoginField } from '../service/serviceModel';
 import { discoverLoginForRegistryService } from '../catalog/customServiceDiscovery';
+import {
+  bulkRefreshLoginUrls,
+  BULK_REFRESH_CONCURRENCY,
+  BULK_REFRESH_INTER_BATCH_DELAY_MS,
+  type BulkLoginUrlRefreshReport,
+} from '../registry/bulkLoginUrlRefresh';
 import { clearRegistryCatalogCache } from '../registry/registryLoader';
 import {
   allocateUniqueRegistryServiceId,
@@ -68,19 +74,34 @@ function loginFieldsToJson(loginFields?: LoginField[] | null): LoginField[] {
 
 function mapRegistryError(error: unknown, fallback: string): Error {
   const message = formatUnknownError(error);
-  if (/duplicate key|unique constraint/i.test(message)) {
+  if (/duplicate key|unique constraint|23505/i.test(message)) {
     return new Error('מזהה כבר קיים במערכת.');
   }
 
-  if (/foreign key|category_id/i.test(message)) {
+  if (/foreign key|category_id|23503/i.test(message)) {
     return new Error('קטגוריה לא קיימת. בחרו קטגוריה תקינה.');
   }
 
-  if (/violates check constraint/i.test(message)) {
+  if (/violates check constraint|23514/i.test(message)) {
     return new Error('ערך לא חוקי לשדה במערכת.');
   }
 
+  if (/row-level security|42501|permission denied|JWT/i.test(message)) {
+    return new Error(
+      'אין הרשאה לשמור (RLS). ודאו שהמשתמש מסומן כמנהל ורעננו את הדף.',
+    );
+  }
+
+  if (message && message !== 'unknown error') {
+    return new Error(`${fallback} (${message})`);
+  }
+
   return new Error(fallback);
+}
+
+function normalizeOptionalText(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 export async function fetchAdminCategories(): Promise<AdminCategory[]> {
@@ -245,9 +266,9 @@ export async function createGlobalRegistryRow(input: GlobalRegistryInput): Promi
     display_name: input.display_name.trim(),
     primary_url: primaryUrl,
     login_url: loginUrl,
-    category_id: input.category_id ?? 'custom',
-    icon: input.icon ?? '🔗',
-    adapter_id: input.adapter_id ?? null,
+    category_id: normalizeOptionalText(input.category_id),
+    icon: normalizeOptionalText(input.icon) ?? '🔗',
+    adapter_id: normalizeOptionalText(input.adapter_id),
     login_fields: loginFieldsToJson(input.login_fields),
     source_type: input.source_type,
     service_status: input.service_status,
@@ -488,6 +509,49 @@ export async function adminUpdateLoginUrl(
     throw mapRegistryError(error, 'לא ניתן לעדכן כתובת כניסה.');
   }
 
+  // Ensure client-visible metadata matches admin override even if an older RPC
+  // is deployed (clears stale needs_review / discovery error fields).
+  if (loginUrlStatus === 'valid') {
+    const row = await fetchRegistryRowForAdmin(serviceId);
+    if (row && row.owner_user_id === null) {
+      const now = new Date().toISOString();
+      const metadata = {
+        ...(row.metadata ?? {}),
+        loginUrlSource: 'admin',
+        lastAdminEdit: now,
+        loginUrlDiscoveryError: null,
+        loginUrlDiscoveryOutcome: 'succeeded',
+        loginUrlDiscoveryAttempted: true,
+        loginUrlLastCheckedAt: now,
+        loginUrlLastDiscoveredAt: now,
+        lastDiscoveryOutcome: {
+          at: now,
+          success: true,
+          outcome: 'succeeded',
+          method: 'admin_manual',
+          confidence: null,
+          source: 'admin',
+          loginUrl: loginUrl.trim(),
+          reason: null,
+        },
+      };
+
+      const { error: metaError } = await supabase
+        .from('service_registry')
+        .update({
+          metadata,
+          login_url_status: 'valid',
+          updated_at: now,
+        })
+        .eq('id', serviceId)
+        .is('owner_user_id', null);
+
+      if (metaError && import.meta.env.DEV) {
+        console.warn('[admin] Post-edit discovery metadata clear skipped:', metaError);
+      }
+    }
+  }
+
   invalidateCatalogCache();
 }
 
@@ -503,10 +567,11 @@ export async function markGlobalLoginUrlInvalid(serviceId: string): Promise<void
   const { error } = await supabase
     .from('service_registry')
     .update({
-      login_url_status: 'invalid',
+      login_url_status: 'stale',
       metadata: {
         ...(row.metadata ?? {}),
         lastAdminEdit: new Date().toISOString(),
+        loginUrlSource: 'admin',
       },
       updated_at: new Date().toISOString(),
     })
@@ -573,6 +638,7 @@ export interface AdminRediscoveryResult {
 
 export async function adminTriggerLoginRediscovery(
   serviceId: string,
+  options?: { forceAdminOverwrite?: boolean },
 ): Promise<AdminRediscoveryResult> {
   const row = await fetchRegistryRowForAdmin(serviceId);
   if (!row || row.owner_user_id !== null) {
@@ -584,15 +650,35 @@ export async function adminTriggerLoginRediscovery(
     const discovery = await discoverLoginForRegistryService(definition, {
       primaryUrl: row.primary_url,
       force: true,
+      forceAdminOverwrite: options?.forceAdminOverwrite ?? true,
       source: 'admin',
     });
 
+    if (discovery.outcome.status === 'failure' && discovery.discovery === null) {
+      const refreshed = await fetchRegistryRowForAdmin(serviceId);
+      if (refreshed && refreshed.metadata?.loginUrlSource === 'admin') {
+        return {
+          persisted: Boolean(refreshed.login_url),
+          loginUrl: refreshed.login_url,
+          message: 'דילוג — כתובת כניסה מוגנת על ידי עריכת מנהל.',
+        };
+      }
+    }
+
     const refreshed = await fetchRegistryRowForAdmin(serviceId);
+    const discoveryResult = discovery.discovery;
+    const modalOrReview =
+      discoveryResult?.usesModal ||
+      discoveryResult?.loginEntryType === 'modal' ||
+      refreshed?.login_url_status === 'needs_review';
 
     return {
-      persisted: Boolean(refreshed?.login_url),
-      loginUrl: refreshed?.login_url ?? discovery.definition.loginUrl ?? null,
-      message: discovery.outcome.message,
+      persisted: Boolean(refreshed?.login_url) && refreshed?.login_url_status === 'valid',
+      loginUrl:
+        refreshed?.login_url_status === 'valid' ? refreshed.login_url : null,
+      message: modalOrReview
+        ? 'גילוי: כניסה במודל / דורש בדיקה — לא נשמרה כתובת פורטל.'
+        : discovery.outcome.message,
     };
   } catch {
     return {
@@ -601,6 +687,26 @@ export async function adminTriggerLoginRediscovery(
       message: 'גילוי כניסה נכשל. נסו שוב או ערכו ידנית.',
     };
   }
+}
+
+export {
+  BULK_REFRESH_CONCURRENCY,
+  BULK_REFRESH_INTER_BATCH_DELAY_MS,
+  type BulkLoginUrlRefreshReport,
+};
+
+export async function adminBulkRefreshLoginUrls(
+  forceAdminOverwrite = false,
+): Promise<BulkLoginUrlRefreshReport> {
+  await ensureSession();
+  const rows = await fetchGlobalRegistryRows();
+  const activeRows = rows.filter((row) => row.service_status === 'active');
+
+  return bulkRefreshLoginUrls({
+    rows: activeRows,
+    forceAdminOverwrite,
+    source: 'auto',
+  });
 }
 
 export function parseLoginFieldsJson(raw: string): LoginField[] {

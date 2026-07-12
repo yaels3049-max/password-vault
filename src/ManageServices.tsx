@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 import AddSiteModal from './AddSiteModal';
 import ServiceProfileManagementModal from './ServiceProfileManagementModal';
 import ServiceCard from './components/ServiceCard';
-import { createCustomServiceDefinition, discoverLoginForCustomService } from './catalog';
+import { createCustomServiceDefinition } from './catalog';
+import type { CustomServiceDiscoveryResult } from './catalog';
 import {
   runtimeCategoryLabels,
   runtimeCategoryOrder,
@@ -39,7 +40,7 @@ interface ManageServicesProps {
   catalogError: string | null;
   onAddService: (id: string) => Promise<void>;
   onRemoveService: (id: string) => Promise<void>;
-  onAddCustom: (definition: ServiceDefinition) => Promise<void>;
+  onAddCustom: (definition: ServiceDefinition) => Promise<CustomServiceDiscoveryResult>;
   onVaultStateChange: (state: VaultState) => Promise<void>;
   onRetryCatalog: () => void;
   onContinue: () => void;
@@ -166,10 +167,9 @@ export default function ManageServices({
       setDiscoveryOutcome(null);
       setIsDiscovering(true);
 
-      const { definition: finalDefinition, outcome } =
-        await discoverLoginForCustomService(definition, { primaryUrl });
-
-      await onAddCustom(finalDefinition);
+      // Phase 108: App.addCustomService creates the registry row then runs the shared
+      // Login Discovery pipeline (same as admin). Do not discover before persistence.
+      const { outcome } = await onAddCustom(definition);
       setDiscoveryMessage(outcome.message);
       setDiscoveryOutcome(outcome.status);
       setIsDiscovering(false);
@@ -179,7 +179,7 @@ export default function ManageServices({
       }, 1800);
     } catch (error) {
       setIsDiscovering(false);
-      setAddError(error instanceof Error ? error.message : 'לא ניתן להוסיף את האתר');
+      setAddError(toFriendlySecurityError(error));
     } finally {
       addInFlightRef.current = false;
     }

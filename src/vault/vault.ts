@@ -19,6 +19,8 @@ import { migrateVaultPayload } from './vaultMigration';
 import { syncVaultStateToSupabaseSafe } from '../supabase/persistence';
 
 let vaultKey: CryptoKey | null = null;
+/** Kept with vaultKey so persist can recreate an IndexedDB row if storage was evicted. */
+let vaultKdf: VaultRecord['kdf'] | null = null;
 
 export { WrongPasswordError };
 
@@ -30,11 +32,12 @@ export interface VaultState {
 }
 
 export function isVaultUnlocked(): boolean {
-  return vaultKey !== null;
+  return vaultKey !== null && vaultKdf !== null;
 }
 
 export function lockVault(): void {
   vaultKey = null;
+  vaultKdf = null;
 }
 
 async function saveEncrypted(
@@ -73,6 +76,7 @@ export async function unlockVault(masterPassword: string): Promise<VaultState> {
     const payload = createEmptyPayload();
     await saveEncrypted(key, kdf, payload);
     vaultKey = key;
+    vaultKdf = kdf;
     return payload;
   }
 
@@ -87,20 +91,21 @@ export async function unlockVault(masterPassword: string): Promise<VaultState> {
   }
 
   vaultKey = key;
+  vaultKdf = existing.kdf;
   return payload;
 }
 
 export async function persistVault(state: VaultState): Promise<void> {
-  if (!vaultKey) {
+  if (!vaultKey || !vaultKdf) {
     throw new Error('Vault is locked');
   }
 
   const existing = await getVault();
-  if (!existing) {
-    throw new Error('Vault record missing');
-  }
+  // Prefer live IDB kdf when present; fall back to session kdf if the row was evicted.
+  const kdf = existing?.kdf ?? vaultKdf;
+  vaultKdf = kdf;
 
-  await saveEncrypted(vaultKey, existing.kdf, payloadFromVaultState(state));
+  await saveEncrypted(vaultKey, kdf, payloadFromVaultState(state));
 
   // Phase 101 dual-write: Supabase upsert is best-effort; local IndexedDB is authoritative.
   void syncVaultStateToSupabaseSafe(vaultKey, state);

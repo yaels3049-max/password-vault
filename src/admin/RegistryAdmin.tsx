@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  adminBulkRefreshLoginUrls,
   adminTriggerLoginRediscovery,
   adminUpdateLoginUrl,
   createGlobalRegistryRowWithDiscovery,
@@ -13,6 +14,7 @@ import {
   updateIconMetadata,
   type AdminCategory,
   type AdminRegistryRow,
+  type BulkLoginUrlRefreshReport,
   type GlobalRegistryInput,
 } from './adminRegistryApi';
 import { deriveRegistryServiceIdFromUrl } from '../registry/serviceIdFromUrl';
@@ -25,12 +27,19 @@ const EMPTY_FORM: GlobalRegistryInput = {
   display_name: '',
   primary_url: '',
   login_url: '',
-  category_id: 'custom',
+  category_id: null,
   icon: '🔗',
   adapter_id: '',
   source_type: 'admin',
   service_status: 'active',
 };
+
+function emptyCreateForm(categories: AdminCategory[]): GlobalRegistryInput {
+  return {
+    ...EMPTY_FORM,
+    category_id: categories[0]?.id ?? null,
+  };
+}
 
 export default function RegistryAdmin() {
   const [rows, setRows] = useState<AdminRegistryRow[]>([]);
@@ -43,6 +52,9 @@ export default function RegistryAdmin() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [discovering, setDiscovering] = useState(false);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [forceBulkOverwrite, setForceBulkOverwrite] = useState(false);
+  const [bulkReport, setBulkReport] = useState<BulkLoginUrlRefreshReport | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -86,7 +98,7 @@ export default function RegistryAdmin() {
     setIsCreating(true);
     setSelectedId(null);
     setSelectedRow(null);
-    setForm({ ...EMPTY_FORM });
+    setForm(emptyCreateForm(categories));
   }
 
   function startEdit(row: AdminRegistryRow) {
@@ -151,6 +163,36 @@ export default function RegistryAdmin() {
     }
   }
 
+  async function handleBulkRefresh() {
+    if (
+      !window.confirm(
+        forceBulkOverwrite
+          ? 'לרענן כתובות כניסה לכל השירותים הפעילים, כולל כתובות שערך מנהל?'
+          : 'לרענן כתובות כניסה לכל השירותים הפעילים (מדלג על עריכות מנהל)?',
+      )
+    ) {
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setBulkRunning(true);
+    setBulkReport(null);
+
+    try {
+      const report = await adminBulkRefreshLoginUrls(forceBulkOverwrite);
+      setBulkReport(report);
+      setSuccess(
+        `רענון מרוכז הושלם: ${report.succeeded.length} הצליחו, ${report.failed.length} נכשלו, ${report.skipped.length} דולגו.`,
+      );
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'רענון מרוכז נכשל.');
+    } finally {
+      setBulkRunning(false);
+    }
+  }
+
   async function handleDisable(serviceId: string) {
     if (!window.confirm(`להשבית את השירות "${serviceId}"?`)) {
       return;
@@ -196,7 +238,30 @@ export default function RegistryAdmin() {
             <button type="button" className="admin-btn admin-btn-primary" onClick={startCreate}>
               שירות גלובלי חדש
             </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn-secondary"
+              disabled={bulkRunning || loading}
+              onClick={() => void handleBulkRefresh()}
+            >
+              {bulkRunning ? 'מרענן כתובות כניסה…' : 'רענון כניסה מרוכז'}
+            </button>
+            <label className="admin-chip">
+              <input
+                type="checkbox"
+                checked={forceBulkOverwrite}
+                onChange={(e) => setForceBulkOverwrite(e.target.checked)}
+                disabled={bulkRunning}
+              />{' '}
+              דרוס עריכות מנהל
+            </label>
           </div>
+
+          {bulkReport && (
+            <pre className="admin-pre" aria-label="דוח רענון מרוכז">
+              {JSON.stringify(bulkReport, null, 2)}
+            </pre>
+          )}
 
           <ul className="admin-list admin-list--compact">
             {rows.map((row) => (
@@ -269,9 +334,12 @@ export default function RegistryAdmin() {
               <label className="admin-field">
                 <span>קטגוריה</span>
                 <select
-                  value={form.category_id ?? 'custom'}
-                  onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+                  value={form.category_id ?? ''}
+                  onChange={(e) =>
+                    setForm({ ...form, category_id: e.target.value || null })
+                  }
                 >
+                  <option value="">ללא קטגוריה</option>
                   {categories.map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.display_name}

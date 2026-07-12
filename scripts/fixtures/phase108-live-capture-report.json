@@ -1,0 +1,97 @@
+{
+  "capturedAt": "2026-07-12T19:22:32.380Z",
+  "report": [
+    {
+      "id": "shufersal",
+      "primaryUrl": "https://www.shufersal.co.il/",
+      "fetchOk": false,
+      "fetchError": "fetch failed",
+      "note": "Live fetch failed from this environment — extension UAT still required (D-108-19)"
+    },
+    {
+      "id": "clalit",
+      "primaryUrl": "https://www.clalit.co.il/",
+      "fetchOk": true,
+      "fetchStatus": 200,
+      "pageUrl": "https://www.clalit.co.il/he/Pages/default.aspx",
+      "raw": {
+        "success": true,
+        "loginUrl": "https://e-services.clalit.co.il/onlineweb/general/login.aspx",
+        "method": "visible-link",
+        "confidence": "high",
+        "reason": null,
+        "rejectedLoginUrl": null,
+        "usesModal": true,
+        "loginEntryType": "navigable",
+        "candidates": [
+          {
+            "url": "https://e-services.clalit.co.il/onlineweb/general/login.aspx",
+            "method": "visible-link",
+            "score": 34
+          },
+          {
+            "url": "https://e-services.clalit.co.il/onlineweb/general/login.aspx?CustomUrlRiderect=/Services/Tamuz/TamuzTransfer.aspx",
+            "method": "visible-link",
+            "score": 34
+          },
+          {
+            "url": "https://e-services.clalit.co.il/onlineweb/general/login.aspx?CustomUrlRiderect=/Services/Labs/LabsTestList.aspx",
+            "method": "visible-link",
+            "score": 34
+          },
+          {
+            "url": "https://e-services.clalit.org.il/onlineweb/general/login.aspx?CustomUrlRiderect=/Services/ClinicAltor/ClinicAltor.aspx",
+            "method": "visible-link",
+            "score": 34
+          },
+          {
+            "url": "https://e-services.clalit.org.il/onlineweb/general/login.aspx?CustomUrlRiderect=/Services/Tamuz/TamuzTransfer.aspx",
+            "method": "visible-link",
+            "score": 34
+          },
+          {
+            "url": "https://e-services.clalit.org.il/onlineweb/general/login.aspx?CustomUrlRiderect=/Services/Labs/LabsTestList.aspx",
+            "method": "visible-link",
+            "score": 34
+          },
+          {
+            "url": "https://e-services.clalit.co.il/onlineweb/general/login.aspx?CustomUrlRiderect=/Services/ClinicAltor/ClinicAltor.aspx",
+            "method": "visible-link",
+            "score": 34
+          },
+          {
+            "url": "https://e-services.clalit.org.il/onlineweb/general/login.aspx?CustomUrlRiderect=/Services/form17/form17.aspx",
+            "method": "visible-link",
+            "score": 34
+          }
+        ]
+      },
+      "sanitized": {
+        "success": true,
+        "loginUrl": "https://e-services.clalit.co.il/onlineweb/general/login.aspx",
+        "method": "visible-link",
+        "confidence": "high",
+        "reason": null,
+        "rejectedLoginUrl": null
+      },
+      "shouldPersist": true,
+      "wouldClearSeededAutoUrl": false,
+      "forbidHostHit": false,
+      "note": "Live HTML snapshot via fetch+JSDOM — not extension tab path"
+    },
+    {
+      "id": "htzone",
+      "primaryUrl": "https://www.htzone.co.il/",
+      "fetchOk": false,
+      "fetchError": "fetch failed",
+      "note": "Live fetch failed from this environment — extension UAT still required (D-108-19)"
+    },
+    {
+      "id": "zap",
+      "primaryUrl": "https://www.zap.co.il/",
+      "fetchOk": false,
+      "fetchError": "fetch failed",
+      "note": "Live fetch failed from this environment — extension UAT still required (D-108-19)"
+    }
+  ]
+}

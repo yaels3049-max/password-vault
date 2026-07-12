@@ -16,6 +16,18 @@ export async function ensureAnonymousUserId(): Promise<string | null> {
     return userData.user.id;
   }
 
+  // Transient getUser failures must not wipe an existing session (e.g. admin JWT).
+  const { data: sessionData } = await supabase.auth.getSession();
+  const sessionUserId = sessionData.session?.user?.id ?? null;
+  if (sessionUserId) {
+    const retry = await supabase.auth.getUser();
+    if (!retry.error && retry.data.user?.id) {
+      return retry.data.user.id;
+    }
+    // Keep the local session; RLS will reject unauthorized writes if the JWT is dead.
+    return sessionUserId;
+  }
+
   await supabase.auth.signOut();
 
   const { data, error } = await supabase.auth.signInAnonymously();

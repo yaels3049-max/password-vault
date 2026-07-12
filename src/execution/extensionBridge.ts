@@ -1,53 +1,13 @@
-type ChromeRuntime = {
-  sendMessage: (
-    id: string,
-    message: unknown,
-    callback?: (response: unknown) => void,
-  ) => void;
-  lastError?: { message?: string };
-};
-
-export function getChromeRuntime(): ChromeRuntime | undefined {
-  return (
-    globalThis as typeof globalThis & { chrome?: { runtime: ChromeRuntime } }
-  ).chrome?.runtime;
-}
-
-export function getExtensionId(): string {
-  return typeof import.meta.env.VITE_POC_EXTENSION_ID === 'string'
-    ? import.meta.env.VITE_POC_EXTENSION_ID.trim()
-    : '';
-}
-
-export function isExtensionAvailable(): boolean {
-  return Boolean(getChromeRuntime()?.sendMessage && getExtensionId());
-}
-
-export function openUrlInNewTab(url: string): void {
-  window.open(url, '_blank', 'noopener,noreferrer');
-}
-
-export function sendExtensionMessage(
-  payload: Record<string, unknown>,
-  onErrorOpenUrl?: string,
-): boolean {
-  const runtime = getChromeRuntime();
-  const extensionId = getExtensionId();
-
-  if (!runtime?.sendMessage || !extensionId) {
-    return false;
-  }
-
-  runtime.sendMessage(extensionId, payload, (response) => {
-    if (import.meta.env.DEV) {
-      const err = runtime.lastError?.message;
-      console.log('[Hub → Extension]', payload.type, { response, lastError: err ?? null });
-    }
-
-    if (runtime.lastError && onErrorOpenUrl) {
-      openUrlInNewTab(onErrorOpenUrl);
-    }
-  });
-
-  return true;
-}
+/**
+ * Thin compatibility shim — delegates to browser integration abstraction (Phase 108 M1).
+ * Execution and discovery modules should import from here or ../browserIntegration.
+ */
+export {
+  getChromeRuntime,
+  getExtensionId,
+  isExtensionAvailable,
+  openUrlInNewTab,
+  probeExtensionAvailable,
+  sendExtensionMessage,
+  sendExtensionMessageAsync,
+} from '../browserIntegration';

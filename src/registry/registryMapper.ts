@@ -6,7 +6,14 @@ import {
   type ServiceSource,
 } from '../service/serviceModel';
 
-export type LoginUrlStatus = 'unknown' | 'valid' | 'invalid';
+export type LoginUrlStatus =
+  | 'unknown'
+  | 'valid'
+  | 'invalid'
+  | 'missing'
+  | 'stale'
+  | 'failed'
+  | 'needs_review';
 
 export interface ServiceRegistryRow {
   id: string;
@@ -126,22 +133,34 @@ export function serviceDefinitionToRegistryInsert(
     display_name: definition.displayName,
     primary_url: definition.url,
     login_url: loginUrl ?? null,
-    category_id: definition.category ?? 'custom',
+    category_id: definition.category?.trim() || null,
     icon: definition.icon ?? '🔗',
     adapter_id: definition.adapterId ?? null,
     login_fields: definition.loginFields ?? null,
     source_type: 'user',
     service_status: 'active',
-    metadata: definition.metadata ?? {},
+    metadata: {
+      loginUrlDiscoveryOutcome: loginUrl ? 'succeeded' : 'never_run',
+      loginUrlDiscoveryAttempted: Boolean(loginUrl),
+      ...(definition.metadata ?? {}),
+    },
     login_url_status: loginUrlStatus,
     owner_user_id: ownerUserId,
   };
 }
 
-export function shouldRunLoginUrlDiscovery(row: Pick<ServiceRegistryRow, 'login_url' | 'login_url_status'>): boolean {
+export function shouldRunLoginUrlDiscovery(
+  row: Pick<ServiceRegistryRow, 'login_url' | 'login_url_status' | 'metadata'>,
+): boolean {
   if (!row.login_url) {
     return true;
   }
 
-  return row.login_url_status === 'invalid';
+  return (
+    row.login_url_status === 'invalid' ||
+    row.login_url_status === 'stale' ||
+    row.login_url_status === 'failed' ||
+    row.login_url_status === 'missing' ||
+    row.login_url_status === 'needs_review'
+  );
 }

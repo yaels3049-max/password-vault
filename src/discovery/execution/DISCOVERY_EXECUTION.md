@@ -16,7 +16,7 @@ import { discoverLogin } from '../discovery/execution/discoverLogin';
 const outcome = await discoverLogin(primaryUrl);
 ```
 
-`ManageServices` and custom service creation call `discoverLoginForCustomService`, which uses `discoverLogin` internally. They never reference extension tabs or fetch proxies.
+`App.addCustomService` and admin registry create call `discoverLoginForRegistryService` → `discoverAndPersistLoginUrl` → `discoverLogin` after the `service_registry` row exists. They never reference extension tabs or fetch proxies directly.
 
 ## Abstraction
 
@@ -33,7 +33,7 @@ Outcomes: `success` (with `DiscoveryResult`), `unavailable` (executor cannot run
 
 **`ExtensionTabDiscoveryExecutor`** (`extensionTabDiscoveryExecutor`, id: `extension-tab`)
 
-Used for **custom service add** discovery only in Phase 102 stabilization. Dashboard tile open does not call `discoverLogin`.
+Used for **shared Login Discovery** (user custom service add and admin catalog create/rediscovery). Dashboard tile open does not call `discoverLogin`.
 
 1. Hub sends `HUB_LOGIN_ENTRY_DISCOVERY` to the extension
 2. Extension opens a **background** temporary tab at `primaryUrl` (`active: false`)

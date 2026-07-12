@@ -182,6 +182,32 @@ const MODAL_TRIGGER_SELECTOR = [
   '[aria-controls]',
 ].join(',');
 
+const NON_NAVIGABLE_LOGIN_CONTROL_SELECTOR = [
+  'button',
+  '[role="button"]',
+  'input[type="button"]',
+  'a[href="#"]',
+  'a[href=""]',
+  'a:not([href])',
+].join(',');
+
+function isNonNavigableHref(href: string | null | undefined): boolean {
+  if (href == null || href.trim() === '') {
+    return true;
+  }
+  const trimmed = href.trim().toLowerCase();
+  return (
+    trimmed === '#' ||
+    trimmed.startsWith('#') ||
+    trimmed.startsWith('javascript:') ||
+    trimmed === '/'
+  );
+}
+
+/**
+ * Collect modal / dialog-style consumer login triggers on the primary page.
+ * Includes explicit modal attributes and login-labeled controls without a navigable URL.
+ */
 export function findModalLoginTriggers(
   documentRoot: Document,
   pageUrl: string,
@@ -190,23 +216,29 @@ export function findModalLoginTriggers(
   const baseOrigin = baseOriginForUrl(pageUrl);
   const candidates: DiscoveryCandidate[] = [];
   const triggers: ModalLoginTrigger[] = [];
-  const elements = documentRoot.querySelectorAll(MODAL_TRIGGER_SELECTOR);
+  const seen = new Set<Element>();
 
-  for (const element of elements) {
+  const pushTrigger = (element: Element) => {
+    if (seen.has(element)) {
+      return;
+    }
     if (!isElementVisible(element, options)) {
-      continue;
+      return;
     }
 
     const label = normalizedElementText(element);
     if (!textMatchesLoginKeyword(label)) {
-      continue;
+      return;
     }
+
+    seen.add(element);
 
     const tagName = element.tagName.toLowerCase();
     const role = element.getAttribute('role') ?? undefined;
     let href: string | undefined;
+    const rawHref = element.getAttribute('href');
 
-    if (element instanceof HTMLAnchorElement && element.href) {
+    if (element instanceof HTMLAnchorElement && element.href && !isNonNavigableHref(rawHref)) {
       href = element.href;
     }
 
@@ -228,6 +260,19 @@ export function findModalLoginTriggers(
         score,
       });
     }
+  };
+
+  for (const element of documentRoot.querySelectorAll(MODAL_TRIGGER_SELECTOR)) {
+    pushTrigger(element);
+  }
+
+  // Generic modal pattern: login-labeled control with no dedicated navigation target.
+  for (const element of documentRoot.querySelectorAll(NON_NAVIGABLE_LOGIN_CONTROL_SELECTOR)) {
+    const rawHref = element.getAttribute('href');
+    if (element.tagName.toLowerCase() === 'a' && !isNonNavigableHref(rawHref)) {
+      continue;
+    }
+    pushTrigger(element);
   }
 
   return { candidates, triggers };

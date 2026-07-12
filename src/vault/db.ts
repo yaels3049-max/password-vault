@@ -31,29 +31,37 @@ function openDb(): Promise<IDBDatabase> {
 export async function getVault(): Promise<VaultRecord | null> {
   const db = await openDb();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(VAULT_ID);
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(VAULT_ID);
 
-    request.onsuccess = () => {
-      resolve((request.result as VaultRecord | undefined) ?? null);
-    };
-    request.onerror = () => reject(request.error);
-  });
+      request.onsuccess = () => {
+        resolve((request.result as VaultRecord | undefined) ?? null);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 export async function putVault(record: VaultRecord): Promise<void> {
   const db = await openDb();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.put(record);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.put(record);
 
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 export async function hasVault(): Promise<boolean> {

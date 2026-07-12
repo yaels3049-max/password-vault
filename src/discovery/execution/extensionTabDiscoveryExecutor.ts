@@ -1,85 +1,82 @@
 import type { DiscoveryResult } from '../discoveryResult';
 import type { DiscoveryExecutionOutcome, DiscoveryExecutor } from './discoveryExecution';
-
-const extensionId =
-  typeof import.meta.env.VITE_POC_EXTENSION_ID === 'string'
-    ? import.meta.env.VITE_POC_EXTENSION_ID.trim()
-    : '';
-
-type ChromeRuntime = {
-  sendMessage: (
-    id: string,
-    message: unknown,
-    callback?: (response: unknown) => void,
-  ) => void;
-  lastError?: { message?: string };
-};
-
-function getChromeRuntime(): ChromeRuntime | undefined {
-  return (
-    globalThis as typeof globalThis & { chrome?: { runtime: ChromeRuntime } }
-  ).chrome?.runtime;
-}
-
-function isExtensionMessagingAvailable(): boolean {
-  return Boolean(getChromeRuntime()?.sendMessage && extensionId);
-}
+import {
+  DISCOVERY_HUB_TIMEOUT_MS,
+  getExtensionId,
+  probeExtensionAvailable,
+  sendExtensionMessageAsync,
+} from '../../browserIntegration';
 
 type ExtensionLoginDiscoveryResponse =
   | { ok: true; discovery: DiscoveryResult }
   | { ok: false; reason: string };
 
-function requestExtensionLoginDiscovery(
-  primaryUrl: string,
-): Promise<ExtensionLoginDiscoveryResponse> {
-  const runtime = getChromeRuntime();
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, reason: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(reason));
+    }, timeoutMs);
 
-  if (!runtime?.sendMessage || !extensionId) {
-    return Promise.resolve({ ok: false, reason: 'extension_unavailable' });
-  }
-
-  return new Promise((resolve) => {
-    runtime.sendMessage(
-      extensionId,
-      {
-        type: 'HUB_LOGIN_ENTRY_DISCOVERY',
-        primaryUrl: primaryUrl.trim(),
-      },
-      (response: unknown) => {
-        if (runtime.lastError?.message) {
-          resolve({ ok: false, reason: runtime.lastError.message });
-          return;
-        }
-
-        if (!response || typeof response !== 'object') {
-          resolve({ ok: false, reason: 'invalid_extension_response' });
-          return;
-        }
-
-        const payload = response as Record<string, unknown>;
-        if (payload.ok === true && payload.discovery && typeof payload.discovery === 'object') {
-          resolve({
-            ok: true,
-            discovery: payload.discovery as DiscoveryResult,
-          });
-          return;
-        }
-
-        resolve({
-          ok: false,
-          reason:
-            typeof payload.reason === 'string' ? payload.reason : 'extension_discovery_failed',
-        });
-      },
-    );
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
   });
 }
 
+async function requestExtensionLoginDiscovery(
+  primaryUrl: string,
+): Promise<ExtensionLoginDiscoveryResponse> {
+  if (!probeExtensionAvailable() || !getExtensionId()) {
+    return { ok: false, reason: 'extension_unavailable' };
+  }
+
+  try {
+    const response = await withTimeout(
+      sendExtensionMessageAsync<ExtensionLoginDiscoveryResponse>({
+        type: 'HUB_LOGIN_ENTRY_DISCOVERY',
+        primaryUrl: primaryUrl.trim(),
+      }),
+      DISCOVERY_HUB_TIMEOUT_MS,
+      'discovery_hub_timeout',
+    );
+
+    if (!response || typeof response !== 'object') {
+      return { ok: false, reason: 'invalid_extension_response' };
+    }
+
+    const payload = response as ExtensionLoginDiscoveryResponse;
+    if (payload.ok === true && payload.discovery && typeof payload.discovery === 'object') {
+      return {
+        ok: true,
+        discovery: payload.discovery,
+      };
+    }
+
+    return {
+      ok: false,
+      reason:
+        payload.ok === false && typeof payload.reason === 'string'
+          ? payload.reason
+          : 'extension_discovery_failed',
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'extension_discovery_failed';
+    return { ok: false, reason: message };
+  }
+}
+
 /**
- * Production discovery executor (Iteration 3.3b / 3.6).
+ * Production discovery executor (Phase 108 M2).
  *
  * Opens a **background** temporary tab via the Hub extension, runs the discovery engine against
  * the live DOM, returns the result, closes the tab, and refocuses the Hub tab.
+ * Hub-side timeout: DISCOVERY_HUB_TIMEOUT_MS (30s default).
  */
 export const extensionTabDiscoveryExecutor: DiscoveryExecutor = {
   id: 'extension-tab',
@@ -87,7 +84,7 @@ export const extensionTabDiscoveryExecutor: DiscoveryExecutor = {
   async discoverLogin(primaryUrl: string): Promise<DiscoveryExecutionOutcome> {
     const trimmed = primaryUrl.trim();
 
-    if (!isExtensionMessagingAvailable()) {
+    if (!probeExtensionAvailable()) {
       return { status: 'unavailable', reason: 'extension_unavailable' };
     }
 

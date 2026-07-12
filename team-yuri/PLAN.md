@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Version** | 4.5 |
+| **Version** | 5.0 |
 | **Status** | Production Ready |
-| **Last updated** | 2026-07-09 |
+| **Last updated** | 2026-07-12 |
 
 This document describes *what* the product is and *how* it is shaped at a system level. It does not prescribe implementation details, file layouts, or step-by-step build plans.
 
@@ -1454,13 +1454,22 @@ Bulk `loginUrl` refresh must:
 - Phase 102 owns Service Registry persistence.
 - Phase 108 owns browser integration and `loginUrl` discovery.
 - Phase 110 uses discovered `loginUrl` for standard autofill.
-- Phase 112 handles complex authentication flows once a valid login entry point is available, whether through a discovered `loginUrl`, an admin-managed `loginUrl`, or approved Service Registry metadata.
+- Phase 112 classifies and supports medium/complex login experiences once a valid login entry point is available, whether through a discovered `loginUrl`, an admin-managed `loginUrl`, or approved Service Registry metadata.
 - Phase 113 owns service identity and URL canonicalization.
 - Phase 107 owns admin registry management UI.
 
 **Discovery boundary**
 
-Phase 108 is responsible only for discovering and maintaining the service login entry point.
+Phase 108 is responsible only for discovering and maintaining the service **consumer** login entry point.
+
+**False-positive / true-positive dual rule (normative):**
+
+1. Never persist a **wrong** login page (alternate-audience portal; modal-only consumer with no dedicated URL).
+2. **Preserve true positives** — ordinary consumer navigable login pages must still be discovered and persisted.
+
+A URL/link containing `login` is **not** sufficient to accept a **portal**. It is also **not** sufficient, by itself, to reject a same-origin consumer candidate that has dedicated login-form / strong link evidence.
+
+**Reject only with positive evidence** of alternate audience on the candidate, or modal-only consumer login with no remaining consumer navigable candidate. Weak homepage “login button / modal trigger” signals must **not** blank all navigable results.
 
 Phase 108 must not:
 
@@ -1470,13 +1479,26 @@ Phase 108 must not:
 - solve CAPTCHA
 - handle OTP
 - execute service-specific adapters
-- interpret complex authentication logic
+- interpret complex authentication logic as executable autofill
+- auto-validate business / merchant / partner / admin / vendor portals as consumer `loginUrl` (example: Zap `sa.zap.co.il/.../login` “כניסה לממשק העסק”)
+- invent a navigable `loginUrl` when consumer login is a homepage modal/overlay without a dedicated consumer URL
 
-Its responsibility ends once a valid login entry point has been identified (or discovery has failed gracefully and the service has been created with the appropriate metadata status).
+Its responsibility ends once a **confident consumer** login entry point has been identified, or discovery has deferred safely: `login_url` remains `NULL`, status is clear (`missing` / `needs_review`), and `metadata` records deferral signals for Phase 112.
 
-Phase 110 consumes the discovered login entry point for generic autofill.
+**Canonical deferred cases (Phase 108 → metadata → Phase 112):**
 
-Phase 112 extends the same execution architecture to complex authentication scenarios that cannot be handled safely by generic autofill.
+| Case | Example | Phase 108 `loginUrl` | Metadata (minimum) |
+|------|---------|----------------------|--------------------|
+| Alternate-audience portal mistaken for login | Zap business interface at `/login` | **NULL** | `rejectedLoginUrl`, reason code, `phase112Deferred=true`, `loginIntelligenceHint=alternate_audience_portal` |
+| Consumer login is modal on `primaryUrl` **and no** separate consumer navigable URL | Zap home floating login only | **NULL** | `loginEntryType=modal`, `usesModal=true`, `phase112Deferred=true`, `loginIntelligenceHint=modal_on_primary` |
+| Homepage has login button/modal **and** a separate consumer navigable login page | Typical retail sites | **Persist** navigable consumer URL | Do not veto because of homepage modal trigger |
+| Navigable consumer login page still needs modal/complex steps | Mizrahi Tefahot login page + floating step | **Persist** navigable consumer URL when audience is consumer | `loginIntelligenceHint=complex_login_surface`, `phase112Deferred=true` — Phase 112 owns interaction |
+
+Phase 108 may write **discovery deferral signals** into `service_registry.metadata`. Phase 112 remains the authoritative owner of Login Intelligence classification (`loginComplexity`, etc.) and consumes these signals.
+
+Phase 110 consumes a stored `loginUrl` only when Phase 108 (or admin) has validated it as a consumer navigable entry.
+
+Phase 112 classifies login complexity and extends execution for modal / multi-step / portal-shadowed cases documented above.
 
 **Non-goals:**
 
@@ -1487,6 +1509,7 @@ Phase 112 extends the same execution architecture to complex authentication scen
 - No iframe/modal/OTP/CAPTCHA handling
 - No service-specific adapters
 - No canonical identity redesign
+- No persistence of non-consumer portal login URLs
 
 | Acceptance criteria | |
 |---------------------|---|
@@ -1496,7 +1519,7 @@ Phase 112 extends the same execution architecture to complex authentication scen
 | AC-108-4 | Packaging strategy documented for Chrome Web Store and Edge Add-ons |
 | AC-108-5 | Hub degrades gracefully when extension is not installed |
 | AC-108-6 | Adding a custom service attempts `loginUrl` discovery |
-| AC-108-7 | `service_registry` stores `loginUrl` when discovery succeeds |
+| AC-108-7 | `service_registry` stores `loginUrl` when discovery succeeds with **consumer** confidence |
 | AC-108-8 | `service_registry` stores `primaryUrl` and a clear `loginUrl` status when discovery fails |
 | AC-108-9 | Discovery failure does not prevent service creation |
 | AC-108-10 | Discovery never uses credentials, never autofills, and never submits forms |
@@ -1507,20 +1530,639 @@ Phase 112 extends the same execution architecture to complex authentication scen
 | AC-108-15 | Manual admin `loginUrl` overrides are not overwritten without explicit approval |
 | AC-108-16 | Temporary discovery tabs, if used, close reliably and are never confused with user-opened execution tabs |
 | AC-108-17 | Build passes |
+| AC-108-18 | Discovery never persists a non-consumer / alternate-audience portal as `loginUrl` (including URLs whose path contains `login` but whose page is business/merchant/partner/admin). `login_url` remains `NULL`; `metadata` records `rejectedLoginUrl` and deferral reason for Phase 112 |
+| AC-108-19 | When consumer login is modal/overlay on `primaryUrl` **and** there is no separate validated consumer navigable login URL, `login_url` remains `NULL` and `metadata` records `loginEntryType=modal` / `usesModal=true` / `phase112Deferred=true`. A homepage modal trigger must not veto a separate consumer navigable candidate |
+| AC-108-20 | Reject with **positive evidence** of wrong audience or modal-only surface; document deferrals in `metadata`. Do not blank-reject ordinary same-origin consumer login pages solely because path contains `login` or a weak modal heuristic fired |
+| AC-108-21 | True-positive regression: after false-positive gate changes, rediscovery of known consumer catalog services (at least Shufersal, Clalit, HTZone or current Phase 103 equivalents) must still persist a non-NULL consumer `login_url`, while Zap-class portals remain rejected |
 
 ---
 
-### Phase 109 — Credential Lifecycle
+### Phase 109 — User Accounts, Authentication and Cross-Browser Access
 
-**Goal:** Help users maintain accurate credentials without automatic changes.
+#### Goal
+
+Establish a production-ready user account and authentication foundation.
+
+The application must support explicit user registration and login, persistent user identity, strict separation between users, and access to the same Digital Home account from supported Chrome and Microsoft Edge browsers.
+
+Phase 109 introduces the user-account shell that future subscription, entitlement and account-security capabilities will extend.
+
+#### Current problem
+
+The current password-only entry screen does not represent a real account system.
+
+Entering an arbitrary password may create a new database user, which has already produced many unintended user records.
+
+This behavior must stop.
+
+After Phase 109:
+
+- Entering an incorrect password must never create a new user.
+- Existing users must enter through an explicit Login flow.
+- New users must enter through an explicit Create Account flow.
+- A user account is created only after successful validation and persistence.
+- Every authenticated request must resolve to one stable user identity.
+- Users must see only their own services, profiles and encrypted credentials.
+
+#### Architectural principles
+
+- User creation is explicit and never inferred from a failed login.
+- Login and registration are separate operations.
+- One person has one stable, immutable application user identifier.
+- Email address is the primary account identifier.
+- Each normalized email address may belong to only one active account.
+- Application data is always owned by an authenticated user identifier.
+- User isolation must be enforced by the database, not only by the user interface.
+- Authentication state must remain separate from service, registry and autofill logic.
+- Phase 109 must not redesign the existing Vault, encryption or execution architecture.
+- Password rules may be relaxed temporarily in development, but weak-password acceptance must never be represented as production-ready security.
+- Administrator status is assigned through protected database configuration only.
+- Users cannot promote themselves to administrators.
+- Chrome and Edge must resolve the same authenticated account and persisted Digital Home data.
+
+#### Scope
+
+Phase 109 includes:
+
+- Login and Create Account entry screen
+- Explicit account registration
+- Existing-user login
+- User profile creation
+- Stable authenticated sessions
+- Logout
+- Session restoration after page refresh
+- User data isolation
+- Post-login routing
+- Chrome and Edge account continuity
+- Administrator role resolution from the database
+- Existing unintended-user audit and cleanup plan
+- Friendly loading, validation and error states
+- Regression protection for all functionality delivered through Phase 108
+
+#### Account model
+
+Every user must have one immutable user identifier.
+
+The application user record must include at least:
+
+- `userId`
+- `firstName`
+- `lastName`
+- `email`
+- `phone`
+- `role`
+- `status`
+- `createdAt`
+- `updatedAt`
+
+Exact column names may follow existing schema conventions.
+
+Recommended values:
+
+`role`
+
+- `user`
+- `admin`
+
+`status`
+
+- `active`
+- `disabled`
+- `pending_verification`
+- `deleted`
+
+`deleted`
+
+- Account has been intentionally removed or scheduled for removal.
+- Historical ownership may remain according to retention policy.
+- Deleted accounts cannot authenticate.
+- Physical deletion policies belong to future account lifecycle architecture.
+
+A user identity must not be based on email alone after account creation.
+
+Email may change in the future, while `userId` must remain stable.
+
+If the authentication provider maintains its own internal user table, the application must link the existing application users table to the same immutable authentication identifier.
+
+Do not create two unrelated user identities.
+
+#### Email normalization and uniqueness
+
+Before lookup or account creation:
+
+- trim leading and trailing spaces
+- normalize email casing for identity comparison
+- validate basic email structure
+- enforce a unique normalized-email constraint in the database
+
+The application must not rely only on a client-side duplicate check.
+
+Two simultaneous registration requests for the same email must result in one account, not duplicate accounts.
+
+#### Phone handling
+
+Phone is required during registration.
+
+Phone values must:
+
+- be trimmed
+- be stored in a consistent normalized format
+- remain editable through a future account-management flow
+- not be used as the primary identity in Phase 109
+- not be assumed verified unless a verification process actually occurred
+
+Phase 109 must not display “verified phone” unless verification has been implemented successfully.
+
+#### Password architecture
+
+Phase 109 introduces an account password entry flow.
+
+Temporary development policy:
+
+- Password complexity may remain intentionally relaxed to avoid blocking current testing.
+- The interface must still require a non-empty password.
+- Passwords must never be logged, stored in plaintext or returned through application diagnostics.
+- The temporary relaxed rule must be isolated in configuration.
+- Production deployment must not accidentally inherit the relaxed development policy.
+
+The implementation must document whether the account password and the existing Master Password are currently the same secret or separate concepts.
+
+This decision must not remain implicit.
+
+If they are currently the same:
+
+- preserve existing encryption compatibility
+- do not duplicate or expose the secret
+- document the temporary coupling
+- keep the architecture capable of separating account authentication from Vault unlocking later
+
+If they are separate:
+
+- the interface and implementation must distinguish them clearly
+- login success must not imply that encrypted credentials are automatically readable without the required Vault unlock state
+
+Phase 109 must not silently redesign key derivation, encryption or Vault behavior.
+
+#### Registration flow
+
+The Login screen must provide a clearly separate Create Account action.
+
+The registration form must collect:
+
+- first name
+- last name
+- email address
+- phone number
+- password
+- password confirmation
+
+Registration flow:
+
+1. User selects Create Account.
+2. User enters the required fields.
+3. The application validates the fields.
+4. The application checks account creation through the authoritative authentication service.
+5. A single stable authentication identity is created.
+6. A linked application user row is created in the existing users table.
+7. The user profile and authentication identity must reference the same immutable user identifier.
+8. The authenticated session is established.
+9. The user is routed according to persisted service state.
+
+Registration must behave as one product-level atomic operation.
+
+If authentication identity creation succeeds but application profile creation fails:
+
+- do not present successful registration
+- attempt safe rollback or mark the account as incomplete for controlled recovery
+- do not leave an apparently usable account with missing application identity
+- record a non-sensitive operational error
+
+If registration is submitted repeatedly:
+
+- disable or ignore repeated submissions while pending
+- do not create duplicate users
+- do not create duplicate profile records
+
+#### Login flow
+
+The Login form must require:
+
+- email address
+- password
+
+Login flow:
+
+1. Normalize the entered email.
+2. Authenticate the existing account.
+3. Resolve the linked application user.
+4. restore the authenticated user session
+5. load only data owned by that user
+6. route the user to the correct application screen
+
+Critical rule:
+
+A failed login must never create a user.
+
+Possible failed-login outcomes include:
+
+- account does not exist
+- password is incorrect
+- account is disabled
+- authentication service is temporarily unavailable
+
+The user must receive friendly, non-technical feedback.
+
+The user interface should avoid revealing unnecessary account-existence information where security policy requires it.
+
+#### Login and registration screen UX
+
+The entry screen must be modern, clean and visually consistent with the Digital Home product.
+
+It must include:
+
+- clear product identity
+- distinct Login and Create Account modes
+- clear field labels
+- visible loading state
+- disabled submit action while pending
+- inline validation
+- password visibility toggle
+- keyboard navigation
+- responsive right-to-left Hebrew layout
+- accessible focus states
+- friendly errors
+- no technical database or authentication terminology
+
+The screen must not create visual confusion between:
+
+- Login
+- Create Account
+- Unlocking protected credential data
+
+Do not use one ambiguous password field to perform all three operations implicitly.
+
+#### Post-authentication routing
+
+After successful login or registration:
+
+If the user has persisted selected services:
+
+- route to Digital Home
+- load only that user’s services
+
+If the user has no persisted selected services:
+
+- route to Service Management / Add Services
+- show the existing service-discovery experience
+
+Routing must use persisted `user_services` state.
+
+Do not route according to stale local-only state.
+
+A user with failed service-state loading must receive a friendly recoverable error and must not be routed into another user’s data.
+
+#### User data ownership
+
+All user-specific data must resolve through the authenticated `userId`.
+
+This includes at least:
+
+- `user_services`
+- Access Profiles
+- encrypted credentials
+- user-created private services
+- user preferences
+- future notifications
+- future subscription data
+
+Service Registry global metadata remains shared according to its existing ownership rules.
+
+A user account does not own global catalog identity.
+
+Private custom-service ownership must remain preserved.
+
+#### Ownership Authority
+
+The authenticated immutable userId is the only authoritative ownership key for all user-owned data.
+
+Ownership must never be inferred from:
+
+- email
+- browser
+- local storage
+- session identifier
+- device
+- service name
+
+All user-owned resources must resolve through the authenticated userId.
+
+#### Database isolation
+
+User isolation must be enforced through database authorization rules.
+
+Where the database supports Row Level Security, use Row Level Security: database rules that ensure each authenticated user may read or modify only rows they own.
+
+The user interface is not a security boundary.
+
+Required behavior:
+
+- User A cannot read User B’s services.
+- User A cannot read User B’s Access Profiles.
+- User A cannot read User B’s encrypted credentials.
+- User A cannot update or delete User B’s rows.
+- An altered browser request must not bypass ownership checks.
+- An administrator role must not automatically receive plaintext credential access.
+
+Zero-Knowledge boundaries remain applicable to administrators.
+
+#### Session behavior
+
+Phase 109 must support:
+
+- session creation after login
+- session restoration after refresh
+- explicit logout
+- expiration handling
+- invalid-session handling
+- account-disabled handling
+- consistent authenticated state across application screens
+
+Logging out must:
+
+- clear active authentication state
+- clear decrypted sensitive in-memory state
+- return the user to the entry screen
+- not delete persisted account or encrypted data
+
+Advanced trusted-device and multi-session management remain Phase 191 responsibilities.
+
+#### Chrome and Edge continuity
+
+The same user must be able to access the same account from current supported Chrome and Microsoft Edge browsers.
+
+Expected behavior:
+
+- User registers once.
+- User may log in later from Chrome or Edge.
+- The same authenticated `userId` is resolved.
+- The same persisted services are loaded.
+- The same Access Profiles and encrypted credential records are associated with the account.
+- No duplicate user is created because a different browser is used.
+
+Browser-local state must not become the authoritative identity source.
+
+If the browser extension is unavailable:
+
+- account login must still work
+- Digital Home must still load
+- services must still open where possible
+- extension-dependent autofill may degrade gracefully according to existing architecture
+
+Phase 109 does not implement enterprise extension deployment.
+
+#### Administrator role
+
+Administrator status must be assigned only through protected database or server-side administration.
+
+Requirements:
+
+- Registration always creates a normal `user` role.
+- The registration form must not offer an administrator option.
+- Client requests must not be able to set or change `role`.
+- Local storage must not determine administrator status.
+- Query parameters must not determine administrator status.
+- Administrator routes must verify the authoritative database role.
+- Hiding an admin button is not sufficient access control.
+- Removing administrator status in the database must remove access after session or authorization refresh.
+
+The existing administrator must be linked to a real authenticated user record.
+
+#### Existing unintended users
+
+The current database reportedly contains approximately 40 user records that were not created through an intentional registration flow.
+
+Before migration or cleanup:
+
+- identify how those records were created
+- classify whether they contain linked application data
+- back up the affected records
+- do not silently merge accounts
+- do not silently assign records to a new user
+- do not delete records that own encrypted credentials without explicit validation
+
+Create a one-time migration or cleanup procedure.
+
+Possible classifications:
+
+- empty unintended test user
+- user with `user_services`
+- user with Access Profiles
+- user with encrypted credentials
+- administrator-linked user
+- unknown ownership
+
+Empty test users may be removed through the approved migration.
+
+Users with linked data require explicit handling and audit evidence.
+
+After Phase 109, arbitrary password entry must no longer increase the user count.
+
+#### Idempotency and concurrency
+
+Registration, login and profile creation operations must be safe under:
+
+- repeated button clicks
+- repeated form submission
+- browser retry
+- slow network
+- two browser tabs
+- simultaneous requests
+
+Requirements:
+
+- submit controls are disabled or ignored while pending
+- database uniqueness prevents duplicate accounts
+- profile creation is idempotent
+- session restoration does not create users
+- login does not mutate user identity
+- retries do not create duplicate profile rows
+
+#### Error handling
+
+User-facing errors must be friendly and non-technical.
+
+Examples:
+
+- “לא הצלחנו להתחבר כרגע. בדקו את הפרטים ונסו שוב.”
+- “לא הצלחנו ליצור את החשבון כרגע. נסו שוב בעוד רגע.”
+- “כבר קיים חשבון עם כתובת המייל הזו.”
+- “החיבור נותק. התחברו מחדש כדי להמשיך.”
+
+Do not expose:
+
+- stack traces
+- database errors
+- authentication-provider internals
+- encryption internals
+- access tokens
+- user identifiers
+- raw exceptions
+
+Operational logs must not contain passwords, decrypted credentials or authentication tokens.
+
+#### Loading and offline behavior
+
+During authentication operations:
+
+- show a clear loading state
+- prevent duplicate submission
+- preserve entered non-secret registration data where safe
+- do not preserve password fields after a failed navigation or refresh
+- distinguish validation errors from temporary connectivity failures
+
+Offline behavior:
+
+- do not create a local-only authenticated user
+- do not present successful registration without authoritative persistence
+- do not create phantom accounts
+- provide clear retry guidance
+
+#### Audit and operational metadata
+
+Record non-sensitive account events where supported:
+
+- account created
+- login succeeded
+- login failed
+- logout
+- account disabled
+- administrator role changed
+- profile creation failed
+- incomplete account recovery attempted
+
+Audit events must not contain:
+
+- passwords
+- decrypted credentials
+- Master Password material
+- encryption keys
+- complete authentication tokens
+
+Detailed security monitoring remains Phase 191 responsibility.
+
+#### Regression protection
+
+Phase 109 must not break or redesign:
+
+- Phase 102 Service Registry
+- Phase 103 unified service execution
+- Phase 104 Service Management
+- Phase 105 Digital Home
+- Phase 106 Security and Trust UX
+- Phase 107 Admin Registry Management
+- Phase 108 Browser Integration and Login Discovery
+- existing service discovery behavior
+- existing `loginUrl` metadata
+- existing custom-service creation behavior
+- validated Shufersal and Clalit behavior
+- extension messaging and tab behavior
+- Access Profile architecture
+- credential encryption
+- Zero-Knowledge guarantees
+
+All existing user-owned rows must be linked only through approved migration logic.
+
+Do not change data ownership silently.
+
+#### Future Subscription Boundary
+
+The authenticated account introduced by Phase 109 becomes the identity foundation for future subscription, licensing and entitlement capabilities.
+
+Phase 109 itself must not implement any subscription or billing behavior.
+
+Future phases may bind commercial capabilities to the authenticated account without redesigning the identity architecture.
+
+#### Non-goals
+
+Phase 109 does not include:
+
+- subscription plans
+- billing
+- payment collection
+- email marketing
+- social login
+- Google login
+- Apple login
+- passkeys
+- biometric login
+- multi-factor authentication
+- password recovery architecture
+- trusted-device management
+- administrator creation through the user interface
+- encryption redesign
+- credential autofill redesign
+- enterprise extension deployment
+
+These capabilities belong to later phases.
+
+#### Required engineering deliverables
+
+The development team must provide:
+
+- authentication flow diagram
+- user/account data model
+- migration script or documented migration procedure
+- database uniqueness constraints
+- database ownership and authorization policies
+- Login and Create Account screen implementation
+- post-login routing implementation
+- Chrome and Edge validation evidence
+- regression test report
+- unintended-user cleanup report
+- documented temporary password-policy configuration
+- explicit documentation of account password versus Master Password behavior
+
+#### Acceptance criteria
 
 | Acceptance criteria | |
 |---------------------|---|
-| AC-109-1 | Stale password detection heuristics defined and surfaced non-technically |
-| AC-109-2 | Login failure hints suggest credential review (not auto-update) |
-| AC-109-3 | Explicit “update credentials” flow in Service Management |
-| AC-109-4 | Credential updates require user confirmation — no silent overwrite |
-| AC-109-5 | Lifecycle events do not weaken zero-knowledge rules |
+| AC-109-1 | The entry screen provides clearly separate Login and Create Account flows |
+| AC-109-2 | Entering an unknown email or incorrect password never creates a user |
+| AC-109-3 | A user is created only through successful explicit registration |
+| AC-109-4 | Registration collects first name, last name, email, phone, password and password confirmation |
+| AC-109-5 | Every registered user receives one stable immutable user identifier |
+| AC-109-6 | Normalized email uniqueness is enforced by the database |
+| AC-109-7 | Repeated registration submissions do not create duplicate authentication or profile records |
+| AC-109-8 | A linked row is created in the existing application users table for every successful registration |
+| AC-109-9 | Failed profile persistence does not produce an apparently successful but incomplete account |
+| AC-109-10 | Login authenticates existing users without modifying or recreating their identity |
+| AC-109-11 | Successful authentication restores the correct user-owned services, profiles and encrypted credential records |
+| AC-109-12 | Users cannot read, update or delete data owned by another user |
+| AC-109-13 | User isolation is enforced by database authorization rules, not only by UI filtering |
+| AC-109-14 | Users with persisted selected services are routed to Digital Home |
+| AC-109-15 | Users without persisted selected services are routed to Service Management / Add Services |
+| AC-109-16 | Digital Home derives the authenticated user’s services from persisted `user_services` state |
+| AC-109-17 | The same account and Digital Home data are available after login from supported Chrome and Edge browsers |
+| AC-109-18 | Changing browsers does not create a new user |
+| AC-109-19 | Login and Digital Home remain usable when the browser extension is unavailable, with extension-dependent functions degrading gracefully |
+| AC-109-20 | Registration always assigns the normal user role |
+| AC-109-21 | Administrator role can be assigned or removed only through protected database/server-side administration |
+| AC-109-22 | Client-side manipulation cannot grant administrator access |
+| AC-109-23 | Session state survives a normal page refresh without creating a new user |
+| AC-109-24 | Logout clears authenticated and decrypted in-memory state without deleting persisted account data |
+| AC-109-25 | Authentication errors are friendly and do not expose technical internals |
+| AC-109-26 | Passwords, tokens, decrypted credentials and encryption keys never appear in logs |
+| AC-109-27 | Offline or failed registration does not create a phantom local-only account |
+| AC-109-28 | The existing unintended user records are audited before cleanup |
+| AC-109-29 | Data-bearing unintended users are not deleted or reassigned silently |
+| AC-109-30 | After migration, arbitrary password entry no longer increases the database user count |
+| AC-109-31 | The temporary relaxed password policy is development-configured and cannot be mistaken for the production policy |
+| AC-109-32 | Account password and Master Password behavior is explicitly documented and not implicitly coupled |
+| AC-109-33 | Existing functionality delivered through Phase 108 passes regression testing |
+| AC-109-34 | Validated Shufersal and Clalit behavior remains preserved |
+| AC-109-35 | Build passes |
+
+> **Note:** Prior Phase 109 content (Credential Lifecycle UX) is deferred. Related signals belong with Phase 115 (Credential Change Detection) and Trust/execution failure hints — not renumbered here.
 
 ---
 
@@ -1532,7 +2174,7 @@ Phase 112 extends the same execution architecture to complex authentication scen
 
 Phase 103 established one execution pipeline.
 Phase 110 makes that pipeline useful for normal websites.
-Phase 112 remains responsible for complex login intelligence and advanced cases.
+Phase 112 classifies login complexity and handles medium/complex login experiences that Phase 110 cannot cover safely.
 
 **Scope:**
 
@@ -1626,24 +2268,22 @@ These belong to Phase 112 or Phase 113.
 
 **Relationship to Phase 112:**
 
-Phase 110 provides broad coverage for conventional login forms.
+Phase 110 provides broad coverage for conventional single-page login forms.
 
-Phase 112 extends the same execution architecture to advanced authentication scenarios that cannot be handled safely by generic autofill.
+Phase 112 classifies login complexity and extends the same execution architecture to medium/complex authentication scenarios that cannot be handled safely by Phase 110 generic autofill.
 
 Phase 112 includes, but is not limited to:
 
-- multi-step login flows
-- iframe-based login
-- modal login dialogs
-- dynamically generated forms
-- CAPTCHA-aware orchestration
-- OTP orchestration
-- service-specific adapters
-- complex JavaScript-driven authentication
-- bank-specific authentication flows
-- advanced field detection strategies
+- login complexity classification (`basic` / `medium` / `complex` / `unknown`)
+- email-first / username-first / password-second-step flows
+- authentication method selection screens
+- modal / popup / iframe login evaluation
+- federated login option detection (without automation)
+- CAPTCHA-aware and OTP-aware classification
+- adapter recommendation rules
+- Service Registry login-intelligence metadata enrichment
 
-Phase 112 builds on Phase 110 and must not replace or duplicate its generic capabilities.
+Phase 112 builds on Phase 110 and must not replace or duplicate its generic standard-form capabilities.
 
 **Regression protection:**
 
@@ -1718,39 +2358,391 @@ Phase 110 must not:
 
 ---
 
-### Phase 112 — Login Intelligence & Advanced Autofill
+### Phase 112 — Login Intelligence and Advanced Autofill
 
-**Goal:** Improve the platform’s ability to discover, classify, and autofill login experiences beyond simple login forms.
+**Goal:** Extend the platform from standard login autofill to modern, multi-pattern login experiences while preserving safety, user control, and the Phase 103 unified execution pipeline.
 
-**Scope:**
+**Architectural purpose:**
 
-- Login field detection
-- Username/email/id/user-code field classification
-- Password field detection
-- Multi-step login flows
-- Modal/popup login flows
-- iframe evaluation
-- `loginUrl` quality signals
-- Metadata enrichment for Service Registry
-- Adapter recommendation rules
-- Autofill success/failure classification
+- Phase 108 discovers and maintains the login entry point.
+- Phase 110 handles standard single-page login forms.
+- Phase 112 handles login experiences that are not covered safely by Phase 110.
+- Phase 112 classifies login complexity, enriches Service Registry metadata, and determines when generic intelligence is sufficient versus when an adapter is required.
 
-**Rules:**
+**Architectural principles:**
 
-- Generic engine remains first priority.
+- User navigation must never be blocked by detection failure.
+- Generic intelligence is attempted before adapters.
 - Adapters are used only when generic intelligence is insufficient.
 - No auto-submit.
 - No hidden-field filling.
-- User navigation must not be blocked by detection failure.
-- Discovered metadata must update registry/admin flows, not bypass governance.
+- No credential use during discovery/classification.
+- The system must prefer safe non-action over risky autofill.
+- Metadata enrichment must go through Service Registry/Admin governance.
+- Phase 112 must not replace Phase 103 execution; it extends metadata and autofill intelligence used by it.
+
+**Scope:**
+
+- Login experience classification
+- Login complexity classification
+- Advanced field detection
+- Username/email/id/customer-number/user-code classification
+- Password field detection
+- Authentication method selection screens
+- Email-first / username-first flows
+- Continue / Next button flows
+- Password-on-second-step flows
+- Modal login dialogs
+- Popup login dialogs
+- iframe evaluation
+- Dynamic JavaScript-driven login forms
+- Federated login option detection
+  - Google
+  - Apple
+  - Microsoft
+  - other identity providers
+- OTP-aware orchestration signals
+- CAPTCHA-aware classification
+- Adapter recommendation rules
+- Integration health signals
+- Autofill success/failure classification
+- Service Registry metadata enrichment
+
+**Login complexity model:**
+
+Add or support a Service Registry metadata field such as:
+
+`loginComplexity`
+
+Allowed values:
+
+- `basic`
+- `medium`
+- `complex`
+- `unknown`
+
+Exact column name may follow existing schema conventions.
+
+Definitions:
+
+`basic`
+- Standard single-page login form.
+- Username/email/id and password are visible on the same page.
+- Can be handled by Phase 110 generic autofill.
+
+`medium`
+- Login is still generic, but requires limited orchestration.
+- Examples:
+  - email-first then password
+  - username-first then password
+  - Continue / Next button before password step
+  - simple modal login
+  - common authentication method selection where email login is available
+
+`complex`
+- Requires adapter, advanced orchestration, or human review.
+- Examples:
+  - iframe-based login
+  - CAPTCHA dependency
+  - OTP-heavy flow
+  - bank-specific flow
+  - dynamic authentication state
+  - federated-only login
+  - complex JavaScript-driven login
+  - high-risk form ambiguity
+
+`unknown`
+- Complexity has not been classified yet or classification failed.
+
+**Registry metadata requirements:**
+
+Service Registry should support metadata such as:
+
+- `loginComplexity`
+- `loginFlowType`
+- `loginDetectionStatus`
+- `loginDetectionConfidence`
+- `loginDetectionLastCheckedAt`
+- `loginDetectionError`
+- `loginDetectionEngineVersion`
+- `lastValidatedBy` (`auto` | `admin` | `adapter`)
+- `adapterRecommended`
+- `adapterReason`
+- `adapterLifecycle`
+- `integrationHealth`
+- `supportedCredentialFields`
+- `federatedLoginOptions`
+- `requiresOtp`
+- `requiresCaptcha`
+- `usesIframe`
+- `usesModal`
+- `isMultiStep`
+
+Exact schema may follow existing conventions.
+
+#### Login Intelligence Ownership
+
+Phase 112 is the authoritative owner of all Login Intelligence metadata stored in Service Registry.
+
+This includes, but is not limited to:
+
+- loginComplexity
+- loginFlowType
+- loginDetectionStatus
+- loginDetectionConfidence
+- loginDetectionEngineVersion
+- adapterRecommended
+- adapterLifecycleState
+- integrationHealth
+- supportedCredentialFields
+- requiresOtp
+- requiresCaptcha
+- usesIframe
+- usesModal
+- isMultiStep
+
+Other phases may consume this metadata but must not modify it directly unless explicitly delegated by Phase 112.
+
+Phase ownership remains:
+
+- Phase 108 discovers and validates **consumer** login entry points (`loginUrl`), preferring `NULL` over false positives, and may write **discovery deferral signals** (`rejectedLoginUrl`, `loginEntryType`, `usesModal`, `phase112Deferred`, `loginIntelligenceHint`) for Phase 112.
+- Phase 110 consumes Login Intelligence for standard autofill when a validated navigable `loginUrl` exists.
+- Phase 112 owns authoritative Login Intelligence classification and metadata lifecycle, including modal-on-primary and complex surfaces deferred by Phase 108.
+- Phase 113 owns Service Identity and URL canonicalization.
+
+**Login Reclassification:**
+
+Login intelligence is not immutable.
+
+Whenever detection is rerun, scheduled rediscovery occurs, or an administrator requests reclassification:
+
+- `loginComplexity` may change.
+- `loginFlowType` may change.
+- Detection confidence may change.
+- Adapter recommendation may change.
+
+The latest validated metadata becomes active.
+
+Where supported, previous values should remain available through audit/history.
+
+Manual administrator overrides must never be overwritten automatically unless the administrator explicitly approves replacement.
+
+**Detection Confidence:**
+
+Confidence determines how discovered metadata may be used.
+
+High confidence
+- Metadata may be applied automatically.
+
+Medium confidence
+- Metadata may be stored but recommended for administrator review.
+
+Low confidence
+- Metadata must not automatically replace verified metadata.
+- Manual review is recommended.
+
+**Supported flow classifications:**
+
+Phase 112 should classify at least:
+
+- standard_single_page
+- email_first
+- username_first
+- id_first
+- password_second_step
+- auth_method_selection
+- modal_login
+- popup_login
+- iframe_login
+- federated_login_available
+- federated_only
+- otp_required
+- captcha_required
+- adapter_required
+- unknown
+
+**Execution behavior:**
+
+- Phase 112 may provide enriched metadata to the Phase 103 execution pipeline.
+- Phase 112 may guide whether Phase 110 generic autofill can run.
+- Phase 112 may recommend adapter usage.
+- Phase 112 must not introduce service-specific execution branching outside approved adapter architecture.
+- If classification fails, the site still opens.
+- If autofill cannot run safely, the site remains open.
+- If the flow is classified as complex, the user receives friendly non-blocking guidance.
+
+#### Login Intelligence Decision Flow
+
+Login Intelligence should make decisions in the following order:
+
+1. Use administrator-validated metadata when available.
+2. Otherwise use the latest validated automatic metadata.
+3. Execute Phase 110 generic autofill for services classified as `basic`.
+4. Execute Phase 112 orchestration for services classified as `medium`.
+5. Execute approved adapters for services classified as `complex`, when available.
+6. If no safe execution path exists, open the website normally without blocking the user.
+7. Discovery, classification, or autofill failures must never prevent website navigation.
+8. Manual administrator overrides always take precedence over automatically discovered metadata unless explicitly replaced by the administrator.
+
+**Authentication method selection screens:**
+
+For pages that show multiple sign-in methods, such as Google, Apple, and Email:
+
+- Detect available methods.
+- Prefer native email/username login when available and safe.
+- Do not attempt federated login automation.
+- Do not click Google/Apple/Microsoft buttons automatically.
+- Mark federated options in metadata.
+- If only federated login exists, classify as complex or unsupported for autofill.
+
+**Email-first / username-first flows:**
+
+For flows such as Amazon or Microsoft-style login:
+
+- Identify first credential step.
+- Fill only the first safe field.
+- Do not auto-submit unless explicitly allowed by future architecture.
+- Mark the flow as medium or complex according to risk.
+- Preserve user control.
+
+**iframe / modal / popup rules:**
+
+- iframe login must be evaluated for safety and browser permission feasibility.
+- Modal login may be supported only when fields are visible and safe.
+- Popup login must not be automated unless approved by adapter architecture.
+- Failure to interact with iframe/modal/popup must not block opening the site.
+
+**OTP / CAPTCHA rules:**
+
+- OTP and CAPTCHA must be classified, not bypassed.
+- The system must not attempt to solve CAPTCHA.
+- The system must not read OTP unless future architecture explicitly supports it.
+- OTP/CAPTCHA presence should produce integration health metadata.
+
+**Adapter recommendation:**
+
+The system should mark a service as adapter-needed when:
+
+- generic detection fails repeatedly
+- field ambiguity is high
+- login flow is bank-specific or highly dynamic
+- iframe/popup constraints prevent safe generic autofill
+- OTP/CAPTCHA dominates the login flow
+- manual admin review confirms generic autofill is insufficient
+
+**Adapter Lifecycle:**
+
+Adapter recommendation should support lifecycle states such as:
+
+- recommended
+- approved
+- implemented
+- validated
+- deprecated
+
+This lifecycle supports long-term maintenance and future engineering planning.
+
+**Integration Health States:**
+
+Failed generic autofill and detection outcomes produce actionable integration health signals.
+
+Supported values may include:
+
+- `healthy`
+- `degraded`
+- `needs_review`
+- `adapter_required`
+- `unsupported`
+
+These values should be visible in administrator tooling and available for reporting.
+
+**Retry Policy:**
+
+Transient detection failures may be retried automatically according to implementation policy.
+
+Permanent failures should wait for:
+
+- administrator rediscovery
+- scheduled metadata refresh
+- manual metadata update
+
+Repeated failures must not create duplicate metadata or inconsistent registry state.
+
+**Admin visibility:**
+
+Admin Management should display:
+
+- loginComplexity
+- loginFlowType
+- detection status
+- last checked timestamp
+- confidence
+- detection engine version
+- lastValidatedBy
+- adapter recommendation
+- adapter lifecycle
+- integration health
+- reason for failure or complexity
+- option to reclassify / rerun detection
+- option to override metadata manually
+
+**User-facing behavior:**
+
+- Do not expose technical complexity labels directly to normal users unless needed.
+- User messages must be friendly:
+  - “פתחנו את האתר, אך מילוי אוטומטי עדיין לא נתמך באתר זה”
+  - “האתר דורש שלב נוסף לפני הזנת הסיסמה”
+  - “נדרש אישור ידני באתר”
+- Never show raw detection errors to users.
+
+**Non-goals:**
+
+- No CAPTCHA solving
+- No automatic OTP reading
+- No auto-submit
+- No federated login automation
+- No password rotation
+- No credential sharing
+- No Service Identity canonicalization
+- No loginUrl discovery ownership
+- No bypassing browser security
+- No storing plaintext credentials
+
+**Relationship to other phases:**
+
+- Phase 108 finds and maintains the login entry point.
+- Phase 110 handles basic standard forms.
+- Phase 112 classifies and supports medium/complex login experiences.
+- Phase 113 owns canonical service identity and duplicate prevention.
+- Phase 107 exposes admin metadata management.
+- Phase 103 remains the execution pipeline.
 
 | Acceptance criteria | |
 |---------------------|---|
-| AC-112-1 | The system can classify common login form patterns |
-| AC-112-2 | The system can enrich registry metadata when safe |
-| AC-112-3 | Failed generic autofill produces actionable integration health signals |
-| AC-112-4 | Complex sites can be marked as adapter-needed |
-| AC-112-5 | Existing Phase 103 execution flow remains unchanged |
+| AC-112-1 | The system classifies login experiences into basic, medium, complex, or unknown |
+| AC-112-2 | Service Registry supports login complexity metadata |
+| AC-112-3 | Standard login forms remain handled by Phase 110 without regression |
+| AC-112-4 | Email-first and username-first flows are detected and classified |
+| AC-112-5 | Authentication method selection screens are detected |
+| AC-112-6 | Federated login options are detected but not automatically executed |
+| AC-112-7 | iframe, modal, popup, OTP and CAPTCHA presence are classified safely |
+| AC-112-8 | Failed generic autofill produces actionable integration health signals |
+| AC-112-9 | Complex sites can be marked as adapter-needed with a reason |
+| AC-112-10 | Admin can view and refresh login intelligence metadata |
+| AC-112-11 | User navigation is never blocked by detection or autofill failure |
+| AC-112-12 | Autofill failure never closes the tab |
+| AC-112-13 | No auto-submit is introduced |
+| AC-112-14 | No hidden-field filling is introduced |
+| AC-112-15 | No service-specific branching is introduced outside approved adapters |
+| AC-112-16 | Existing Phase 103 execution flow remains unchanged |
+| AC-112-17 | Shufersal and Clalit validated behavior remains preserved |
+| AC-112-18 | Build passes |
+| AC-112-19 | A service login experience may transition between basic, medium, complex or unknown after rediscovery or administrator review. The system must apply the latest validated metadata while preserving manual administrator overrides unless explicitly approved for replacement |
+| AC-112-20 | Detection confidence controls whether metadata is applied automatically, stored for review, or withheld from replacing verified metadata |
+| AC-112-21 | Adapter recommendation supports lifecycle states (recommended, approved, implemented, validated, deprecated) |
+| AC-112-22 | Integration health uses explicit states (healthy, degraded, needs_review, adapter_required, unsupported) visible in admin tooling |
+| AC-112-23 | Transient detection failures may retry per policy; permanent failures wait for admin/scheduled/manual refresh without duplicating metadata |
+| AC-112-24 | Registry metadata includes `loginDetectionEngineVersion` and `lastValidatedBy` (`auto` \| `admin` \| `adapter`) |
 
 ---
 
@@ -1952,6 +2944,304 @@ Only presentation architecture and shared application layout are introduced.
 | AC-114-8 | Individual screens no longer implement their own application header |
 | AC-114-9 | Future screens integrate into the shared Application Shell without redesigning global navigation |
 | AC-114-10 | Build passes |
+
+---
+
+### Phase 115 — Credential Change Detection & Guided Update
+
+**Goal:** Detect possible credential changes performed on external services and guide users to safely update their stored credentials without automatic modification, while preserving the Zero-Knowledge architecture.
+
+**Architectural purpose:**
+
+Users frequently change passwords directly on service websites.
+
+If STRAIX continues using outdated credentials, autofill failures increase and user trust decreases.
+
+Phase 115 introduces intelligent detection of possible credential changes and guides users through an explicit update flow.
+
+The system never modifies stored credentials automatically.
+
+**Architectural principles:**
+
+- Stored credentials belong exclusively to the user.
+- STRAIX never replaces credentials automatically.
+- Detection confidence must be separated from update decisions.
+- Possible password changes are treated as signals, never facts.
+- User confirmation is mandatory before any credential update.
+- Zero-Knowledge architecture must remain unchanged.
+- Detection must never interfere with normal website execution.
+
+**Scope:**
+
+Phase 115 includes:
+
+- Credential change detection
+- Password expiration detection
+- Password reset completion detection
+- Password update success detection
+- Credential review recommendations
+- Guided update workflow
+- Notification generation
+- Detection confidence scoring
+- Detection history
+- Friendly user messaging
+
+**Detection Sources:**
+
+The system may generate a credential-change signal from multiple safe sources.
+
+Examples include:
+
+#### Password change pages
+
+Detect common password change experiences such as:
+
+- Current Password
+- Old Password
+- New Password
+- Confirm Password
+
+without collecting or storing plaintext values.
+
+#### Password expiration
+
+Detect common password expiration messages such as:
+
+- Password expired
+- Password must be changed
+- Security policy requires password update
+
+#### Password updated successfully
+
+Detect confirmation pages indicating that a password change completed successfully.
+
+#### Password reset completion
+
+Detect completion of password-reset flows.
+
+#### Repeated autofill failures
+
+Repeated login failures may generate a low-confidence recommendation to review credentials.
+
+Autofill failure alone must never be interpreted as proof that credentials changed.
+
+**Detection Boundaries:**
+
+Credential Change Detection must never assume that authentication failure means credentials have changed.
+
+Possible credential change signals are advisory only.
+
+The following situations must never be interpreted as proof of credential changes:
+
+- temporary website failures
+- network failures
+- server errors
+- CAPTCHA
+- OTP verification
+- MFA challenges
+- service maintenance
+- browser compatibility issues
+- login page redesign
+- autofill execution failures
+
+Multiple weak signals may increase confidence but must never automatically update credentials.
+
+**Detection Confidence:**
+
+Every credential-change signal should receive a confidence level.
+
+Suggested values:
+
+- low
+- medium
+- high
+
+Examples:
+
+Low
+
+- multiple login failures
+
+Medium
+
+- password expiration page detected
+
+High
+
+- password change page completed successfully
+
+Only medium and high confidence signals should normally generate user notifications.
+
+**Detection Metadata:**
+
+Credential change events should record metadata such as:
+
+- serviceId
+- accessProfileId
+- detectionType
+- confidence
+- detectedAt
+- detectionSource
+- reviewStatus
+- resolvedAt
+
+Exact schema may follow existing conventions.
+
+No plaintext credentials may ever be stored.
+
+**Detection Lifecycle:**
+
+Each credential change event should progress through an explicit lifecycle.
+
+Suggested states:
+
+- detected
+- notified
+- acknowledged
+- updated
+- dismissed
+- expired
+
+Only one unresolved credential-change event may exist per Access Profile.
+
+Creating duplicate pending events for the same credential change should be prevented.
+
+Once the user updates credentials successfully, previous unresolved detection events should be closed automatically.
+
+**Guided Update Flow:**
+
+When a high-confidence credential change is detected:
+
+1. Do not overwrite stored credentials.
+2. Create a review event.
+3. Notify the user.
+4. Allow the user to open Credential Management directly.
+5. Require explicit confirmation before replacing stored credentials.
+
+**User Experience:**
+
+Examples of friendly messages:
+
+"המערכת זיהתה שייתכן ששינית את פרטי הכניסה לשירות."
+
+"רוצה לעדכן גם את פרטי הכניסה השמורים בבית הדיגיטלי?"
+
+"המידע לא השתנה אוטומטית."
+
+The system should reassure users that updates always remain under their control.
+
+**Notifications:**
+
+Credential-change notifications should integrate with the Digital Home Notifications area introduced in Phase 105.
+
+Notifications should remain actionable.
+
+Examples:
+
+- Review credentials
+- Update now
+- Dismiss
+
+**Detection History:**
+
+The system should retain a history of credential-change detection events.
+
+Each event should include:
+
+- timestamp
+- confidence
+- service
+- resolution state
+
+Possible states:
+
+- pending
+- dismissed
+- updated
+- false_positive
+
+**Safety Rules:**
+
+Phase 115 must never:
+
+- automatically replace credentials
+- submit password-change forms
+- read plaintext credentials
+- weaken encryption
+- bypass Zero-Knowledge
+- expose detection internals to users
+
+**Administrator Visibility:**
+
+Administrator tools may expose aggregated credential-change statistics for operational monitoring.
+
+Examples:
+
+- services generating frequent credential-change events
+- repeated detection failures
+- false-positive rates
+- detection engine effectiveness
+
+Administrators must never have access to plaintext credentials or user secrets.
+
+Only anonymized operational metadata may be displayed.
+
+**Relationship to Other Phases:**
+
+- Phase 103 executes services.
+- Phase 108 discovers login entry points.
+- Phase 110 performs generic autofill.
+- Phase 112 supports advanced login experiences.
+- Phase 115 detects possible credential changes and guides safe updates.
+- Phase 191 secures vault, sessions, authentication and devices.
+
+**Non-goals:**
+
+Phase 115 does not include:
+
+- automatic password changes
+- password generation
+- password strength analysis
+- breach monitoring
+- password reuse detection
+- credential sharing
+- password history
+- account recovery
+- automatic synchronization of changed credentials
+
+**Regression Protection:**
+
+Phase 115 must not modify:
+
+- encryption architecture
+- execution pipeline
+- login discovery
+- autofill behavior
+- Service Registry
+- Access Profile architecture
+
+Only credential-change intelligence is introduced.
+
+| Acceptance Criteria | |
+|---------------------|---|
+| AC-115-1 | Password change pages can be detected without collecting plaintext credentials |
+| AC-115-2 | Password expiration pages generate review recommendations |
+| AC-115-3 | Password reset completion can generate credential review events |
+| AC-115-4 | Repeated autofill failures generate only low-confidence review suggestions |
+| AC-115-5 | Detection confidence is recorded for every event |
+| AC-115-6 | Detection events never overwrite stored credentials automatically |
+| AC-115-7 | Users receive friendly guided-update notifications |
+| AC-115-8 | Guided Update always requires explicit user confirmation |
+| AC-115-9 | Detection history is preserved |
+| AC-115-10 | Notifications integrate with the Digital Home notification area |
+| AC-115-11 | Zero-Knowledge architecture remains unchanged |
+| AC-115-12 | No plaintext credentials are stored or exposed |
+| AC-115-13 | Existing execution, login discovery and autofill behavior remain unchanged |
+| AC-115-14 | Build passes |
+| AC-115-15 | Authentication failures caused by network errors, OTP, CAPTCHA, MFA, website redesign or temporary outages do not generate false credential-change events |
+| AC-115-16 | Duplicate unresolved credential-change events are prevented for the same Access Profile |
+| AC-115-17 | Successful user credential updates automatically resolve previous pending credential-change events |
+| AC-115-18 | Administrator operational visibility exposes only anonymized detection statistics and never user credentials |
 
 ---
 
@@ -2664,7 +3954,9 @@ Touch targets must remain accessible on mobile devices.
 
 ### Phase 191 — Account, Registration and Secure Sign-In
 
-**Goal:** Real user accounts separate from vault unlock.
+**Goal:** Advanced account security on top of the Phase 109 account foundation (MFA, session hardening, vault/session separation).
+
+> **Scope clarification:** Phase **109** owns foundational registration, login, user isolation, and Chrome/Edge account continuity. Phase **191** must not re-implement that shell; it extends with MFA and stronger account/session security while keeping vault unlock separate.
 
 | Acceptance criteria | |
 |---------------------|---|
@@ -2947,12 +4239,13 @@ flowchart LR
   P106[Phase 106 Security Trust]
   P107[Phase 107 Admin]
   P108[Phase 108 Browser Integration]
-  P109[Phase 109 Credential Lifecycle]
+  P109[Phase 109 User Accounts Auth]
   P110[Phase 110 Standard Login Autofill]
   P111[Phase 111 Service Assets and Icons]
   P112[Phase 112 Login Intelligence]
   P113[Phase 113 Service Identity]
   P114[Phase 114 Application Shell]
+  P115[Phase 115 Credential Change Detection]
   P122[Phase 122 Useful Services]
   P123[Phase 123 Notifications]
   P124[Phase 124 View Modes]
@@ -2974,6 +4267,8 @@ flowchart LR
   P103 --> P110
   P102 --> P110
   P108 --> P110
+  P108 --> P109
+  P101 --> P109
   P110 --> P112
   P103 --> P112
   P102 --> P112
@@ -2984,17 +4279,20 @@ flowchart LR
   P114 --> P104
   P114 --> P105
   P114 --> P106
+  P103 --> P115
+  P110 --> P115
+  P105 --> P115
+  P115 --> P123
   P105 --> P122
   P103 --> P122
   P105 --> P123
-  P109 --> P123
   P105 --> P124
   P122 --> P124
   P123 --> P124
   P111 --> P104
   P111 --> P105
-  P105 --> P109
   P101 --> P151
+  P109 --> P191
   P101 --> P191
   P191 --> P192
   P106 --> P192
@@ -3046,5 +4344,12 @@ flowchart LR
 | **4.3** | 2026-07-09 | **Phase 110 refined.** Conservative field detection, deterministic autofill constraints, Phase 112 boundary, regression protection, and AC-110-14/15. |
 | **4.4** | 2026-07-09 | **Phase 108 rewritten — Browser Integration and Login Discovery.** Chrome/Edge abstraction plus loginUrl discovery, registry metadata, admin refresh, and DiscoveryExecutor tab isolation. |
 | **4.5** | 2026-07-09 | **Phase 108 discovery boundary.** Clarified Phase 112 entry-point sources and explicit Phase 108 vs 110 vs 112 responsibility split. |
+| **4.6** | 2026-07-09 | **Phase 112 rewritten — Login Intelligence and Advanced Autofill.** Complexity model, flow classifications, federated/OTP/CAPTCHA rules, admin visibility, and AC-112-1 through AC-112-18. |
+| **4.7** | 2026-07-09 | **Phase 112 refined.** Reclassification, detection confidence, adapter lifecycle, integration health states, retry policy, engine version / lastValidatedBy, and AC-112-19 through AC-112-24. |
+| **4.8** | 2026-07-09 | **Phase 112 ownership and decision flow.** Login Intelligence Ownership and ordered runtime decision path; acceptance criteria unchanged. |
+| **4.9** | 2026-07-12 | **Phase 115 — Credential Change Detection & Guided Update.** Signal-based password-change detection, confidence scoring, guided update with mandatory confirmation, and Digital Home notifications. |
+| **5.0** | 2026-07-12 | **Phase 115 refined.** Detection boundaries, lifecycle, admin anonymized visibility, and AC-115-15 through AC-115-18. |
+| **5.1** | 2026-07-12 | **Phase 109 rewritten — User Accounts, Authentication and Cross-Browser Access.** Explicit Login/Create Account; stop anonymous user proliferation; DB isolation; Chrome/Edge continuity. Prior Credential Lifecycle content deferred (see Phase 115). Phase 191 clarified as advanced account security on top of 109. |
+| **5.2** | 2026-07-12 | **Phase 109 refined.** Account status `deleted`; Ownership Authority subsection; Future Subscription Boundary. Acceptance criteria unchanged. |
 
 Implementation plans for individual production phases may be authored separately; they must align with this document and must not duplicate it as a second architecture source.

@@ -61,6 +61,15 @@ export interface DiscoveryResult {
 
   /** Ranked candidates considered during discovery (optional diagnostics). */
   candidates?: DiscoveryCandidate[];
+
+  /** Phase 108: how the consumer login entry is opened. */
+  loginEntryType?: 'modal' | 'navigable' | 'unknown';
+
+  /** Phase 108: consumer login appears to use an on-page modal. */
+  usesModal?: boolean;
+
+  /** Candidate URL rejected by audience gate (diagnostics; not persisted as loginUrl). */
+  rejectedLoginUrl?: string;
 }
 
 export function discoveryFailure(
@@ -68,7 +77,13 @@ export function discoveryFailure(
   reason: string,
   partial?: Pick<
     DiscoveryResult,
-    'redirectChain' | 'finalUrlAfterRedirects' | 'modalTrigger' | 'candidates'
+    | 'redirectChain'
+    | 'finalUrlAfterRedirects'
+    | 'modalTrigger'
+    | 'candidates'
+    | 'loginEntryType'
+    | 'usesModal'
+    | 'rejectedLoginUrl'
   >,
 ): DiscoveryResult {
   return {
@@ -86,7 +101,13 @@ export function discoverySuccess(
   confidence: DiscoveryConfidence,
   partial?: Pick<
     DiscoveryResult,
-    'redirectChain' | 'finalUrlAfterRedirects' | 'modalTrigger' | 'candidates'
+    | 'redirectChain'
+    | 'finalUrlAfterRedirects'
+    | 'modalTrigger'
+    | 'candidates'
+    | 'loginEntryType'
+    | 'usesModal'
+    | 'rejectedLoginUrl'
   >,
 ): DiscoveryResult {
   return {
@@ -95,6 +116,8 @@ export function discoverySuccess(
     loginUrl,
     method,
     confidence,
+    loginEntryType: partial?.loginEntryType ?? 'navigable',
+    usesModal: partial?.usesModal ?? false,
     ...partial,
   };
 }

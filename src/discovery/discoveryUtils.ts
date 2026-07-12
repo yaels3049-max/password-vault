@@ -4,6 +4,7 @@ import {
   LOGIN_PATH_SEGMENTS,
   LOGIN_TEXT_KEYWORDS,
 } from './discoveryKeywords';
+import { isAlternateAudiencePortalUrl, isTrustedAuthSubdomain } from './loginAudienceGate';
 
 export function normalizePrimaryUrl(primaryUrl: string): string | null {
   const trimmed = primaryUrl.trim();
@@ -43,6 +44,11 @@ export function textMatchesLoginKeyword(text: string): boolean {
 
 export function urlLooksLikeLoginDestination(url: string): boolean {
   try {
+    // Business/clients portals often contain "login" in the path — not consumer entry.
+    if (isAlternateAudiencePortalUrl(url)) {
+      return false;
+    }
+
     const parsed = new URL(url);
     const path = parsed.pathname.toLowerCase();
     const host = parsed.hostname.toLowerCase();
@@ -63,7 +69,8 @@ export function urlLooksLikeLoginDestination(url: string): boolean {
       }
     }
 
-    return /login|signin|sign-in|auth/.test(path);
+    // Require login as a path segment, not a substring of "clientslogin".
+    return /(?:^|\/)(?:login|signin|sign-in|auth)(?:\/|$|\.)/i.test(path);
   } catch {
     return false;
   }
@@ -103,11 +110,16 @@ export function scoreLoginCandidate(options: {
   }
 
   try {
-    const candidateOrigin = new URL(url).origin;
+    const parsed = new URL(url);
+    const candidateOrigin = parsed.origin;
     if (candidateOrigin === baseOrigin) {
       score += 3;
-    } else if (urlLooksLikeLoginDestination(url)) {
-      score += 5;
+    } else if (isTrustedAuthSubdomain(parsed.hostname)) {
+      // Consumer auth hosts (login.*, e-services.*, …) beat same-page chrome buttons.
+      score += 12;
+    } else {
+      // Cross-origin/subdomain must not gain score merely for looking like login.
+      score -= 2;
     }
   } catch {
     score -= 5;

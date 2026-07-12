@@ -983,7 +983,7 @@ function openPageAndDetectGenericLogin(urlString, loginFields, sendResponse) {
 const LOGIN_ENTRY_DISCOVERY_SCRIPT = 'discovery/login-entry-discovery.js';
 const LOGIN_ENTRY_DISCOVERY_INITIAL_DELAY_MS = 1500;
 const LOGIN_ENTRY_DISCOVERY_TAB_LOAD_TIMEOUT_MS = 120000;
-const LOGIN_ENTRY_DISCOVERY_OPERATION_TIMEOUT_MS = 90000;
+const LOGIN_ENTRY_DISCOVERY_OPERATION_TIMEOUT_MS = 30000;
 const LOGIN_ENTRY_DISCOVERY_RETRY_DELAY_MS = 300;
 const LOGIN_ENTRY_DISCOVERY_MAX_ATTEMPTS = 25;
 
@@ -996,24 +996,59 @@ function isAllowedLoginEntryDiscoveryUrl(urlString) {
   }
 }
 
+function normalizeDiscoveryHostname(hostname) {
+  return String(hostname || '')
+    .replace(/^www\./i, '')
+    .toLowerCase();
+}
+
+/** Same consumer brand host (www / apex / login.* subdomains). */
+function discoveryHostsCompatible(hostA, hostB) {
+  var a = normalizeDiscoveryHostname(hostA);
+  var b = normalizeDiscoveryHostname(hostB);
+  if (!a || !b) {
+    return false;
+  }
+  if (a === b) {
+    return true;
+  }
+  if (a.endsWith('.' + b) || b.endsWith('.' + a)) {
+    return true;
+  }
+
+  function brandKey(host) {
+    if (/\.(co|org|ac|gov|muni)\.il$/i.test(host)) {
+      var withoutSuffix = host.replace(/\.(co|org|ac|gov|muni)\.il$/i, '');
+      var labels = withoutSuffix.split('.').filter(Boolean);
+      var brand = labels[labels.length - 1] || host;
+      var suffix = host.match(/\.(co|org|ac|gov|muni)\.il$/i);
+      return brand + (suffix ? suffix[0].toLowerCase() : '');
+    }
+    var parts = host.split('.').filter(Boolean);
+    return parts.length >= 2 ? parts.slice(-2).join('.') : host;
+  }
+
+  return brandKey(a) === brandKey(b);
+}
+
 function tabUrlMatchesDiscoveryPrimary(tabUrl, primaryUrl) {
   if (!tabUrl) {
+    return false;
+  }
+
+  // Ignore browser-internal pages while the target navigates.
+  if (
+    /^chrome:|^chrome-extension:|^about:|^edge:|^devtools:/i.test(tabUrl)
+  ) {
     return false;
   }
 
   try {
     var expected = new URL(primaryUrl);
     var parsed = new URL(tabUrl);
-    if (parsed.origin !== expected.origin) {
-      return false;
-    }
-
-    var expectedPath = expected.pathname.replace(/\/$/, '');
-    if (expectedPath) {
-      return parsed.pathname.replace(/\/$/, '') === expectedPath;
-    }
-
-    return parsed.hostname === expected.hostname;
+    // Accept www↔apex and same-brand auth subdomains after redirects.
+    // Exact origin matching caused live discovery to time out on most sites.
+    return discoveryHostsCompatible(parsed.hostname, expected.hostname);
   } catch (_error) {
     return false;
   }
@@ -1072,6 +1107,7 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
   var readyWorkStarted = false;
   var operationTimeout = null;
   var returnTabId = null;
+  var discoveryTabId = null;
 
   function clearOperationTimeout() {
     if (operationTimeout) {
@@ -1087,8 +1123,20 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
     settled = true;
     clearTimeout(tabLoadTimeout);
     clearOperationTimeout();
-    refocusReturnTab(returnTabId);
-    respond(result);
+
+    function done() {
+      refocusReturnTab(returnTabId);
+      respond(result);
+    }
+
+    if (discoveryTabId) {
+      var tabToClose = discoveryTabId;
+      discoveryTabId = null;
+      closeDiscoveryTabSafely(tabToClose, done);
+      return;
+    }
+
+    done();
   }
 
   function armOperationTimeout() {
@@ -1097,9 +1145,7 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
       if (settled) {
         return;
       }
-      settled = true;
-      refocusReturnTab(returnTabId);
-      respond({ ok: false, reason: 'operation_timeout' });
+      finishSession({ ok: false, reason: 'operation_timeout' });
     }, LOGIN_ENTRY_DISCOVERY_OPERATION_TIMEOUT_MS);
   }
 
@@ -1126,6 +1172,7 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
       }
 
       var tabId = tab.id;
+      discoveryTabId = tabId;
 
     function startReadyWork() {
       if (readyWorkStarted || settled) {
@@ -1153,9 +1200,7 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
         changeInfo.url === 'chrome-error://chromewebdata/'
       ) {
         chrome.tabs.onUpdated.removeListener(onTabUpdated);
-        closeDiscoveryTabSafely(tabId, function () {
-          finishSession({ ok: false, reason: 'tab_load_error' });
-        });
+        finishSession({ ok: false, reason: 'tab_load_error' });
         return;
       }
 
@@ -1273,22 +1318,20 @@ function runLoginEntryDiscoveryOnTab(tabId, primaryUrl, attempt, onDone) {
 function openPageAndDiscoverLoginEntry(primaryUrl, sendResponse) {
   return openLoginEntryDiscoveryTab(primaryUrl, sendResponse, function (tabId, finishSession) {
     runLoginEntryDiscoveryOnTab(tabId, primaryUrl, 0, function (discovery) {
-      closeDiscoveryTabSafely(tabId, function () {
-        if (!discovery || typeof discovery !== 'object') {
-          finishSession({ ok: false, reason: 'discovery_no_result' });
-          return;
-        }
+      if (!discovery || typeof discovery !== 'object') {
+        finishSession({ ok: false, reason: 'discovery_no_result' });
+        return;
+      }
 
-        if (discovery.__transportError) {
-          finishSession({ ok: false, reason: discovery.reason || 'discovery_run_failed' });
-          return;
-        }
+      if (discovery.__transportError) {
+        finishSession({ ok: false, reason: discovery.reason || 'discovery_run_failed' });
+        return;
+      }
 
-        finishSession({
-          ok: true,
-          via: 'login-entry-discovery',
-          discovery: discovery,
-        });
+      finishSession({
+        ok: true,
+        via: 'login-entry-discovery',
+        discovery: discovery,
       });
     });
   });

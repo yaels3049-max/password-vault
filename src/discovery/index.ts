@@ -23,6 +23,35 @@ export {
 } from './discoveryKeywords';
 
 export {
+  ALTERNATE_AUDIENCE_PATH_MARKERS,
+  ALTERNATE_AUDIENCE_PORTAL_REJECTED_REASON,
+  ALTERNATE_AUDIENCE_SUBDOMAIN_PREFIXES,
+  ALTERNATE_AUDIENCE_WORDING,
+  CONSUMER_LOGIN_MODAL_REASON,
+  CROSS_SUBDOMAIN_NEEDS_REVIEW_REASON,
+  MODAL_WITH_ALTERNATE_AUDIENCE_REASON,
+  PAGE_CONTEXT_ALTERNATE_AUDIENCE_REASON,
+  candidateLabelSuggestsAlternateAudience,
+  evaluateLoginAudience,
+  extractPageAudienceContextText,
+  isAlternateAudiencePortalUrl,
+  isCrossSubdomainCandidate,
+  isTrustedAuthSubdomain,
+  textHasAlternateAudienceWording,
+  type CandidateAudienceContext,
+  type LoginAudienceDecision,
+} from './loginAudienceGate';
+
+export {
+  classifyDiscoveryReviewStatus,
+  resolvePhase112Deferral,
+  sanitizeDiscoveryResult,
+  shouldPersistDiscoveredLoginUrl,
+  type LoginIntelligenceHint,
+  type Phase112DeferralFields,
+} from './loginDiscoveryPolicy';
+
+export {
   buildCommonPathCandidates,
   documentFromHtml,
   normalizePrimaryUrl,

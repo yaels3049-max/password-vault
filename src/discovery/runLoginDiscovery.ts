@@ -16,7 +16,9 @@ export interface LoginDiscoverySessionResult {
 }
 
 /**
- * Shared login discovery session used by the Discovery Harness and custom service creation.
+ * Shared login discovery session used by the Discovery Harness (dev only).
+ * Production custom-service and admin flows use discoverLogin → extension executor
+ * via discoverLoginForRegistryService / discoverAndPersistLoginUrl.
  * Matches harness behavior: dev proxy fetch when enabled, same discoverLoginEntry options.
  */
 export async function runLoginDiscoverySession(

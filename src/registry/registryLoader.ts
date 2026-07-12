@@ -138,7 +138,10 @@ export async function loadRegistryCatalog(): Promise<ServiceDefinition[]> {
       catalogRows.map(registryRowToServiceDefinition),
     );
 
-    if (globalBuiltIns.length === 0 && !isDevBuild()) {
+    // Catalog UI shows only what is in service_registry (+ dev practice inject).
+    // Known-service seed restore happens on add/select via ensureKnownBuiltinRegistryRow
+    // — do not inject missing builtins here (avoids ghost tiles after DB wipe).
+    if (globalBuiltIns.length === 0 && !isDevBuild() && definitions.length === 0) {
       throw new CatalogLoadError(
         'Registry has no built-in services. Apply Phase 102 seed migration (20260703120100_phase102_seed_builtin.sql).',
       );

@@ -1,6 +1,10 @@
 import { discoverAndPersistLoginUrl } from '../registry/loginUrlDiscovery';
 import type { DiscoveryResult } from '../discovery';
 import {
+  classifyDiscoveryReviewStatus,
+  shouldPersistDiscoveredLoginUrl,
+} from '../discovery/loginDiscoveryPolicy';
+import {
   validateServiceDefinition,
   type ServiceDefinition,
 } from '../service/serviceModel';
@@ -18,7 +22,8 @@ export interface CustomServiceDiscoveryResult {
 const DISCOVERY_SUCCESS_MESSAGE = 'השירות נוסף בהצלחה';
 const DISCOVERY_FAILURE_MESSAGE =
   'השירות נוסף. ייתכן שנצטרך לפתוח אותו דרך דף הבית.';
-const EXTENSION_UNAVAILABLE_MESSAGE = DISCOVERY_FAILURE_MESSAGE;
+const EXTENSION_UNAVAILABLE_MESSAGE =
+  'השירות נוסף, אך הרחבת הדפדפן לא זמינה לגילוי דף כניסה. טענו מחדש את התוסף (manifest 1.4.1+) ונסו שוב.';
 
 function logCustomDiscovery(message: string, detail?: unknown): void {
   if (!import.meta.env.DEV) {
@@ -33,22 +38,7 @@ function logCustomDiscovery(message: string, detail?: unknown): void {
   console.log(`[Custom Discovery] ${message}`, detail);
 }
 
-/** Whether a discovered login URL is stable enough to persist (Iteration 3.3b). */
-export function shouldPersistDiscoveredLoginUrl(result: DiscoveryResult): boolean {
-  if (!result.success || !result.loginUrl) {
-    return false;
-  }
-
-  if (result.method === 'common-path') {
-    return false;
-  }
-
-  if (result.confidence === 'low') {
-    return false;
-  }
-
-  return true;
-}
+export { classifyDiscoveryReviewStatus, shouldPersistDiscoveredLoginUrl };
 
 export function applyDiscoveredLoginUrl(
   definition: ServiceDefinition,
@@ -95,7 +85,12 @@ export type RegistryLoginDiscoveryResult = CustomServiceDiscoveryResult;
  */
 export async function discoverLoginForRegistryService(
   definition: ServiceDefinition,
-  options?: { primaryUrl?: string; force?: boolean; source?: 'auto' | 'admin' | 'user' },
+  options?: {
+    primaryUrl?: string;
+    force?: boolean;
+    source?: 'auto' | 'admin' | 'user';
+    forceAdminOverwrite?: boolean;
+  },
 ): Promise<RegistryLoginDiscoveryResult> {
   const primaryUrl = (options?.primaryUrl ?? definition.url).trim();
   const source = options?.source ?? (definition.source === 'user-created' ? 'user' : 'auto');
@@ -105,10 +100,19 @@ export async function discoverLoginForRegistryService(
   const persistResult = await discoverAndPersistLoginUrl(definition, {
     primaryUrl,
     force: options?.force,
+    forceAdminOverwrite: options?.forceAdminOverwrite,
     source,
   });
 
   if (persistResult.skipped) {
+    if (persistResult.skipReason === 'admin_override') {
+      return failureResult(
+        persistResult.definition,
+        null,
+        'כתובת כניסה מוגנת — עריכת מנהל. השתמשו בכוח מפורש לדריסה.',
+      );
+    }
+
     logCustomDiscovery('discovery skipped — login URL already valid in registry');
     return {
       definition: persistResult.definition,

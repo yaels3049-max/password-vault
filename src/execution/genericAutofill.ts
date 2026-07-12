@@ -57,7 +57,7 @@ export function executeGenericAutofill(
 
   logGenericFillDev(
     '[Generic Fill] Hub: extension unavailable — opening login page without fill',
-    getExtensionId() ? 'chrome.runtime.sendMessage unavailable' : 'extension id not configured',
+    getExtensionId() ? 'extension messaging unavailable' : 'extension id not configured',
   );
   openUrlInNewTab(url);
 

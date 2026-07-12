@@ -1,5 +1,5 @@
 /**
- * Report adapter_id for Shufersal/Clalit in Supabase registry.
+ * Report adapter_id for known services (Phase 103 / 108 expectations).
  * Usage: node scripts/checkRegistryAdapterIds.mjs
  */
 import { createClient } from '@supabase/supabase-js';
@@ -48,23 +48,39 @@ const client = createClient(url, anonKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+const expected = {
+  shufersal: null,
+  clalit: null,
+  htzone: 'htzone',
+};
+
 const { data, error } = await client
   .from('service_registry')
-  .select('id, adapter_id, login_url')
-  .in('id', ['shufersal', 'clalit']);
+  .select('id, adapter_id, login_url, login_fields')
+  .in('id', Object.keys(expected));
 
 if (error) {
   console.error('FAIL:', error.message);
   process.exit(1);
 }
 
-for (const row of data ?? []) {
-  const ok = row.adapter_id === 'generic';
-  console.log(`${row.id}: adapter_id=${row.adapter_id ?? '(null)'} login_url=${row.login_url ? 'yes' : 'no'} ${ok ? 'OK' : 'NEEDS_MIGRATION'}`);
+let failed = false;
+for (const [id, want] of Object.entries(expected)) {
+  const row = (data ?? []).find((entry) => entry.id === id);
+  if (!row) {
+    console.log(`${id}: MISSING_ROW (add/select to restore from seed)`);
+    continue;
+  }
+  const actual = row.adapter_id ?? null;
+  const ok = actual === want;
+  if (!ok) failed = true;
+  console.log(
+    `${id}: adapter_id=${actual ?? '(null)'} expected=${want ?? '(null)'} login_url=${row.login_url ? 'yes' : 'no'} ${ok ? 'OK' : 'FAIL'}`,
+  );
 }
 
-const missing = ['shufersal', 'clalit'].filter((id) => !(data ?? []).some((row) => row.id === id));
-if (missing.length > 0) {
-  console.error('Missing rows:', missing.join(', '));
+if (failed) {
   process.exit(1);
 }
+
+console.log('PASS: adapter_id values match Phase 103/108 architecture');

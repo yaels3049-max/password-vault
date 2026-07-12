@@ -34,7 +34,7 @@ export const LOGIN_PATH_SEGMENTS = [
   '/onlineweb/general/login.aspx',
 ] as const;
 
-/** Subdomain prefixes often used for authentication. */
+/** Subdomain prefixes often used for authentication / consumer service login. */
 export const AUTH_SUBDOMAIN_PREFIXES = [
   'login',
   'signin',
@@ -44,8 +44,11 @@ export const AUTH_SUBDOMAIN_PREFIXES = [
   'myaccount',
   'e-services',
   'eservices',
+  // Bank Jerusalem-class: services.bankjerusalem.co.il/Pages/Login.aspx
+  'services',
   'secure',
   'id',
+  'online',
 ] as const;
 
 export const COMMON_LOGIN_PATH_FALLBACKS = [
