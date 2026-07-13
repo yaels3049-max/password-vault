@@ -919,9 +919,49 @@
 .app-vault-shell-bar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
   padding: 0.65rem 1rem 0;
   max-width: 880px;
   margin: 0 auto;
+}
+
+.app-vault-account-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.05rem;
+  max-width: min(16rem, 52vw);
+  padding: 0.3rem 0.75rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+  line-height: 1.25;
+  text-align: end;
+}
+
+.app-vault-account-name {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.app-vault-account-email {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  direction: ltr;
 }
 
 .unlock-trust-line {
@@ -1126,7 +1166,66 @@
   font-size: 0.875rem;
   color: #dc2626;
   text-align: center;
+  white-space: pre-line;
 }
+
+/* ---------- Auth entry (Phase 109) — Login | Create Account ---------- */
+.auth-entry-card {
+  max-width: 440px;
+}
+
+.auth-entry-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 0.625rem 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #f8f8f8;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-tab-active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.auth-password-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.auth-password-row input {
+  flex: 1;
+}
+
+.auth-password-toggle {
+  flex-shrink: 0;
+  padding: 0 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #f8f8f8;
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.auth-policy-hint {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.8125rem;
+  color: #666;
+  text-align: center;
+}
+
+/* (auth-session-bar removed — lock badge is the only session control) */
 
 /* ---------- Service Management (Phase 104) ---------- */
 .service-management {

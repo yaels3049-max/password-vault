@@ -11,9 +11,9 @@ import {
 import { isAdminProtectedLoginUrl } from './loginUrlOverride';
 import { shouldClearAutoLoginUrlOnDiscoveryReject } from './loginUrlClearPolicy';
 import { discoverLogin } from '../discovery/execution/discoverLogin';
+import { requireAuthenticatedUserId } from '../auth';
 import { isSupabaseConfigured } from '../supabase/env';
 import { getSupabaseClient } from '../supabase/client';
-import { ensureAnonymousUserId } from '../supabase/auth';
 import {
   fetchRegistryRowById,
   loadRegistryCatalog,
@@ -170,7 +170,7 @@ async function persistLoginDiscoveryOutcome(
     return;
   }
 
-  await ensureAnonymousUserId();
+  await requireAuthenticatedUserId();
 
   const metadata = buildDiscoveryMetadataPatch(row.metadata, {
     discovery: input.discovery,
@@ -222,7 +222,7 @@ async function resolveRegistryRowForDiscovery(
   serviceId: string,
   fallback?: ServiceRegistryRow | null,
 ): Promise<ServiceRegistryRow | null> {
-  await ensureAnonymousUserId();
+  await requireAuthenticatedUserId();
   return (await fetchRegistryRowByIdSafe(serviceId)) ?? fallback ?? null;
 }
 
@@ -303,7 +303,7 @@ export async function markLoginUrlInvalid(serviceId: string): Promise<void> {
     return;
   }
 
-  await ensureAnonymousUserId();
+  await requireAuthenticatedUserId();
 
   const row = await fetchRegistryRowById(serviceId);
   if (!row || row.owner_user_id === null) {
@@ -462,7 +462,7 @@ export async function discoverAndPersistLoginUrl(
   }
 
   try {
-    await ensureAnonymousUserId();
+    await requireAuthenticatedUserId();
     const metadata = buildDiscoveryMetadataPatch(row.metadata, {
       discovery,
       source,

@@ -3,7 +3,7 @@ import type { AccessProfile } from '../profile/accessProfileModel';
 import { isDevBuild } from '../dev/devMode';
 import { encryptCredentialSet } from '../vault/crypto';
 import type { VaultState } from '../vault/vault';
-import { ensureAnonymousUserId } from './auth';
+import { tryGetAuthenticatedUserId } from '../auth';
 import { getSupabaseClient } from './client';
 
 export interface CloudSyncOptions {
@@ -167,9 +167,11 @@ export async function syncVaultStateToSupabase(
     return;
   }
 
-  const userId = await ensureAnonymousUserId();
+  // Phase 109: never create anonymous users for dual-write.
+  // Skip cloud sync when there is no email-authenticated session.
+  const userId = await tryGetAuthenticatedUserId();
   if (!userId) {
-    throw new Error('Anonymous auth did not return a user id');
+    return;
   }
 
   await ensureUserRow(userId);

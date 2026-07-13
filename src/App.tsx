@@ -4,7 +4,15 @@ import Dashboard from './Dashboard';
 
 import ManageServices from './ManageServices';
 
-import UnlockScreen from './UnlockScreen';
+import AuthEntryScreen from './auth/AuthEntryScreen';
+import {
+  AUTH_COPY,
+  AccountStatusError,
+  countUserServices,
+  restoreAccountSession,
+  signOutAccount,
+  type AppUserProfile,
+} from './auth';
 
 import {
   definitionsToLegacyServices,
@@ -27,8 +35,6 @@ import { recordLoginDiscoveryPipelineFailure } from './registry/loginUrlDiscover
 import type { ServiceDefinition } from './service/serviceModel';
 
 import { formatErrorChain } from './formatErrorChain';
-
-import { resetSupabaseAuthSession } from './supabase/auth';
 
 import {
   deleteCustomServiceRegistryRow,
@@ -55,7 +61,7 @@ import {
   shouldForcePersistFailure,
 } from './serviceManagement/serviceSelection';
 
-import { lockVault, persistVault, unlockVault, type VaultState } from './vault/vault';
+import { lockVault, persistVault, unlockVault, emptyVaultState, WrongPasswordError, type VaultState } from './vault/vault';
 
 import { ProfileResolution } from './profile';
 
@@ -168,6 +174,11 @@ function dedupeServicesByPrimaryUrl<T extends { id: string; url: string }>(
 
 function App() {
 
+  const [accountProfile, setAccountProfile] = useState<AppUserProfile | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authBootError, setAuthBootError] = useState<string | null>(null);
+  const [loginEmailPrefill, setLoginEmailPrefill] = useState('');
+
   const [isUnlocked, setIsUnlocked] = useState(false);
 
   const [screen, setScreen] = useState<Screen>('manage');
@@ -185,17 +196,7 @@ function App() {
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
-  const [vaultState, setVaultState] = useState<VaultState>({
-
-    credentials: {},
-
-    accessProfiles: [],
-
-    selectedIds: [],
-
-    customServices: [],
-
-  });
+  const [vaultState, setVaultState] = useState<VaultState>(() => emptyVaultState());
 
 
 
@@ -312,7 +313,41 @@ function App() {
 
   }, [selectedServices]);
 
-
+  // Phase 109 amendment: refresh with vault key gone → Login (no authenticated+locked mid-state).
+  // Prefill email from any restored session, then sign out so the only door is Auth entry.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const profile = await restoreAccountSession();
+        if (!cancelled && profile?.email) {
+          setLoginEmailPrefill(profile.email);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAuthBootError(
+            error instanceof AccountStatusError
+              ? error.message
+              : AUTH_COPY.genericAuthFailure,
+          );
+        }
+      } finally {
+        try {
+          await signOutAccount();
+        } catch {
+          // ignore
+        }
+        if (!cancelled) {
+          setAccountProfile(null);
+          clearWorkspaceMemory();
+          setAuthReady(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isUnlocked) {
@@ -362,61 +397,89 @@ function App() {
 
 
 
-  function handleLockVault() {
+  /** D-109-23: drop prior user's in-memory workspace before loading another. */
+  function clearWorkspaceMemory() {
     lockVault();
     setIsUnlocked(false);
+    setVaultState(emptyVaultState());
     setCatalogDefinitions([]);
     setCatalogHydrated(false);
     setCatalogError(null);
     setCatalogLoading(false);
+    setScreen('manage');
+    setManageIsFirstRun(false);
+    setPendingIds(new Set());
+    setSelectionError(null);
+    selectionLockRef.current = new Set();
+    clearRegistryCatalogCache();
   }
 
-  async function handleUnlock(password: string) {
-
-    const loaded = await unlockVault(password);
-
-    setVaultState(loaded);
-
-    setIsUnlocked(true);
-
-    if (loaded.selectedIds.length > 0) {
-
-      setManageIsFirstRun(false);
-
-      setScreen('dashboard');
-
-    } else {
-
-      if (isDevBuild()) {
-
-        const initialIds = [HUB_PRACTICE_LOGIN_ID];
-
-        const nextState: VaultState = {
-
-          ...loaded,
-
-          selectedIds: initialIds,
-
-        };
-
-        setVaultState(nextState);
-
-        setManageIsFirstRun(true);
-
-        setScreen('manage');
-
-        void saveVaultState(nextState);
-
-      } else {
-
-        setManageIsFirstRun(true);
-
-        setScreen('manage');
-
-      }
-
+  /** Vault lock and logout are the same path (AC-109-24): clear session + vault → Login. */
+  async function handleLogout() {
+    const email = accountProfile?.email ?? '';
+    clearWorkspaceMemory();
+    await signOutAccount();
+    setAccountProfile(null);
+    setAuthBootError(null);
+    if (email) {
+      setLoginEmailPrefill(email);
     }
+  }
 
+  function handleLockVault() {
+    void handleLogout();
+  }
+
+  async function resolvePostAuthScreen(
+    loaded: VaultState,
+    profile: AppUserProfile,
+  ): Promise<Screen> {
+    const cloudCount = await countUserServices(profile.id);
+    if (cloudCount != null) {
+      return cloudCount > 0 ? 'dashboard' : 'manage';
+    }
+    return loaded.selectedIds.length > 0 ? 'dashboard' : 'manage';
+  }
+
+  /** Single door: clear prior workspace, then unlock/create THIS userId's vault. */
+  async function handleAuthenticated(profile: AppUserProfile, password: string) {
+    clearWorkspaceMemory();
+    try {
+      const loaded = await unlockVault(password, profile.id);
+      setAccountProfile(profile);
+      setAuthBootError(null);
+      setLoginEmailPrefill(profile.email ?? '');
+      setVaultState(loaded);
+      setIsUnlocked(true);
+
+      const nextScreen = await resolvePostAuthScreen(loaded, profile);
+
+      if (nextScreen === 'dashboard') {
+        setManageIsFirstRun(false);
+        setScreen('dashboard');
+      } else if (isDevBuild() && loaded.selectedIds.length === 0) {
+        const initialIds = [HUB_PRACTICE_LOGIN_ID];
+        const nextState: VaultState = {
+          ...loaded,
+          selectedIds: initialIds,
+        };
+        setVaultState(nextState);
+        setManageIsFirstRun(true);
+        setScreen('manage');
+        void saveVaultState(nextState);
+      } else {
+        setManageIsFirstRun(true);
+        setScreen('manage');
+      }
+    } catch (error) {
+      clearWorkspaceMemory();
+      await signOutAccount();
+      setAccountProfile(null);
+      if (error instanceof WrongPasswordError) {
+        throw new Error(AUTH_COPY.vaultUnlockFailed);
+      }
+      throw error;
+    }
   }
 
 
@@ -650,8 +713,28 @@ function App() {
 
 
 
-  if (!isUnlocked) {
-    return <UnlockScreen onUnlock={handleUnlock} />;
+  if (!authReady) {
+    return (
+      <div className="onboarding">
+        <p>טוען חשבון…</p>
+      </div>
+    );
+  }
+
+  if (!accountProfile || !isUnlocked) {
+    return (
+      <>
+        {authBootError ? (
+          <p className="unlock-error" style={{ paddingTop: '1rem' }} role="alert">
+            {authBootError}
+          </p>
+        ) : null}
+        <AuthEntryScreen
+          initialEmail={loginEmailPrefill}
+          onAuthenticated={handleAuthenticated}
+        />
+      </>
+    );
   }
 
   // Wait for the first catalog hydrate after unlock so Digital Home / Manage
@@ -668,7 +751,7 @@ function App() {
     setCatalogLoading(true);
     setCatalogError(null);
     setCatalogHydrated(false);
-    await resetSupabaseAuthSession();
+    // Phase 109: do not sign out the account session on catalog retry
     clearRegistryCatalogCache();
 
     try {
@@ -702,9 +785,9 @@ function App() {
 
           {catalogError.includes('Failed to fetch') ||
           catalogError.includes('issuer certificate') ||
-          catalogError.includes('anonymous auth failed')
+          catalogError.includes('נדרשת התחברות')
             ? 'פתחי את הכתובת שמופיעה בטרמינל אחרי npm run dev (למשל http://localhost:5173/). עצרי שרתים ישנים, הפעילי npm run dev מחדש, נקי Application → Storage ל-localhost, רענני Ctrl+Shift+R ולחצי «נסי שוב».'
-            : 'ודאי שמיגרציות Phase 102 הורצו ב-Supabase וש-Anonymous sign-in מופעל. אפשר גם לנקות נתוני אתר ל-localhost (Application → Storage) ולנסות שוב.'}
+            : 'ודאי שמיגרציות Phase 109 הורצו ב-Supabase ושיש התחברות לחשבון פעיל. אפשר גם לנקות נתוני אתר ל-localhost (Application → Storage) ולנסות שוב.'}
 
         </p>
 
@@ -726,7 +809,12 @@ function App() {
 
     return (
 
-      <AppVaultShell vaultUnlocked={isUnlocked} onLockVault={handleLockVault}>
+      <AppVaultShell
+        vaultUnlocked={isUnlocked}
+        accountDisplayName={[accountProfile.firstName, accountProfile.lastName].filter(Boolean).join(' ')}
+        accountEmail={accountProfile.email}
+        onLockVault={handleLockVault}
+      >
 
         <ProfileResolution
 
@@ -780,7 +868,12 @@ function App() {
 
   return (
 
-    <AppVaultShell vaultUnlocked={isUnlocked} onLockVault={handleLockVault}>
+    <AppVaultShell
+      vaultUnlocked={isUnlocked}
+      accountDisplayName={[accountProfile.firstName, accountProfile.lastName].filter(Boolean).join(' ')}
+      accountEmail={accountProfile.email}
+      onLockVault={handleLockVault}
+    >
 
       <ManageServices
         allServices={allServices}

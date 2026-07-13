@@ -1,13 +1,14 @@
 /**
  * Phase 106 — centralized Hebrew trust / Zero-Knowledge copy (D-106-3).
- * Claims align with ADR-002. Single vocabulary for Vault / Master Password /
- * Encrypted / Zero-Knowledge across Unlock and credential management.
+ * Claims align with ADR-002. Single vocabulary for Vault / Digital Home password /
+ * Encrypted / Zero-Knowledge. Phase 109: one user-facing password (no dual-door Master Password copy).
  */
 
 /** Preferred Hebrew names (one per concept). */
 export const TRUST_TERMS = {
   vault: 'כספת',
-  masterPassword: 'סיסמה ראשית',
+  /** User-facing Digital Home password (Auth + vault) — Phase 109 single secret. */
+  masterPassword: 'סיסמת הבית הדיגיטלי',
   encrypted: 'מוצפן',
   encryptedOnDevice: 'המידע מוגן בהצפנה',
   zeroKnowledge: 'ידע-אפס',
@@ -25,14 +26,14 @@ export const TRUST_COPY = {
   cannotReadPasswords:
     'המוצר לא יכול לקרוא את הסיסמאות שלכם — הפרטים מוצפנים במכשיר לפני השמירה (ידע-אפס).',
 
-  /** Unlock / create reassurance — Master Password entry screen. */
+  /** Auth entry reassurance — single Digital Home password. */
   unlockProtects:
-    'הסיסמה הראשית מאמתת את זהותכם ומאפשרת גישה בטוחה לפרטי הכניסה שלכם.\nרק אתם יכולים לגשת למידע השמור.',
+    'סיסמת הבית הדיגיטלי מחברת את החשבון ופותחת את הכספת במכשיר זה.\nרק אתם יכולים לגשת למידע השמור.',
 
   /** First-time explanation body (AC-106-9). */
   firstTimeTitle: 'איך הפרטים שלכם מוגנים',
   firstTimeBody:
-    'פרטי הכניסה מוצפנים במכשיר שלכם לפני שמירה. המוצר לא יכול לקרוא את הסיסמאות שלכם. הסיסמה הראשית פותחת את הכספת במכשיר זה — אם תאבדו אותה, ייתכן שלא תוכלו לגשת לפרטים השמורים.',
+    'פרטי הכניסה מוצפנים במכשיר שלכם לפני שמירה. המוצר לא יכול לקרוא את הסיסמאות שלכם. סיסמת הבית הדיגיטלי פותחת את הכספת במכשיר זה — אם תאבדו אותה, ייתכן שלא תוכלו לגשת לפרטים השמורים.',
   firstTimeDismiss: 'הבנתי',
 
   /** Credential editor helper under fields. */
@@ -46,10 +47,10 @@ export const TRUST_COPY = {
   deleteSuccess: 'פרטי הכניסה נמחקו מהכספת.',
   persistFailed:
     'לא ניתן לשמור כרגע. בדקו שהכספת פתוחה ונסו שוב.',
-  vaultLockedRetry: 'הכספת נעולה. פתחו אותה מחדש ונסו שוב.',
+  vaultLockedRetry: 'הכספת נעולה. התחברו מחדש ונסו שוב.',
   genericSecurityError: 'משהו השתבש בשמירה המאובטחת. נסו שוב בעוד רגע.',
 
-  /** Unlock screen titles. */
+  /** Legacy titles — Auth entry owns the password UI (Phase 109). */
   unlockTitle: 'כניסה לבית הדיגיטלי',
   createTitle: 'יצירת כספת לבית הדיגיטלי',
   unlockButton: 'היכנסו לבית הדיגיטלי',

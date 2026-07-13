@@ -1,8 +1,8 @@
+import { requireAuthenticatedUserId, tryGetAuthenticatedUserId } from '../auth';
 import { isDevBuild } from '../dev/devMode';
 import { BUILTIN_CATALOG_DEFINITIONS, HUB_PRACTICE_LOGIN_ID } from '../catalog/builtinCatalog';
 import { applyBuiltinCatalogOverlayAll } from '../catalog/builtinCatalogOverlay';
 import { isSupabaseConfigured } from '../supabase/env';
-import { ensureAnonymousUserId } from '../supabase/auth';
 import { getSupabaseClient } from '../supabase/client';
 import {
   registryRowToServiceDefinition,
@@ -31,8 +31,10 @@ const REGISTRY_SELECT =
 const GLOBAL_CATALOG_SOURCE_TYPES = new Set(['built_in', 'approved_global', 'admin']);
 
 /**
- * End-user catalog visibility — enforced client-side so admin RLS (SELECT all rows)
- * does not leak other users' private services into Manage Services discovery.
+ * End-user catalog visibility (AC-109-37 / D-109-23):
+ * - Global rows (owner null): built_in | admin | approved_global
+ * - Private customs: owner_user_id = current user AND source_type = user only
+ * Never list another user's private services.
  */
 export function isCatalogVisibleRegistryRow(
   row: ServiceRegistryRow,
@@ -46,8 +48,15 @@ export function isCatalogVisibleRegistryRow(
     return GLOBAL_CATALOG_SOURCE_TYPES.has(row.source_type);
   }
 
-  return currentUserId !== null && row.owner_user_id === currentUserId;
+  return (
+    currentUserId !== null &&
+    row.owner_user_id === currentUserId &&
+    row.source_type === 'user'
+  );
 }
+
+/** Exported for verify / docs — global Discover source types. */
+export const DISCOVER_GLOBAL_SOURCE_TYPES = GLOBAL_CATALOG_SOURCE_TYPES;
 
 function getDevPracticeDefinition(): ServiceDefinition {
   const practice = BUILTIN_CATALOG_DEFINITIONS.find(
@@ -73,12 +82,12 @@ function injectDevPractice(definitions: ServiceDefinition[]): ServiceDefinition[
   return [getDevPracticeDefinition(), ...definitions];
 }
 
-async function ensureRegistryAuth(): Promise<void> {
+async function ensureRegistryAuth(): Promise<string> {
   try {
-    await ensureAnonymousUserId();
+    return await requireAuthenticatedUserId();
   } catch (error) {
     const detail = formatUnknownError(error);
-    throw new CatalogLoadError(`Supabase anonymous auth failed: ${detail}`, { cause: error });
+    throw new CatalogLoadError(`נדרשת התחברות לחשבון: ${detail}`, { cause: error });
   }
 }
 
@@ -126,7 +135,7 @@ export async function loadRegistryCatalog(): Promise<ServiceDefinition[]> {
 
   try {
     const rows = await fetchRegistryRows();
-    const currentUserId = await ensureAnonymousUserId();
+    const currentUserId = await tryGetAuthenticatedUserId();
     const catalogRows = rows.filter((row) =>
       isCatalogVisibleRegistryRow(row, currentUserId),
     );

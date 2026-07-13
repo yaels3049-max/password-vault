@@ -1,5 +1,5 @@
+import { tryGetAuthenticatedUserId } from '../auth';
 import { isDevBuild } from '../dev/devMode';
-import { ensureAnonymousUserId } from '../supabase/auth';
 import { getSupabaseClient } from '../supabase/client';
 import { isSupabaseConfigured } from '../supabase/env';
 import { formatUnknownError } from '../formatErrorChain';
@@ -31,7 +31,11 @@ export async function loadRegistryCategories(): Promise<RegistryCategory[]> {
   }
 
   try {
-    await ensureAnonymousUserId();
+    // Authenticated session required for RLS; never create anonymous users.
+    const userId = await tryGetAuthenticatedUserId();
+    if (!userId) {
+      return [];
+    }
 
     const { data, error } = await supabase
       .from('categories')

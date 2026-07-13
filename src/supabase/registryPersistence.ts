@@ -1,5 +1,5 @@
+import { requireAuthenticatedUserId, tryGetAuthenticatedUserId } from '../auth';
 import { isSupabaseConfigured } from '../supabase/env';
-import { ensureAnonymousUserId } from '../supabase/auth';
 import { getSupabaseClient } from '../supabase/client';
 import { ensureUserRow } from '../supabase/persistence';
 import type { ServiceDefinition } from '../service/serviceModel';
@@ -70,7 +70,7 @@ export async function ensureKnownBuiltinRegistryRow(
     return definition;
   }
 
-  await ensureAnonymousUserId();
+  await requireAuthenticatedUserId();
 
   const loginUrl = definition.loginUrl?.trim() || null;
   const { error } = await supabase.rpc('ensure_known_builtin_registry_row', {
@@ -120,10 +120,7 @@ export async function upsertCustomServiceRegistryRow(
     return definition;
   }
 
-  const userId = await ensureAnonymousUserId();
-  if (!userId) {
-    throw new Error('Anonymous auth did not return a user id');
-  }
+  const userId = await requireAuthenticatedUserId();
 
   await ensureUserRow(userId);
 
@@ -169,7 +166,7 @@ export async function deleteCustomServiceRegistryRow(serviceId: string): Promise
     return;
   }
 
-  const userId = await ensureAnonymousUserId();
+  const userId = await tryGetAuthenticatedUserId();
   if (!userId) {
     return;
   }

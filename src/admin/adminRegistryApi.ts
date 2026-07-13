@@ -12,7 +12,7 @@ import {
 } from '../registry/serviceIdFromUrl';
 import { registryRowToServiceDefinition } from '../registry/registryMapper';
 import type { LoginUrlStatus, ServiceRegistryRow } from '../registry/registryMapper';
-import { ensureAnonymousUserId } from '../supabase/auth';
+import { requireAuthenticatedUserId } from '../auth';
 import { getSupabaseClient } from '../supabase/client';
 import { isSupabaseConfigured } from '../supabase/env';
 import { formatUnknownError } from '../formatErrorChain';
@@ -61,7 +61,7 @@ function requireSupabase() {
 }
 
 async function ensureSession() {
-  await ensureAnonymousUserId();
+  await requireAuthenticatedUserId();
 }
 
 function invalidateCatalogCache() {

@@ -91,7 +91,7 @@ Detailed prototype plans remain in `docs/phases/` for historical reference only.
 | **Discovery is expensive and fragile** | Login URL discovery runs only when `loginUrl` is missing or invalid; results are cached in the registry. |
 | **POC/demo surfaces confuse users** | Phase 100 removes demo controls and POC wording from user-facing UI. |
 | **Local IndexedDB is not production persistence** | Phase 101 introduces Supabase with zero-knowledge ciphertext storage. |
-| **Account login ≠ vault unlock** | Phase 191 separates account session from vault decryption (see §9, Phase 191). |
+| **Account session + vault use one Digital Home password (Phase 109)** | Phase 109 ships a single user-facing password; MFA and stronger step-up auth are Phase 191+. Optional future re-separation of secrets must not break `userId` ownership. |
 
 ### Prototype limitations (explicit)
 
@@ -493,7 +493,7 @@ erDiagram
 | S5 | **Strict site matching** — Autofill applies only when open URL matches declared domain and login path rules. |
 | S6 | **No site-internal invocation** — Do not call page JavaScript login functions; do not fill hidden fields; do not auto-submit. |
 | S7 | **Extension least privilege** — Minimal permissions; origin-checked messaging between hub and extension. |
-| S8 | **Account session ≠ vault unlock** — Signing into the product does not automatically decrypt the vault (Phase 191). |
+| S8 | **One Digital Home password (Phase 109)** — Login/Create Account unlocks the local vault in the same step; vault lock returns to Login. MFA is Phase 191+. |
 | S9 | **Defense in depth** — CSP/XSS hardening, unlock rate limiting, cautious memory lifetime in extension contexts. |
 | S10 | **Audit before public launch** — Penetration test, crypto review, extension security review, privacy review as release gates. |
 
@@ -1574,8 +1574,9 @@ After Phase 109:
 - Application data is always owned by an authenticated user identifier.
 - User isolation must be enforced by the database, not only by the user interface.
 - Authentication state must remain separate from service, registry and autofill logic.
-- Phase 109 must not redesign the existing Vault, encryption or execution architecture.
+- Phase 109 must not redesign the existing Vault encryption algorithms or execution architecture (reuse KDF/encrypt APIs; change only how the user-facing password drives them).
 - Password rules may be relaxed temporarily in development, but weak-password acceptance must never be represented as production-ready security.
+- The product uses **one Digital Home password** at Login/Create Account; vault lock returns to Login. MFA is deferred to a later phase.
 - Administrator status is assigned through protected database configuration only.
 - Users cannot promote themselves to administrators.
 - Chrome and Edge must resolve the same authenticated account and persisted Digital Home data.
@@ -1675,7 +1676,24 @@ Phase 109 must not display “verified phone” unless verification has been imp
 
 #### Password architecture
 
-Phase 109 introduces an account password entry flow.
+Phase 109 uses **one user-facing Digital Home password**.
+
+Product UX rule (normative):
+
+- The user must not pass two sequential password doors to reach Digital Home.
+- Login / Create Account collect a single password (plus confirmation on register).
+- After successful authentication, the same password unlocks or creates the local encrypted vault **in the same sign-in step** — no separate “Master Password” / vault-unlock screen.
+- User-facing copy must not describe a second password or “סיסמת מאסטר נפרדת מסיסמת החשבון”.
+- **Vault lock** (and global lock controls) must **log the user out** and return to the **Login** screen — clear authenticated session and decrypted in-memory vault state. Do not present a mid-session vault-only unlock door.
+- Multi-factor authentication is **out of scope** for Phase 109 and belongs to a later phase (e.g. Phase 191).
+
+Technical coupling (explicit, not implicit):
+
+- The Digital Home password is used both for Supabase Auth (account) and as the client-side KDF secret for the existing local vault encryption.
+- Ciphertext remains client-side; the server must not receive vault plaintext or vault keys (ADR-002 preserved for storage).
+- Security tradeoff: compromise of the Digital Home password can unlock both the account session and the local vault on a device that holds ciphertext. This is accepted for Phase 109 usability; future phases may add MFA and/or re-separate secrets without rewriting ownership identity.
+- Do not silently redesign algorithms; reuse existing `unlockVault` / `createCryptoKey` paths, driven by the password already entered at Login / Create Account.
+- Keep the architecture *capable* of separating account auth from vault KDF later (Phase 191+) without changing `userId` ownership.
 
 Temporary development policy:
 
@@ -1685,23 +1703,7 @@ Temporary development policy:
 - The temporary relaxed rule must be isolated in configuration.
 - Production deployment must not accidentally inherit the relaxed development policy.
 
-The implementation must document whether the account password and the existing Master Password are currently the same secret or separate concepts.
-
-This decision must not remain implicit.
-
-If they are currently the same:
-
-- preserve existing encryption compatibility
-- do not duplicate or expose the secret
-- document the temporary coupling
-- keep the architecture capable of separating account authentication from Vault unlocking later
-
-If they are separate:
-
-- the interface and implementation must distinguish them clearly
-- login success must not imply that encrypted credentials are automatically readable without the required Vault unlock state
-
-Phase 109 must not silently redesign key derivation, encryption or Vault behavior.
+Phase 109 must not introduce a second user-visible password concept.
 
 #### Registration flow
 
@@ -1726,7 +1728,8 @@ Registration flow:
 6. A linked application user row is created in the existing users table.
 7. The user profile and authentication identity must reference the same immutable user identifier.
 8. The authenticated session is established.
-9. The user is routed according to persisted service state.
+9. Using the **same** password already entered, unlock or create the local vault (no second password screen).
+10. The user is routed according to persisted service state.
 
 Registration must behave as one product-level atomic operation.
 
@@ -1753,11 +1756,11 @@ The Login form must require:
 Login flow:
 
 1. Normalize the entered email.
-2. Authenticate the existing account.
+2. Authenticate the existing account with the Digital Home password.
 3. Resolve the linked application user.
-4. restore the authenticated user session
-5. load only data owned by that user
-6. route the user to the correct application screen
+4. Using the **same** password already entered, unlock or create the local vault (no second password screen).
+5. Restore the authenticated user session and load only data owned by that user.
+6. Route the user to the correct application screen.
 
 Critical rule:
 
@@ -1797,9 +1800,12 @@ The screen must not create visual confusion between:
 
 - Login
 - Create Account
-- Unlocking protected credential data
 
-Do not use one ambiguous password field to perform all three operations implicitly.
+There is **no** separate “unlock vault” mode on the entry screen.
+
+Do not present two sequential password doors after authentication.
+
+Registration and login must unlock/create the vault with the password already collected on that form.
 
 #### Post-authentication routing
 
@@ -1853,8 +1859,30 @@ Ownership must never be inferred from:
 - session identifier
 - device
 - service name
+- “whatever vault happens to unlock on this device”
 
 All user-owned resources must resolve through the authenticated userId.
+
+#### Client workspace isolation (normative)
+
+On a shared browser/device, multiple accounts may log in over time. Phase 109 **requires** that switching accounts never shows another user’s Digital Home or Service Management workspace.
+
+Rules:
+
+- Local vault ciphertext / IndexedDB (or equivalent) **must be namespaced by authenticated `userId`**. Unlocking User B’s Digital Home password must not load User A’s `selectedIds`, custom services, Access Profiles, or credentials.
+- After login, register, logout, or account switch: clear the previous user’s **in-memory** vault/UI state before loading the authenticated user’s workspace.
+- Authoritative selection for Digital Home is that user’s `user_services` (and that user’s vault namespace) — never a shared device-global blob.
+- Same password string used by two different accounts on one device must still produce **isolated** workspaces (separate storage keys / blobs per `userId`).
+
+#### Catalog / Discover visibility (normative)
+
+On Service Management → Discover / Add Services:
+
+| Visible to every authenticated user | Visible only to the owning user |
+|-------------------------------------|----------------------------------|
+| Global catalog: `built_in`, `admin`, `approved_global` (`owner_user_id` null) | Private custom services: `source_type=user` with that user’s `owner_user_id` |
+
+User A’s private custom service must **not** appear in User B’s Discover list, Digital Home, or Manage “my services” unless User B independently selected/owns it. Admin promotion to global is the only path that makes a former private definition broadly discoverable (as a **new** global entry — existing custom ownership rules).
 
 #### Database isolation
 
@@ -1862,7 +1890,7 @@ User isolation must be enforced through database authorization rules.
 
 Where the database supports Row Level Security, use Row Level Security: database rules that ensure each authenticated user may read or modify only rows they own.
 
-The user interface is not a security boundary.
+The user interface is not a security boundary. Client caching and local vault storage are also not a security boundary — they must obey `userId` scoping.
 
 Required behavior:
 
@@ -1870,6 +1898,7 @@ Required behavior:
 - User A cannot read User B’s Access Profiles.
 - User A cannot read User B’s encrypted credentials.
 - User A cannot update or delete User B’s rows.
+- User A cannot see User B’s private custom services in Discover or Digital Home.
 - An altered browser request must not bypass ownership checks.
 - An administrator role must not automatically receive plaintext credential access.
 
@@ -1894,7 +1923,10 @@ Logging out must:
 - return the user to the entry screen
 - not delete persisted account or encrypted data
 
+**Vault lock = logout** in Phase 109: any user-facing vault lock control must perform the same logout path and return to Login. Do not leave an authenticated session with a locked vault that requires a second password door.
+
 Advanced trusted-device and multi-session management remain Phase 191 responsibilities.
+Multi-factor authentication remains Phase 191+ (not Phase 109).
 
 #### Chrome and Edge continuity
 
@@ -1936,6 +1968,14 @@ Requirements:
 - Removing administrator status in the database must remove access after session or authorization refresh.
 
 The existing administrator must be linked to a real authenticated user record.
+
+**Admin console entry (same application):**
+
+- The admin console lives on the **same deployed Hub** at `#/admin` (and/or `/admin`).
+- It is **not** a second product deployment and does **not** use a separate admin password.
+- Opening the admin URL without an authenticated session must present **Login** (same Digital Home password). After login, access is granted only if `role=admin` / `is_admin` is true in the database.
+- After promoting a user via SQL, the operator must refresh or re-login on the admin URL so authorization is re-read.
+- Production operators may bookmark the admin path; end users are not shown an admin entry in primary navigation.
 
 #### Existing unintended users
 
@@ -2120,7 +2160,7 @@ The development team must provide:
 - regression test report
 - unintended-user cleanup report
 - documented temporary password-policy configuration
-- explicit documentation of account password versus Master Password behavior
+- explicit documentation of the **single Digital Home password** model (Auth + vault KDF coupling), lock=logout behavior, and the deferred MFA path
 
 #### Acceptance criteria
 
@@ -2149,7 +2189,7 @@ The development team must provide:
 | AC-109-21 | Administrator role can be assigned or removed only through protected database/server-side administration |
 | AC-109-22 | Client-side manipulation cannot grant administrator access |
 | AC-109-23 | Session state survives a normal page refresh without creating a new user |
-| AC-109-24 | Logout clears authenticated and decrypted in-memory state without deleting persisted account data |
+| AC-109-24 | Logout and vault lock both clear authenticated and decrypted in-memory state, return to the Login screen, and do not delete persisted account data |
 | AC-109-25 | Authentication errors are friendly and do not expose technical internals |
 | AC-109-26 | Passwords, tokens, decrypted credentials and encryption keys never appear in logs |
 | AC-109-27 | Offline or failed registration does not create a phantom local-only account |
@@ -2157,10 +2197,12 @@ The development team must provide:
 | AC-109-29 | Data-bearing unintended users are not deleted or reassigned silently |
 | AC-109-30 | After migration, arbitrary password entry no longer increases the database user count |
 | AC-109-31 | The temporary relaxed password policy is development-configured and cannot be mistaken for the production policy |
-| AC-109-32 | Account password and Master Password behavior is explicitly documented and not implicitly coupled |
+| AC-109-32 | One user-facing Digital Home password: Login/Create Account unlocks or creates the local vault in the same step; no separate Master Password screen; lock returns to Login; coupling and MFA deferral are documented |
 | AC-109-33 | Existing functionality delivered through Phase 108 passes regression testing |
 | AC-109-34 | Validated Shufersal and Clalit behavior remains preserved |
 | AC-109-35 | Build passes |
+| AC-109-36 | After login or registration, Digital Home and Service Management show only the authenticated user’s workspace — never another user’s selections, profiles, or credentials (client vault/storage must be scoped by `userId`) |
+| AC-109-37 | Discover / Add Services lists global catalog services (`built_in`, `admin`, `approved_global`) for all users, and lists private user-created custom services only for the owning user |
 
 > **Note:** Prior Phase 109 content (Credential Lifecycle UX) is deferred. Related signals belong with Phase 115 (Credential Change Detection) and Trust/execution failure hints — not renumbered here.
 
@@ -3954,18 +3996,18 @@ Touch targets must remain accessible on mobile devices.
 
 ### Phase 191 — Account, Registration and Secure Sign-In
 
-**Goal:** Advanced account security on top of the Phase 109 account foundation (MFA, session hardening, vault/session separation).
+**Goal:** Advanced account security on top of the Phase 109 account foundation (MFA, session hardening, optional future secret re-separation).
 
-> **Scope clarification:** Phase **109** owns foundational registration, login, user isolation, and Chrome/Edge account continuity. Phase **191** must not re-implement that shell; it extends with MFA and stronger account/session security while keeping vault unlock separate.
+> **Scope clarification:** Phase **109** owns foundational registration, login, user isolation, Chrome/Edge continuity, and the **single Digital Home password** UX (Auth + vault unlock in one step; lock = logout). Phase **191** must not re-introduce a second password door by default; it adds MFA / step-up authentication and stronger session security. Re-separating account auth from vault KDF is optional and only if product explicitly requires it later.
 
 | Acceptance criteria | |
 |---------------------|---|
 | AC-191-1 | User registration and secure login implemented |
 | AC-191-2 | MFA supported for account sign-in |
 | AC-191-3 | Account session management (sign out, session expiry) |
-| AC-191-4 | Vault unlock remains a **separate** step from account login |
-| AC-191-5 | Account compromise does not expose vault plaintext without vault secret |
-| AC-191-6 | Supabase Auth (or equivalent) integrated without storing vault master secret server-side |
+| AC-191-4 | MFA / step-up auth can protect sensitive actions without requiring a second standing Master Password door by default |
+| AC-191-5 | Account compromise does not expose vault plaintext without the Digital Home password (and MFA when enabled) |
+| AC-191-6 | Supabase Auth (or equivalent) integrated without storing vault master secret server-side as recoverable plaintext |
 
 ---
 
@@ -4351,5 +4393,8 @@ flowchart LR
 | **5.0** | 2026-07-12 | **Phase 115 refined.** Detection boundaries, lifecycle, admin anonymized visibility, and AC-115-15 through AC-115-18. |
 | **5.1** | 2026-07-12 | **Phase 109 rewritten — User Accounts, Authentication and Cross-Browser Access.** Explicit Login/Create Account; stop anonymous user proliferation; DB isolation; Chrome/Edge continuity. Prior Credential Lifecycle content deferred (see Phase 115). Phase 191 clarified as advanced account security on top of 109. |
 | **5.2** | 2026-07-12 | **Phase 109 refined.** Account status `deleted`; Ownership Authority subsection; Future Subscription Boundary. Acceptance criteria unchanged. |
+| **5.3** | 2026-07-13 | **Phase 109 — single Digital Home password.** Remove second vault-unlock door; lock returns to Login; Auth password unlocks/creates vault in the same step; MFA deferred to Phase 191. AC-109-24/32 and Phase 191 scope clarified. |
+| **5.4** | 2026-07-13 | **Phase 109 — admin access.** Same SPA: `#/admin` shows Login when unauthenticated; one deploy URL; admin role via SQL only (arch D-109-22). |
+| **5.5** | 2026-07-13 | **Phase 109 — client workspace isolation.** Local vault/storage scoped by `userId`; Discover shows global catalog + own customs only; AC-109-36/37. Closes cross-user Digital Home leak on shared devices. |
 
 Implementation plans for individual production phases may be authored separately; they must align with this document and must not duplicate it as a second architecture source.
