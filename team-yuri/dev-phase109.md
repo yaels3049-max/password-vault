@@ -4,7 +4,7 @@
 PHASE=109
 
 ## Status
-STATUS: IN_PROGRESS — M11 code + static verify delivered; **two-user live UAT (T31–T34) PENDING_OPERATOR** (hard gate H9). Do not claim phase COMPLETE until UAT Pass is recorded below.
+STATUS: COMPLETE — M11 code + static verify + **two-user live UAT (T31–T34) Pass** (operator confirmed 2026-07-13). Hard gate H9 satisfied.
 
 ## Source References
 - `team-Yuri/manager-phase109.md` (D-109-22, **D-109-23 / M11**)
@@ -20,7 +20,7 @@ UnlockScreen removed; Auth Login/Create Account unlocks/creates vault with same 
 ### B — Admin Login (D-109-22)
 `#/admin` unauthenticated / non-admin → Login (not deny-only); one SPA bookmark.
 
-### C — Client workspace isolation (D-109-23 / M11) — THIS DELIVERY
+### C — Client workspace isolation (D-109-23 / M11)
 | Requirement | Implementation |
 |---|---|
 | Vault namespaced by `userId` | IndexedDB id `user:<uuid>` via `vaultStorageIdForUser` |
@@ -33,27 +33,23 @@ UnlockScreen removed; Auth Login/Create Account unlocks/creates vault with same 
 | Milestone | Completed | Notes |
 |---|---:|---|
 | M1–M10 | Yes | Prior amendments |
-| **M11 workspace isolation** | Code Yes / UAT **Pending** | Static verify PASS; live T31–T34 below |
+| **M11 workspace isolation** | Yes | Static verify PASS; live T31–T34 Pass |
 
 ## M11 two-user UAT evidence (required — H9)
 
 | # | Step | Expected | Result |
 |---:|---|---|---|
-| T31 | User A: login; selections + private custom | A Home/Manage populated | **PENDING_OPERATOR** |
-| T32 | Logout → User B login (same password OK) | B workspace only | **PENDING_OPERATOR** |
-| T33 | B Discover | Globals yes; **A’s custom absent** | **PENDING_OPERATOR** |
-| T34 | Same password, two accounts | Still isolated | **PENDING_OPERATOR** |
+| T31 | User A: login; selections + private custom | A Home/Manage populated | **PASS** (operator 2026-07-13) |
+| T32 | Logout → User B login (same password OK) | B workspace only | **PASS** (operator 2026-07-13) |
+| T33 | B Discover | Globals yes; **A’s custom absent** | **PASS** (operator 2026-07-13) |
+| T34 | Same password, two accounts | Still isolated | **PASS** (operator 2026-07-13) |
 
-Operator paste after UAT:
+Operator confirmation:
 
 ```text
-Browser:
-User A email:
-User B email:
-Same password string used: yes/no
-B saw A's Home/Manage: no (required)
-B Discover showed A's custom: no (required)
-Pass/Fail:
+Date: 2026-07-13
+All required tests: Pass
+Pass/Fail: Pass
 ```
 
 ## Static verify
@@ -77,10 +73,10 @@ Pass/Fail:
 
 | Gate | Status |
 |---|---|
-| H3 Single password | PASS (static) |
-| H4 Lock=logout | PASS (static) |
-| H8 Admin Login | PASS (static) |
-| **H9 Workspace isolation** | Code PASS / **UAT PENDING_OPERATOR** |
+| H3 Single password | PASS |
+| H4 Lock=logout | PASS |
+| H8 Admin Login | PASS |
+| **H9 Workspace isolation** | **PASS** (code + two-user UAT) |
 | H6 No MFA | PASS |
 
 ## Developer Declaration
@@ -88,7 +84,7 @@ Pass/Fail:
 ```text
 Detected phase: 109
 Selected state: IMPLEMENT
-Status: IN_PROGRESS
+Status: COMPLETE
 ```
 
-M11 code + verify delivered. Phase COMPLETE only after two-user UAT Pass recorded in the table above.
+M11 delivered and proven. Two-user UAT Pass recorded; Phase 109 developer evidence complete.
