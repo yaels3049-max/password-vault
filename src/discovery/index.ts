@@ -17,6 +17,7 @@ export {
   AUTH_SUBDOMAIN_PREFIXES,
   COMMON_LOGIN_PATH_FALLBACKS,
   DISCOVERY_FETCH_TIMEOUT_MS,
+  FEDERATED_IDP_HOST_PREFIXES,
   LOGIN_PATH_SEGMENTS,
   LOGIN_TEXT_KEYWORDS,
   MAX_REDIRECT_HOPS,
@@ -31,12 +32,21 @@ export {
   CROSS_SUBDOMAIN_NEEDS_REVIEW_REASON,
   MODAL_WITH_ALTERNATE_AUDIENCE_REASON,
   PAGE_CONTEXT_ALTERNATE_AUDIENCE_REASON,
+  brandSecondLevelLabel,
   candidateLabelSuggestsAlternateAudience,
+  canonicalizeFederatedIdPLoginUrl,
   evaluateLoginAudience,
   extractPageAudienceContextText,
+  hasPrimaryBrandReturnEvidence,
   isAlternateAudiencePortalUrl,
   isCrossSubdomainCandidate,
+  isFederatedIdPWithBrandReturn,
+  isSameBrandHost,
+  isSiblingTldSameBrand,
   isTrustedAuthSubdomain,
+  isTrustedFederatedIdPHost,
+  pathLooksLikeConsumerSignIn,
+  pathLooksLikeFederatedIdPLogin,
   textHasAlternateAudienceWording,
   type CandidateAudienceContext,
   type LoginAudienceDecision,
@@ -81,10 +91,20 @@ export {
 } from './fetchPageHtml';
 
 export {
+  buildTrustedAuthHostProbeUrls,
+  TRUSTED_AUTH_PROBE_PREFIX_PRIORITY,
+} from './trustedAuthProbe';
+
+export {
   runLoginDiscoverySession,
   type LoginDiscoverySessionInput,
   type LoginDiscoverySessionResult,
 } from './runLoginDiscovery';
+
+export {
+  htmlHasConsumerIdentityField,
+  htmlLooksLikeLoginSpaShell,
+} from './liveCandidateValidation';
 
 export {
   hasVisiblePasswordField,

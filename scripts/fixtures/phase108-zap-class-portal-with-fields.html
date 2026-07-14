@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="he">
+  <head>
+    <meta charset="utf-8" />
+    <title>כניסה לממשק העסק</title>
+  </head>
+  <body>
+    <h1>כניסה לממשק העסק</h1>
+    <p>ממשק העסק — נא להזין פרטי התחברות</p>
+    <!-- D-108-30: identity fields present MUST NOT override alternate-audience reject -->
+    <form action="/login" method="post">
+      <label>
+        אימייל
+        <input type="email" name="email" autocomplete="username" />
+      </label>
+      <label>
+        סיסמה
+        <input type="password" name="password" autocomplete="current-password" />
+      </label>
+      <button type="submit">כניסה</button>
+    </form>
+  </body>
+</html>

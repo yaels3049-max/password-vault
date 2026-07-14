@@ -6,8 +6,11 @@ const BUILTIN_BY_ID = new Map(
 );
 
 /**
- * Merge presentation-only gaps from builtinCatalog when registry rows are stale
- * (icon, category, favicon metadata). Execution fields come from registry seed only (D-103-13).
+ * Fill gaps from builtinCatalog when registry rows are stale.
+ * Presentation: icon, category, favicon.
+ * Execution (Phase 110): missing loginUrl / loginFields — so Digital Home opens the
+ * real login entry and generic autofill can run (e.g. Hapoalim after seed lag).
+ * Never overwrites non-empty registry/admin values.
  */
 export function applyBuiltinCatalogOverlay(definition: ServiceDefinition): ServiceDefinition {
   if (definition.source !== 'built-in-catalog') {
@@ -25,10 +28,20 @@ export function applyBuiltinCatalogOverlay(definition: ServiceDefinition): Servi
     metadata.faviconSiteUrl = builtinFavicon;
   }
 
+  const loginUrl = definition.loginUrl?.trim() || builtin.loginUrl?.trim() || undefined;
+  const loginFields =
+    definition.loginFields && definition.loginFields.length > 0
+      ? definition.loginFields
+      : builtin.loginFields && builtin.loginFields.length > 0
+        ? builtin.loginFields
+        : definition.loginFields;
+
   return {
     ...definition,
     category: definition.category ?? builtin.category,
     icon: definition.icon ?? builtin.icon,
+    ...(loginUrl ? { loginUrl } : {}),
+    ...(loginFields ? { loginFields } : {}),
     metadata: Object.keys(metadata).length > 0 ? metadata : definition.metadata,
   };
 }

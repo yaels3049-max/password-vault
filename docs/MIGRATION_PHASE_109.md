@@ -21,6 +21,7 @@ Phase 109 delivers an explicit **Login | Create Account** shell, one immutable a
 1. `supabase/migrations/20260712200000_phase109_user_profile_auth.sql`
 2. `supabase/migrations/20260713090000_phase109_user_number.sql` — human-friendly `#100+` display id
 3. `supabase/migrations/20260713110000_phase109_harden_register_trigger.sql` — harden trigger for `user_number` (fixes Create Account after empty `users`)
+4. `supabase/migrations/20260713140000_phase109_vault_kdf.sql` — `users.vault_kdf` for Chrome↔Edge credential decrypt
 
 Audit/cleanup (later, separate step) use:
 
@@ -108,7 +109,7 @@ The development policy is **not** the production policy. Non-empty password is a
 | Digital Home / Manage | Only the authenticated user’s selections for that `userId` |
 | Discover | Globals (`built_in`, `admin`, `approved_global`) for all + **own** `source_type=user` customs only |
 
-Legacy device-global vault id `main` (pre-109) is **not** auto-attached to new accounts — each user starts with an empty namespace until they save data.
+Legacy device-global vault id `main` (pre-109) is **not** auto-attached to new accounts — each user starts with an empty namespace until they save data **or hydrate from cloud**.
 
 ### Two-user UAT (one browser) — required before phase approval
 
@@ -119,6 +120,65 @@ Legacy device-global vault id `main` (pre-109) is **not** auto-attached to new a
 | 3 | User B: register/login (may use same password string) | B’s empty/own workspace only |
 | 4 | B Digital Home / Manage | **Must not** show A’s selections |
 | 5 | B Discover | Globals visible; **A’s private custom absent** |
+
+## Cross-browser hydrate (D-109-24, AC-109-38)
+
+IndexedDB is **per-browser**. Dual-write alone is not enough: Login on Edge must not show an empty Digital Home when Chrome already saved the same user’s services to Supabase.
+
+After successful Login / Create Account (vault unlocked):
+
+1. `unlockVault(password, userId)` — prefers cloud `users.vault_kdf` when this browser has no local vault (same Argon2id salt → same AES key).
+2. **`hydrateWorkspaceFromCloud(userId)`** — load `user_services`, Access Profiles, `encrypted_credentials` (decrypt **client-side** only), owned private customs; merge into `VaultState`.
+3. Persist hydrated state into **this browser’s** `user:<uuid>` IndexedDB (`persistVault(..., { skipCloudSync: true })` on hydrate).
+4. Paint Digital Home / Manage from hydrated state.
+
+| Rule | Behavior |
+|---|---|
+| Cloud online | Membership in `user_services` is authoritative for Digital Home tiles |
+| Empty local + cloud membership | Home fills from hydrate — **must not** stay blank |
+| ZK | Never upload plaintext credentials/passwords during hydrate |
+| Credential key | Cloud ciphertext uses a **deterministic** key from Digital Home password + `userId` (same on Chrome and Edge). Local IndexedDB keeps its own salt. |
+| Legacy re-key | Login on Chrome (with local credentials) re-encrypts cloud blobs under the cloud-cred key before Edge can hydrate them |
+| Dual-write on save | Still runs on normal `persistVault` after user edits (cloud-cred key) |
+| Offline | Hydrate degrades to local cache; Home uses whatever is already in IndexedDB |
+
+### Migration for key parity
+
+Apply also:
+
+4. `supabase/migrations/20260713140000_phase109_vault_kdf.sql` — `users.vault_kdf` (KDF salt/params; not secret)
+
+After deploy: open Chrome once, save any vault change (or login) so `vault_kdf` seeds; then Edge Login can decrypt cloud credential blobs.
+
+### Chrome → Edge UAT (required — H10 / M12)
+
+| Step | Action | Pass |
+|---:|---|---|
+| 1 | Chrome: Login; add ≥1 service; tiles on Digital Home | Tiles visible |
+| 2 | Edge: Login same user (same Digital Home password) | Same `userId` |
+| 3 | Edge Digital Home after hydrate | **Same tiles as Chrome** — not empty |
+| 4 | Affirm | Empty local alone did not blank Home when cloud membership existed |
+
+## Workspace durability / anti-wipe (D-109-25, AC-109-39)
+
+Operator report: after an internet drop, a normal user’s Digital Home survived while an **admin** user’s services/passwords disappeared. Architecture: **not** caused by `is_admin`. Same `userId` vault rules for every role.
+
+| Rule | Behavior |
+|---|---|
+| Dual-write | **Upsert only** — never delete `encrypted_credentials` because values were omitted from a partial sync/re-key payload |
+| Explicit credential delete | `deleteCloudEncryptedCredentialByLocalProfileId` from Manage Services only |
+| Explicit remove-service | `removeUserServiceFromCloud` after local selection remove (FK cascade cleans profiles/ciphertext) |
+| Hydrate | Failed/incomplete cloud read → **keep local**; empty cloud must **not** empty-win over non-empty local membership |
+| Credentials merge | Never drop a local credential solely because cloud decrypt failed |
+| Admin | Identical durability rules — no separate Home vault |
+
+### Durability UAT
+
+| Step | Action | Pass |
+|---:|---|---|
+| 1 | Populate Digital Home (tiles + passwords) as a normal user | Home populated |
+| 2 | Offline / reconnect / re-login | Tiles + passwords remain |
+| 3 | Repeat for an `is_admin` user | Same — workspace not wiped |
 
 ## Bootstrap admin (SQL only — AC-109-21)
 
@@ -197,15 +257,15 @@ When an authenticated session exists, routing prefers cloud `user_services`:
 - Empty → Service Management / Add Services
 - If cloud count unavailable → fall back to local vault `selectedIds`
 
-## Chrome + Edge continuity (AC-109-17…19)
+## Chrome + Edge continuity (AC-109-17…19, AC-109-38)
 
 | Scenario | Expected |
 |---|---|
 | Register in Chrome | Auth + profile + vault unlocked with same password |
-| Login same email in Edge | Same `userId`; same Digital Home cloud data; vault unlock/create with same password |
+| Login same email in Edge | Same `userId`; **`hydrateWorkspaceFromCloud`** fills Digital Home tiles from `user_services` |
 | Wrong password | Friendly error; user counts unchanged |
 | Extension disabled | Login + Digital Home still work; autofill degrades |
-| Refresh | → Login (email may prefill); same password once; no new user |
+| Refresh | → Login (email may prefill); same password once; hydrate runs again after Login |
 | Lock or Logout | Memory cleared → Login; account/ciphertext retained |
 
 ## Verify

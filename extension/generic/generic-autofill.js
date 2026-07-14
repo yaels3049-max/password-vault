@@ -1,5 +1,10 @@
 'use strict';
 
+/**
+ * Generic autofill orchestration (Phase 103 / 110).
+ * detect → standard-login gate → map → fill visible only → NEVER submit.
+ * No service-id / host branching (AC-110-11).
+ */
 (function (root) {
   function runGenericAutofill(options) {
     var loginFields = options && options.loginFields;
@@ -9,19 +14,44 @@
       return { ok: false, reason: 'missing_credentials_or_fields' };
     }
 
-    console.log('[Generic Autofill] started');
+    var detector = root.GenericFormDetector;
+    var mapper = root.GenericFieldMapper;
+    var executor = root.GenericFillExecutor;
 
-    var detection = root.GenericFormDetector.detectVisibleLoginForm();
+    if (
+      !detector ||
+      !mapper ||
+      !executor ||
+      typeof detector.detectVisibleLoginForm !== 'function' ||
+      typeof mapper.mapLoginFields !== 'function' ||
+      typeof executor.fillField !== 'function'
+    ) {
+      return { ok: false, reason: 'engine_unavailable' };
+    }
+
+    if (
+      typeof detector.looksLikeBotInterstitial === 'function' &&
+      detector.looksLikeBotInterstitial()
+    ) {
+      return { ok: false, reason: 'bot_interstitial' };
+    }
+
+    var detection = detector.detectVisibleLoginForm();
     if (!detection) {
       return { ok: false, reason: 'form_not_found' };
     }
 
-    console.log('[Generic Autofill] visible form detected');
+    if (typeof detector.assessStandardLogin === 'function') {
+      var standard = detector.assessStandardLogin(detection);
+      if (!standard.ok) {
+        return {
+          ok: false,
+          reason: standard.reason || 'not_standard_login',
+        };
+      }
+    }
 
-    var mapResult = root.GenericFieldMapper.mapLoginFields(
-      loginFields,
-      detection,
-    );
+    var mapResult = mapper.mapLoginFields(loginFields, detection);
     if (!mapResult.ok) {
       return {
         ok: false,
@@ -29,13 +59,6 @@
         fieldId: mapResult.fieldId,
       };
     }
-
-    console.log(
-      '[Generic Autofill] mapped fields: ' +
-        mapResult.mappings.length +
-        '/' +
-        loginFields.length,
-    );
 
     var filled = 0;
     for (var i = 0; i < mapResult.mappings.length; i += 1) {
@@ -45,38 +68,33 @@
         continue;
       }
 
-      var isSecret = mapping.fieldId === 'password' || loginFields.some(function (field) {
-        return field.id === mapping.fieldId && field.type === 'password';
-      });
+      var isSecret =
+        mapping.fieldId === 'password' ||
+        loginFields.some(function (field) {
+          return field.id === mapping.fieldId && field.type === 'password';
+        });
 
-      var fillResult = root.GenericFillExecutor.fillField(
-        mapping.element,
-        value,
-        isSecret,
-      );
+      var fillResult = executor.fillField(mapping.element, value, isSecret);
       if (fillResult.ok) {
         filled += 1;
       }
     }
 
-    var verifyResult = root.GenericFillExecutor.verifyMappings(
-      mapResult.mappings,
-      credentials,
-    );
+    var verifyResult = executor.verifyMappings(mapResult.mappings, credentials);
 
     var expectedCount = loginFields.length;
     var ok = filled === expectedCount && verifyResult.ok;
-
-    if (ok) {
-      console.log('[Generic Autofill] fill verified');
-    }
 
     return {
       ok: ok,
       filled: filled,
       expected: expectedCount,
       verified: verifyResult.ok,
-      reason: ok ? undefined : verifyResult.ok ? 'partial_fill' : 'verification_failed',
+      reason: ok
+        ? undefined
+        : verifyResult.ok
+          ? 'partial_fill'
+          : 'verification_failed',
     };
   }
 

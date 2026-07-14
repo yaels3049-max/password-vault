@@ -5,6 +5,7 @@ import {
   type AccessProfile,
 } from '../profile/accessProfileModel';
 import {
+  normalizeExactlyOneDefaultPerService,
   validateAccessProfile,
   validateExactlyOneDefaultPerService,
 } from '../profile/profileValidation';
@@ -58,8 +59,20 @@ export function ensureDefaultProfileForService(
   serviceId: string,
 ): VaultState {
   const normalized = serviceId.trim();
-  if (getDefaultProfile(state.accessProfiles, normalized)) {
-    return state;
+  const healedProfiles = normalizeExactlyOneDefaultPerService(state.accessProfiles);
+  let nextState: VaultState =
+    healedProfiles === state.accessProfiles
+      ? state
+      : { ...state, accessProfiles: healedProfiles };
+
+  if (getDefaultProfile(nextState.accessProfiles, normalized)) {
+    return nextState;
+  }
+
+  const existingForService = getProfilesForService(nextState, normalized);
+  if (existingForService.length > 0) {
+    // Multi/single without an explicit default — promote one instead of inventing another.
+    return setDefaultAccessProfile(nextState, existingForService[0]!.id);
   }
 
   const candidate = createAccessProfile({
@@ -75,8 +88,8 @@ export function ensureDefaultProfileForService(
   }
 
   return {
-    ...state,
-    accessProfiles: [...state.accessProfiles, validated.profile],
+    ...nextState,
+    accessProfiles: [...nextState.accessProfiles, validated.profile],
   };
 }
 
@@ -91,7 +104,13 @@ export function addAccessProfile(
     throw new ProfileManagementError('Profile display name is required');
   }
 
-  const existingForService = getProfilesForService(state, normalizedServiceId);
+  const healedProfiles = normalizeExactlyOneDefaultPerService(state.accessProfiles);
+  const baseState: VaultState =
+    healedProfiles === state.accessProfiles
+      ? state
+      : { ...state, accessProfiles: healedProfiles };
+
+  const existingForService = getProfilesForService(baseState, normalizedServiceId);
   const candidate = createAccessProfile({
     serviceId: normalizedServiceId,
     displayName: trimmedName,
@@ -105,11 +124,14 @@ export function addAccessProfile(
     );
   }
 
-  const accessProfiles = [...state.accessProfiles, validated.profile];
+  const accessProfiles = normalizeExactlyOneDefaultPerService([
+    ...baseState.accessProfiles,
+    validated.profile,
+  ]);
   assertValidProfiles(accessProfiles);
 
   return {
-    ...state,
+    ...baseState,
     accessProfiles,
   };
 }
@@ -212,6 +234,7 @@ export function deleteAccessProfile(state: VaultState, profileId: string): Vault
     }
   }
 
+  accessProfiles = normalizeExactlyOneDefaultPerService(accessProfiles);
   assertValidProfiles(accessProfiles);
   return { ...state, accessProfiles, credentials };
 }

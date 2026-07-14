@@ -4,87 +4,96 @@
 PHASE=109
 
 ## Status
-STATUS: COMPLETE — M11 code + static verify + **two-user live UAT (T31–T34) Pass** (operator confirmed 2026-07-13). Hard gate H9 satisfied.
+STATUS: IN_PROGRESS — D-109-25 anti-wipe code + static verify delivered; durability UAT **PENDING_OPERATOR**. Hydrate Chrome↔Edge UAT (T35–T36) still operator-gated. Isolation T31–T34 previously Pass.
 
 ## Source References
-- `team-Yuri/manager-phase109.md` (D-109-22, **D-109-23 / M11**)
-- `team-Yuri/arch-phase109.md`
+- `team-Yuri/arch-phase109.md` (D-109-22…**D-109-25**)
+- `team-Yuri/PLAN.md` §18 — AC-109-39
 - `docs/MIGRATION_PHASE_109.md`
-- `team-Yuri/PHASE.md` — `PHASE=109`
+- Note: `manager-phase109.md` may still need Manager sync for D-109-25 (Developer cannot edit Manager artifacts)
 
 ## Amendments (2026-07-13)
 
-### A — Single Digital Home password
-UnlockScreen removed; Auth Login/Create Account unlocks/creates vault with same password; lock=logout.
+### A–C — Prior
+Single password; Admin Login; userId vault isolation (T31–T34 Pass).
 
-### B — Admin Login (D-109-22)
-`#/admin` unauthenticated / non-admin → Login (not deny-only); one SPA bookmark.
+### D — Cross-browser hydrate (D-109-24)
+`hydrateWorkspaceFromCloud` + `deriveCloudCredentialKey`; Chrome re-key on Login.
 
-### C — Client workspace isolation (D-109-23 / M11)
+### E — Workspace durability / anti-wipe (D-109-25 / AC-109-39) — THIS DELIVERY
 | Requirement | Implementation |
 |---|---|
-| Vault namespaced by `userId` | IndexedDB id `user:<uuid>` via `vaultStorageIdForUser` |
-| Same password ≠ shared workspace | Separate ciphertext per userId |
-| Clear on login/register/logout | `clearWorkspaceMemory()` before unlock / on logout |
-| Discover | Globals + own `source_type=user` only (`isCatalogVisibleRegistryRow`) |
+| No wipe via missing credential in sync payload | `syncVaultStateToSupabase` **upsert-only**; removed auto-`deleteEncryptedCredential` |
+| Explicit credential delete | `deleteCloudEncryptedCredentialByLocalProfileId` from Manage Services |
+| Explicit remove-service | `removeUserServiceFromCloud` after local remove |
+| Hydrate empty-win ban | `keepLocalMembership` when cloud empty + local non-empty |
+| Decrypt fail | Keep local credential for that profile |
+| Failed cloud read | Return local unchanged |
+| Admin | Same rules — not role-specific |
 
-## Implemented Milestones
+Root cause class: destructive dual-write on re-key/partial payload (and/or empty cloud treated as authority), **not** `is_admin`.
 
-| Milestone | Completed | Notes |
-|---|---:|---|
-| M1–M10 | Yes | Prior amendments |
-| **M11 workspace isolation** | Yes | Static verify PASS; live T31–T34 Pass |
-
-## M11 two-user UAT evidence (required — H9)
+## Durability UAT (required — AC-109-39)
 
 | # | Step | Expected | Result |
 |---:|---|---|---|
-| T31 | User A: login; selections + private custom | A Home/Manage populated | **PASS** (operator 2026-07-13) |
-| T32 | Logout → User B login (same password OK) | B workspace only | **PASS** (operator 2026-07-13) |
-| T33 | B Discover | Globals yes; **A’s custom absent** | **PASS** (operator 2026-07-13) |
-| T34 | Same password, two accounts | Still isolated | **PASS** (operator 2026-07-13) |
+| T38 | Populate Home (tiles + passwords) as normal user | Populated | **PENDING_OPERATOR** |
+| T39 | Offline / reconnect / re-login | Tiles + passwords remain | **PENDING_OPERATOR** |
+| T40 | Repeat for `is_admin` user | Same durability | **PENDING_OPERATOR** |
 
-Operator confirmation:
+Operator paste:
 
 ```text
-Date: 2026-07-13
-All required tests: Pass
-Pass/Fail: Pass
+Normal user email:
+Admin user email:
+Normal: tiles+passwords after reconnect: yes/no
+Admin: tiles+passwords after reconnect: yes/no
+Pass/Fail:
 ```
+
+## M12 Chrome→Edge UAT (H10)
+
+| # | Result |
+|---:|---|
+| T35–T36 | **PENDING_OPERATOR** |
+| T37 ZK | **PASS** (static) |
 
 ## Static verify
 
 | Command | Result |
 |---|---|
-| `node scripts/verifyPhase109Accounts.mjs` | **PASS** (vault namespace + Discover filter + Admin Login + single password) |
+| `node scripts/verifyPhase109Accounts.mjs` | **PASS** (incl. D-109-25 anti-wipe asserts) |
+| `npm run build` | **PASS** |
 
-## Files Changed (M11 delta)
+## Files Changed (D-109-25 delta)
 
 | File | Change |
 |---|---|
-| `src/vault/db.ts` | `vaultStorageIdForUser`; `getVault(userId)` |
-| `src/vault/vault.ts` | `unlockVault(password, userId)`; active namespace; `emptyVaultState` |
-| `src/App.tsx` | `clearWorkspaceMemory`; unlock with `profile.id` |
-| `src/registry/registryLoader.ts` | Discover: own `source_type=user` only |
-| `docs/MIGRATION_PHASE_109.md` | Workspace isolation + two-user UAT |
-| `scripts/verifyPhase109Accounts.mjs` | Namespace + Discover assertions |
+| `src/supabase/persistence.ts` | Upsert-only sync; explicit delete APIs; hydrate anti-wipe merge |
+| `src/App.tsx` | `removeUserServiceFromCloud` on remove; post-hydrate upsert-only repair sync |
+| `src/ManageServices.tsx` | Explicit cloud credential delete on user delete |
+| `scripts/verifyPhase109Accounts.mjs` | D-109-25 asserts |
+| `docs/MIGRATION_PHASE_109.md` | Durability section |
 
 ## Hard Gates
 
 | Gate | Status |
 |---|---|
-| H3 Single password | PASS |
-| H4 Lock=logout | PASS |
-| H8 Admin Login | PASS |
-| **H9 Workspace isolation** | **PASS** (code + two-user UAT) |
-| H6 No MFA | PASS |
+| H9 Isolation | PASS (T31–T34) |
+| H10 Hydrate Chrome↔Edge | UAT pending |
+| **H11 Durability / anti-wipe** | Code PASS / **UAT PENDING_OPERATOR** |
+
+## Scope
+
+- Owned under **Phase 109** only — Phase 110 does not own durability
+- No MFA; no Phase 103 redesign
 
 ## Developer Declaration
 
 ```text
-Detected phase: 109
+Detected phase: 109 (correction D-109-25; PHASE.md may show 110 in parallel)
 Selected state: IMPLEMENT
-Status: COMPLETE
+Status: IN_PROGRESS
 ```
 
-M11 delivered and proven. Two-user UAT Pass recorded; Phase 109 developer evidence complete.
+Manager: please sync `manager-phase109.md` with D-109-25 / AC-109-39 if not already. Phase COMPLETE for this correction after T38–T40 Pass.

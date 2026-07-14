@@ -11,7 +11,11 @@ export interface OpenServiceDeps {
 export type OpenServiceOutcome =
   | { status: 'cancelled' }
   | { status: 'credentials_missing'; userMessage?: string }
-  | { status: 'ok'; userMessage?: string }
+  | {
+      status: 'ok';
+      userMessage?: string;
+      metadataHealth?: 'fill_failed' | 'not_standard_login';
+    }
   | { status: 'open_only'; userMessage?: string };
 
 /**
@@ -40,5 +44,11 @@ export async function openServiceWithProfile(
     return { status: 'credentials_missing', userMessage: result.userMessage };
   }
 
-  return { status: result.status, userMessage: result.userMessage };
+  return {
+    status: result.status,
+    userMessage: result.userMessage,
+    ...(result.status === 'ok' && result.metadataHealth
+      ? { metadataHealth: result.metadataHealth }
+      : {}),
+  };
 }

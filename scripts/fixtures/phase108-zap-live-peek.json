@@ -1,0 +1,18 @@
+[
+  {
+    "url": "https://www.zap.co.il/",
+    "err": "fetch failed"
+  },
+  {
+    "url": "https://www.zap.co.il/login",
+    "err": "fetch failed"
+  },
+  {
+    "url": "https://zap.co.il/login",
+    "err": "fetch failed"
+  },
+  {
+    "url": "https://sa.zap.co.il/login/index",
+    "err": "fetch failed"
+  }
+]

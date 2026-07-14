@@ -67,7 +67,18 @@
     "services",
     "secure",
     "id",
-    "online"
+    "online",
+    // Federated / parent IdP hosts (D-108-27) — also same-brand probeable.
+    "sso",
+    "identity"
+  ];
+  var FEDERATED_IDP_HOST_PREFIXES = [
+    "id",
+    "login",
+    "auth",
+    "accounts",
+    "sso",
+    "identity"
   ];
   var COMMON_LOGIN_PATH_FALLBACKS = [
     "/login",
@@ -185,9 +196,10 @@
     "\u05D4\u05E2\u05E1\u05E7",
     "\u05DC\u05E2\u05E1\u05E7\u05D9\u05DD",
     "\u05DE\u05DE\u05E9\u05E7 \u05D4\u05E2\u05E1\u05E7",
+    "\u05DB\u05E0\u05D9\u05E1\u05D4 \u05DC\u05DE\u05DE\u05E9\u05E7 \u05D4\u05E2\u05E1\u05E7",
     "\u05DC\u05DE\u05DE\u05E9\u05E7",
     "\u05DC\u05E7\u05D5\u05D7\u05D5\u05EA \u05E2\u05E1\u05E7\u05D9\u05D9\u05DD",
-    "\u05DB\u05E0\u05D9\u05E1\u05EA \u05DC\u05E7\u05D5\u05D7\u05D5\u05EA",
+    "\u05DB\u05E0\u05D9\u05E1\u05EA \u05DC\u05E7\u05D5\u05D7\u05D5\u05EA \u05E2\u05E1\u05E7\u05D9\u05D9\u05DD",
     "\u05E1\u05D5\u05D7\u05E8",
     "\u05E1\u05D5\u05D7\u05E8\u05D9\u05DD",
     "\u05E1\u05E4\u05E7",
@@ -239,16 +251,60 @@
   function sameHostname(a, b) {
     return a.replace(/^www\./i, "").toLowerCase() === b.replace(/^www\./i, "").toLowerCase();
   }
+  function brandSecondLevelLabel(hostname) {
+    const host = hostname.replace(/^www\./i, "").toLowerCase();
+    const israeliPublicSuffix = /\.(co|org|ac|gov|muni)\.il$/i;
+    if (israeliPublicSuffix.test(host)) {
+      const withoutSuffix = host.replace(israeliPublicSuffix, "");
+      const labels2 = withoutSuffix.split(".").filter(Boolean);
+      return (labels2[labels2.length - 1] ?? withoutSuffix).toLowerCase();
+    }
+    const labels = host.split(".").filter(Boolean);
+    if (labels.length >= 2) {
+      return (labels[labels.length - 2] ?? labels[0]).toLowerCase();
+    }
+    return host;
+  }
+  function isSiblingTldSameBrand(primaryUrl, candidateUrl) {
+    try {
+      const primary = new URL(primaryUrl);
+      const candidate = new URL(candidateUrl);
+      if (registrableDomainKey(primary.hostname) === registrableDomainKey(candidate.hostname)) {
+        return false;
+      }
+      const a = brandSecondLevelLabel(primary.hostname);
+      const b = brandSecondLevelLabel(candidate.hostname);
+      return a.length >= 3 && a === b;
+    } catch {
+      return false;
+    }
+  }
+  function isSameBrandHost(primaryUrl, candidateUrl) {
+    try {
+      const primary = new URL(primaryUrl);
+      const candidate = new URL(candidateUrl);
+      if (registrableDomainKey(primary.hostname) === registrableDomainKey(candidate.hostname)) {
+        return true;
+      }
+      return isSiblingTldSameBrand(primaryUrl, candidateUrl);
+    } catch {
+      return false;
+    }
+  }
   function textHasAlternateAudienceWording(text) {
     const normalized = text.toLowerCase();
     return ALTERNATE_AUDIENCE_WORDING.some((token) => normalized.includes(token.toLowerCase()));
+  }
+  function stripApplicationShellPathTokens(path) {
+    return path.toLowerCase().replace(/\/ng-portals(?=\/|$)/g, "").replace(/\/portals(?=\/|$)/g, "").replace(/\/portal(?=\/|$)/g, "");
   }
   function isAlternateAudiencePortalUrl(url) {
     try {
       const parsed = new URL(url);
       const path = parsed.pathname.toLowerCase();
       const search = parsed.search.toLowerCase();
-      const haystack = `${parsed.hostname}${parsed.pathname}${parsed.search}`.toLowerCase();
+      const pathForWording = stripApplicationShellPathTokens(path);
+      const haystack = `${parsed.hostname}${pathForWording}${parsed.search}`.toLowerCase();
       const subs = subdomainLabels(parsed.hostname);
       if (subs.some(
         (label) => ALTERNATE_AUDIENCE_SUBDOMAIN_PREFIXES.includes(
@@ -260,7 +316,7 @@
       if (ALTERNATE_AUDIENCE_PATH_MARKERS.some((marker) => path.includes(marker))) {
         return true;
       }
-      if (ALTERNATE_AUDIENCE_LOGIN_PATH_RE.test(path)) {
+      if (ALTERNATE_AUDIENCE_LOGIN_PATH_RE.test(pathForWording)) {
         return true;
       }
       for (const key of ALTERNATE_AUDIENCE_QUERY_KEYS) {
@@ -297,10 +353,137 @@
       (label) => AUTH_SUBDOMAIN_PREFIXES.includes(label)
     );
   }
+  function isTrustedFederatedIdPHost(hostname) {
+    const subs = subdomainLabels(hostname);
+    return subs.some(
+      (label) => FEDERATED_IDP_HOST_PREFIXES.includes(
+        label
+      )
+    );
+  }
+  var BRAND_RETURN_QUERY_KEYS = [
+    "continue",
+    "callback",
+    "return",
+    "return_url",
+    "returnurl",
+    "redirect_uri",
+    "redirect_url",
+    "redirect",
+    "next",
+    "relaystate",
+    "application",
+    "dest",
+    "destination",
+    "goto"
+  ];
+  function primaryBrandTokens(hostname) {
+    const host = hostname.replace(/^www\./i, "").toLowerCase();
+    const tokens = /* @__PURE__ */ new Set([host]);
+    const key = registrableDomainKey(hostname).toLowerCase();
+    tokens.add(key);
+    if (key.includes(".")) {
+      tokens.add(key.split(".")[0] ?? key);
+    }
+    return [...tokens].filter((t) => t.length >= 3);
+  }
+  function valueContainsPrimaryBrand(value, tokens, primaryHost) {
+    let decoded = value;
+    try {
+      decoded = decodeURIComponent(value);
+    } catch {
+    }
+    const hay = decoded.toLowerCase();
+    const host = primaryHost.replace(/^www\./i, "").toLowerCase();
+    if (hay.includes(host)) {
+      return true;
+    }
+    for (const token of tokens) {
+      const t = token.toLowerCase();
+      if (t.length >= 4 && hay.includes(t)) {
+        return true;
+      }
+      if (t.length === 3) {
+        const re = new RegExp(`(?:^|[^a-z0-9])${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:[^a-z0-9]|$)`, "i");
+        if (re.test(hay)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  function hasPrimaryBrandReturnEvidence(primaryUrl, candidateUrl) {
+    try {
+      const primary = new URL(primaryUrl);
+      const candidate = new URL(candidateUrl);
+      const tokens = primaryBrandTokens(primary.hostname);
+      for (const [rawKey, value] of candidate.searchParams.entries()) {
+        const key = rawKey.toLowerCase();
+        const isReturnKey = BRAND_RETURN_QUERY_KEYS.includes(key) || key.startsWith("redirect_");
+        if (!isReturnKey) {
+          continue;
+        }
+        if (valueContainsPrimaryBrand(value, tokens, primary.hostname)) {
+          return true;
+        }
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+  function pathLooksLikeFederatedIdPLogin(url) {
+    try {
+      const path = new URL(url).pathname.toLowerCase();
+      return /(?:^|\/)(?:login|signin|sign-in|logon|sso|auth|signup|sign-up|register)(?:\/|$|\.)/i.test(
+        path
+      );
+    } catch {
+      return false;
+    }
+  }
+  function canonicalizeFederatedIdPLoginUrl(primaryUrl, candidateUrl) {
+    try {
+      const parsed = new URL(candidateUrl);
+      if (!isTrustedFederatedIdPHost(parsed.hostname)) {
+        return candidateUrl;
+      }
+      if (!hasPrimaryBrandReturnEvidence(primaryUrl, candidateUrl)) {
+        return candidateUrl;
+      }
+      if (!pathLooksLikeFederatedIdPLogin(candidateUrl)) {
+        return candidateUrl;
+      }
+      const path = parsed.pathname.toLowerCase().replace(/\/$/, "") || "/";
+      if (path === "/signup" || path === "/sign-up" || path === "/register") {
+        parsed.pathname = "/login";
+        return parsed.toString();
+      }
+      return candidateUrl;
+    } catch {
+      return candidateUrl;
+    }
+  }
+  function isFederatedIdPWithBrandReturn(primaryUrl, candidateUrl) {
+    try {
+      const host = new URL(candidateUrl).hostname;
+      return isTrustedFederatedIdPHost(host) && pathLooksLikeFederatedIdPLogin(candidateUrl) && hasPrimaryBrandReturnEvidence(primaryUrl, candidateUrl);
+    } catch {
+      return false;
+    }
+  }
   function pathLooksLikeDedicatedConsumerLogin(url) {
     try {
       const path = new URL(url).pathname.toLowerCase();
       return /(?:^|\/)pages\/login\.aspx$/i.test(path) || /(?:^|\/)(?:login|signin|sign-in|logon)\.aspx$/i.test(path);
+    } catch {
+      return false;
+    }
+  }
+  function pathLooksLikeConsumerSignIn(url) {
+    try {
+      const path = new URL(url).pathname.toLowerCase().replace(/\/$/, "") || "/";
+      return /(?:^|\/)(?:login|signin|sign-in|logon|auth)(?:\/|$|\.)/i.test(path);
     } catch {
       return false;
     }
@@ -331,8 +514,7 @@
         preferModalClassification: false
       };
     }
-    const contextBlob = [options?.label, options?.pageTitle, options?.pageContextText].filter(Boolean).join(" | ");
-    if (isAlternateAudiencePortalUrl(candidateUrl) || candidateLabelSuggestsAlternateAudience(options?.label) || contextBlob && textHasAlternateAudienceWording(contextBlob) && isCrossSubdomainCandidate(primaryUrl, candidateUrl)) {
+    if (!isFederatedIdPWithBrandReturn(primaryUrl, candidateUrl) && (isAlternateAudiencePortalUrl(candidateUrl) || candidateLabelSuggestsAlternateAudience(options?.label))) {
       return {
         accept: false,
         code: "alternate_audience_portal",
@@ -340,7 +522,35 @@
         preferModalClassification: true
       };
     }
-    if (options?.pageTitle && textHasAlternateAudienceWording(options.pageTitle) && isCrossSubdomainCandidate(primaryUrl, candidateUrl)) {
+    if (isFederatedIdPWithBrandReturn(primaryUrl, candidateUrl)) {
+      return { accept: true };
+    }
+    const sameBrand = isSameBrandHost(primaryUrl, candidateUrl);
+    let primaryHostForCompare = "";
+    try {
+      primaryHostForCompare = new URL(primaryUrl).hostname;
+    } catch {
+      primaryHostForCompare = "";
+    }
+    const sameHost = primaryHostForCompare !== "" && sameHostname(primaryHostForCompare, candidateHost);
+    const siblingTld = isSiblingTldSameBrand(primaryUrl, candidateUrl);
+    const trustedOrDedicated = sameBrand && (isTrustedAuthSubdomain(candidateHost) || pathLooksLikeDedicatedConsumerLogin(candidateUrl) || // D-108-29: consumer sign-in on same host OR sibling-TLD only —
+    // not arbitrary same-brand subdomains (payments.*/login stays rejected).
+    pathLooksLikeConsumerSignIn(candidateUrl) && (sameHost || siblingTld));
+    if (trustedOrDedicated) {
+      return { accept: true };
+    }
+    const contextBlob = [options?.label, options?.pageTitle, options?.pageContextText].filter(Boolean).join(" | ");
+    const crossSub = isCrossSubdomainCandidate(primaryUrl, candidateUrl);
+    if (contextBlob && textHasAlternateAudienceWording(contextBlob) && crossSub) {
+      return {
+        accept: false,
+        code: "alternate_audience_portal",
+        reason: ALTERNATE_AUDIENCE_PORTAL_REJECTED_REASON,
+        preferModalClassification: true
+      };
+    }
+    if (options?.pageTitle && textHasAlternateAudienceWording(options.pageTitle) && crossSub) {
       return {
         accept: false,
         code: "page_context_alternate_audience",
@@ -348,7 +558,7 @@
         preferModalClassification: Boolean(options.primaryHasModalLoginTrigger)
       };
     }
-    if (isCrossSubdomainCandidate(primaryUrl, candidateUrl)) {
+    if (crossSub) {
       if (options?.primaryHasModalLoginTrigger) {
         return {
           accept: false,
@@ -356,9 +566,6 @@
           reason: CROSS_SUBDOMAIN_NEEDS_REVIEW_REASON,
           preferModalClassification: true
         };
-      }
-      if (isTrustedAuthSubdomain(candidateHost) || pathLooksLikeDedicatedConsumerLogin(candidateUrl)) {
-        return { accept: true };
       }
       return {
         accept: false,
@@ -864,6 +1071,155 @@
     return urlLooksLikeLoginDestination(result.finalUrl);
   }
 
+  // src/discovery/trustedAuthProbe.ts
+  var TRUSTED_AUTH_PROBE_PREFIX_PRIORITY = [
+    "auth",
+    "login",
+    "secure",
+    "e-services",
+    "eservices",
+    "services",
+    "signin",
+    "account",
+    "accounts",
+    "myaccount",
+    "id",
+    "online"
+  ];
+  var MAX_AUTH_HOST_PROBES = 4;
+  function registrableApexHostname(hostname) {
+    const host = hostname.replace(/^www\./i, "").toLowerCase();
+    const israeliPublicSuffix = /\.(co|org|ac|gov|muni)\.il$/i;
+    if (israeliPublicSuffix.test(host)) {
+      const withoutSuffix = host.replace(israeliPublicSuffix, "");
+      const labels2 = withoutSuffix.split(".").filter(Boolean);
+      const brand = labels2[labels2.length - 1] ?? withoutSuffix;
+      const suffix = host.match(israeliPublicSuffix)?.[0] ?? ".co.il";
+      return `${brand}${suffix}`;
+    }
+    const labels = host.split(".").filter(Boolean);
+    if (labels.length >= 2) {
+      return labels.slice(-2).join(".");
+    }
+    return host;
+  }
+  function orderedAuthPrefixes() {
+    const seen = /* @__PURE__ */ new Set();
+    const ordered = [];
+    for (const prefix of TRUSTED_AUTH_PROBE_PREFIX_PRIORITY) {
+      if (AUTH_SUBDOMAIN_PREFIXES.includes(
+        prefix
+      ) && !seen.has(prefix)) {
+        seen.add(prefix);
+        ordered.push(prefix);
+      }
+    }
+    for (const prefix of AUTH_SUBDOMAIN_PREFIXES) {
+      if (!seen.has(prefix)) {
+        seen.add(prefix);
+        ordered.push(prefix);
+      }
+    }
+    return ordered;
+  }
+  function buildTrustedAuthHostProbeUrls(primaryUrl, maxProbes = MAX_AUTH_HOST_PROBES) {
+    const normalized = normalizePrimaryUrl(primaryUrl);
+    if (!normalized || normalized.startsWith("/")) {
+      return [];
+    }
+    let primaryHost;
+    let protocol;
+    try {
+      const parsed = new URL(normalized);
+      primaryHost = parsed.hostname;
+      protocol = parsed.protocol === "http:" ? "http:" : "https:";
+    } catch {
+      return [];
+    }
+    const apex = registrableApexHostname(primaryHost);
+    const primaryIsTrusted = isTrustedAuthSubdomain(primaryHost);
+    const urls = [];
+    const seen = /* @__PURE__ */ new Set();
+    const push = (url) => {
+      if (urls.length >= maxProbes) {
+        return;
+      }
+      if (seen.has(url)) {
+        return;
+      }
+      if (isAlternateAudiencePortalUrl(url)) {
+        return;
+      }
+      if (!isSameBrandHost(normalized, url)) {
+        return;
+      }
+      seen.add(url);
+      urls.push(url);
+    };
+    for (const prefix of orderedAuthPrefixes()) {
+      if (urls.length >= maxProbes) {
+        break;
+      }
+      const host = `${prefix}.${apex}`;
+      if (primaryIsTrusted && host === primaryHost.replace(/^www\./i, "").toLowerCase()) {
+        continue;
+      }
+      for (const path of COMMON_LOGIN_PATH_FALLBACKS) {
+        if (urls.length >= maxProbes) {
+          break;
+        }
+        push(`${protocol}//${host}${path}`);
+      }
+    }
+    return urls;
+  }
+
+  // src/discovery/liveCandidateValidation.ts
+  function htmlHasConsumerIdentityField(documentRoot, options) {
+    if (hasVisiblePasswordField(documentRoot, options)) {
+      return true;
+    }
+    const identitySelectors = [
+      'input[type="email"]',
+      'input[type="tel"]',
+      'input[autocomplete="username"]',
+      'input[autocomplete="email"]',
+      'input[autocomplete="tel"]',
+      'input[autocomplete="tel-national"]',
+      'input[name*="user" i]',
+      'input[name*="email" i]',
+      'input[name*="login" i]',
+      'input[name*="phone" i]',
+      'input[name*="mobile" i]',
+      'input[id*="user" i]',
+      'input[id*="email" i]',
+      'input[id*="login" i]',
+      'input[id*="phone" i]',
+      'input[id*="mobile" i]',
+      'input[placeholder*="email" i]',
+      'input[placeholder*="user" i]',
+      'input[placeholder*="phone" i]',
+      'input[aria-label*="email" i]',
+      'input[aria-label*="user" i]'
+    ];
+    for (const selector of identitySelectors) {
+      try {
+        if (documentRoot.querySelector(selector)) {
+          return true;
+        }
+      } catch {
+      }
+    }
+    return false;
+  }
+  function htmlLooksLikeLoginSpaShell(documentRoot) {
+    const title = (documentRoot.title ?? "").trim();
+    const h1 = (documentRoot.querySelector("h1")?.textContent ?? "").trim();
+    const blob = `${title}
+${h1}`.toLowerCase();
+    return /sign[\s-]*in|log[\s-]*in|logon|כניסה|התחברות|signin|login/.test(blob);
+  }
+
   // src/discovery/discoverLoginEntry.ts
   function isGenericLoginPathUrl(url) {
     try {
@@ -875,6 +1231,329 @@
     } catch {
       return false;
     }
+  }
+  function probeHtmlLookupKey(url) {
+    try {
+      const parsed = new URL(url);
+      return `${parsed.origin}${parsed.pathname.replace(/\/$/, "") || "/"}`;
+    } catch {
+      return url;
+    }
+  }
+  async function loadProbeResult(url, options) {
+    const key = probeHtmlLookupKey(url);
+    if (options.probeHtmlByUrl) {
+      for (const [mapKey, html] of Object.entries(options.probeHtmlByUrl)) {
+        if (probeHtmlLookupKey(mapKey) === key || mapKey === url) {
+          return {
+            reached: true,
+            ok: true,
+            status: 200,
+            html,
+            finalUrl: url
+          };
+        }
+      }
+      if (!options.fetchProbeHtml) {
+        return { reached: false };
+      }
+    }
+    const fetcher = options.fetchProbeHtml;
+    if (!fetcher) {
+      return { reached: false };
+    }
+    const result = await fetcher(url);
+    const reached = typeof result.reached === "boolean" ? result.reached : Boolean(result.ok) || typeof result.status === "number";
+    if (!reached) {
+      return { reached: false };
+    }
+    const status = typeof result.status === "number" ? result.status : result.ok ? 200 : 0;
+    if (result.ok && typeof result.html === "string") {
+      return {
+        reached: true,
+        ok: true,
+        status: status || 200,
+        html: result.html,
+        finalUrl: result.finalUrl ?? url
+      };
+    }
+    return {
+      reached: true,
+      ok: false,
+      status: status || 0,
+      html: typeof result.html === "string" ? result.html : void 0,
+      finalUrl: result.finalUrl,
+      dnsExists: result.dnsExists === true
+    };
+  }
+  async function validateConsumerLoginPageUrl(primaryUrl, candidateUrl, options) {
+    if (isAlternateAudiencePortalUrl(candidateUrl)) {
+      return null;
+    }
+    const gate = evaluateLoginAudience(primaryUrl, candidateUrl, {
+      primaryHasModalLoginTrigger: false
+    });
+    if (!gate.accept) {
+      return null;
+    }
+    const inspectingThisLoginPage = (() => {
+      if (!options.pageUrl) {
+        return false;
+      }
+      try {
+        return probeHtmlLookupKey(options.pageUrl) === probeHtmlLookupKey(candidateUrl);
+      } catch {
+        return false;
+      }
+    })();
+    if (!inspectingThisLoginPage && (options.pageHasAlternatePortalCandidate || options.primaryHasModalLoginTrigger) && isSameHostBareCommonLoginPath(primaryUrl, candidateUrl)) {
+      return null;
+    }
+    const isSameBrandTrustedAuthLoginPath = (url) => {
+      try {
+        const host = new URL(url).hostname;
+        return isSameBrandHost(primaryUrl, url) && isTrustedAuthSubdomain(host) && (isGenericLoginPathUrl(url) || urlLooksLikeLoginDestination(url));
+      } catch {
+        return false;
+      }
+    };
+    const isConsumerSignInSoftPath = (url) => {
+      try {
+        const primaryHost = new URL(primaryUrl).hostname;
+        const candidateHost = new URL(url).hostname;
+        const sameHost = primaryHost.replace(/^www\./i, "").toLowerCase() === candidateHost.replace(/^www\./i, "").toLowerCase();
+        const sibling = isSiblingTldSameBrand(primaryUrl, url);
+        const trusted = isTrustedAuthSubdomain(candidateHost);
+        if (!isSameBrandHost(primaryUrl, url)) {
+          return false;
+        }
+        if (!(sameHost || sibling || trusted)) {
+          return false;
+        }
+        const pathOk = isGenericLoginPathUrl(url) || pathLooksLikeConsumerSignIn(url) || urlLooksLikeLoginDestination(url);
+        if (!pathOk) {
+          return false;
+        }
+        if (options.pageHasAlternatePortalCandidate && isGenericLoginPathUrl(url) && sameHost && !sibling && !trusted) {
+          return false;
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const blockBareLoginSoftAcceptBesideModal = (url) => Boolean(options.primaryHasModalLoginTrigger) && isSameHostBareCommonLoginPath(primaryUrl, url);
+    const softAcceptCandidate = () => ({
+      // Prefer scored candidate URL (PayPal /login over bot redirect /signin).
+      url: candidateUrl,
+      method: "dedicated-login-page",
+      confidence: "medium"
+    });
+    const acceptFromDocument = (documentRoot, page) => {
+      if (isAlternateAudiencePortalUrl(page)) {
+        return null;
+      }
+      const pageAudience = evaluateLoginAudience(primaryUrl, page, {
+        pageTitle: documentRoot.title?.trim() || void 0,
+        pageContextText: extractPageAudienceContextText(documentRoot),
+        primaryHasModalLoginTrigger: false
+      });
+      if (!pageAudience.accept) {
+        return null;
+      }
+      if (isDeadOrErrorLoginPage(documentRoot)) {
+        return null;
+      }
+      const dedicated = inspectDedicatedLoginPage(documentRoot, page, {
+        htmlSnapshot: true
+      });
+      if (dedicated) {
+        return {
+          url: page,
+          method: "dedicated-login-page",
+          confidence: dedicated.confidence === "low" ? "medium" : dedicated.confidence
+        };
+      }
+      const hasIdentity = htmlHasConsumerIdentityField(documentRoot, {
+        htmlSnapshot: true
+      });
+      const sameBrandConsumerSignIn = isSameBrandHost(primaryUrl, page) && (isGenericLoginPathUrl(page) || pathLooksLikeConsumerSignIn(page) || urlLooksLikeLoginDestination(page));
+      if (hasIdentity && sameBrandConsumerSignIn) {
+        return {
+          url: page,
+          method: "dedicated-login-page",
+          confidence: "medium"
+        };
+      }
+      if (isSameBrandTrustedAuthLoginPath(candidateUrl)) {
+        return softAcceptCandidate();
+      }
+      if (isFederatedIdPWithBrandReturn(primaryUrl, page)) {
+        return {
+          url: page,
+          method: "dedicated-login-page",
+          confidence: "medium"
+        };
+      }
+      if (isConsumerSignInSoftPath(page) && !blockBareLoginSoftAcceptBesideModal(page) && (hasIdentity || htmlLooksLikeLoginSpaShell(documentRoot))) {
+        return softAcceptCandidate();
+      }
+      return null;
+    };
+    if (options.document && options.pageUrl) {
+      try {
+        const pageParsed = new URL(options.pageUrl);
+        const candParsed = new URL(candidateUrl);
+        const pageKey = `${pageParsed.origin}${pageParsed.pathname.replace(/\/$/, "") || "/"}`;
+        const candKey = `${candParsed.origin}${candParsed.pathname.replace(/\/$/, "") || "/"}`;
+        if (pageKey === candKey) {
+          const fromDoc = acceptFromDocument(options.document, options.pageUrl);
+          if (fromDoc) {
+            return fromDoc;
+          }
+        }
+      } catch {
+      }
+    }
+    const probe = await loadProbeResult(candidateUrl, options);
+    let effective = probe;
+    if (!probe.reached && isSameBrandTrustedAuthLoginPath(candidateUrl)) {
+      try {
+        const originUrl = new URL(candidateUrl).origin + "/";
+        const originProbe = await loadProbeResult(originUrl, options);
+        if (originProbe.reached && originProbe.ok && originProbe.status < 400) {
+          effective = {
+            reached: true,
+            ok: true,
+            status: originProbe.status,
+            html: originProbe.html ?? "",
+            finalUrl: candidateUrl
+          };
+        }
+      } catch {
+      }
+    }
+    if (!effective.reached) {
+      return null;
+    }
+    if (!effective.ok || effective.status >= 400) {
+      if (isSameBrandTrustedAuthLoginPath(candidateUrl) && trustedAuthProbeMaySoftAccept(effective)) {
+        return softAcceptCandidate();
+      }
+      if (isConsumerSignInSoftPath(candidateUrl) && trustedAuthProbeMaySoftAccept(effective) && !blockBareLoginSoftAcceptBesideModal(candidateUrl)) {
+        const html2 = "html" in effective && typeof effective.html === "string" ? effective.html : void 0;
+        if (isSameHostBareCommonLoginPath(primaryUrl, candidateUrl)) {
+          if (looksLikeBotGateHtml(html2)) {
+            return softAcceptCandidate();
+          }
+          return null;
+        }
+        return softAcceptCandidate();
+      }
+      return null;
+    }
+    const pageUrl = effective.ok && effective.finalUrl || candidateUrl;
+    if (isAlternateAudiencePortalUrl(pageUrl)) {
+      return null;
+    }
+    const finalGate = evaluateLoginAudience(primaryUrl, pageUrl, {
+      primaryHasModalLoginTrigger: false
+    });
+    if (!finalGate.accept) {
+      return null;
+    }
+    const html = "html" in effective && effective.ok ? effective.html ?? "" : "";
+    if (html) {
+      const documentRoot = documentFromHtml(html);
+      if (probe.reached && isDeadOrErrorLoginPage(documentRoot)) {
+        return null;
+      }
+      if (isAlternateAudiencePortalUrl(pageUrl)) {
+        return null;
+      }
+      const pageAudience = evaluateLoginAudience(primaryUrl, pageUrl, {
+        pageTitle: documentRoot.title?.trim() || void 0,
+        pageContextText: extractPageAudienceContextText(documentRoot),
+        primaryHasModalLoginTrigger: false
+      });
+      if (!pageAudience.accept) {
+        return null;
+      }
+      if (probe.reached) {
+        const dedicated = inspectDedicatedLoginPage(documentRoot, pageUrl, {
+          htmlSnapshot: true
+        });
+        if (dedicated) {
+          return softAcceptCandidate();
+        }
+      }
+      const hasIdentity = htmlHasConsumerIdentityField(documentRoot, {
+        htmlSnapshot: true
+      });
+      const sameBrandConsumerSignIn = isSameBrandHost(primaryUrl, pageUrl) && (isGenericLoginPathUrl(pageUrl) || pathLooksLikeConsumerSignIn(pageUrl) || urlLooksLikeLoginDestination(pageUrl));
+      if (hasIdentity && sameBrandConsumerSignIn) {
+        return softAcceptCandidate();
+      }
+      if (isSameBrandTrustedAuthLoginPath(candidateUrl)) {
+        return softAcceptCandidate();
+      }
+      if (isFederatedIdPWithBrandReturn(primaryUrl, pageUrl)) {
+        return {
+          url: pageUrl,
+          method: "dedicated-login-page",
+          confidence: "medium"
+        };
+      }
+      if (isConsumerSignInSoftPath(candidateUrl) && !blockBareLoginSoftAcceptBesideModal(candidateUrl) && (hasIdentity || htmlLooksLikeLoginSpaShell(documentRoot))) {
+        return softAcceptCandidate();
+      }
+      return null;
+    }
+    if (isSameBrandTrustedAuthLoginPath(candidateUrl)) {
+      return softAcceptCandidate();
+    }
+    if (isFederatedIdPWithBrandReturn(primaryUrl, candidateUrl)) {
+      return softAcceptCandidate();
+    }
+    if (isConsumerSignInSoftPath(candidateUrl) && !isSameHostBareCommonLoginPath(primaryUrl, candidateUrl) && !blockBareLoginSoftAcceptBesideModal(candidateUrl)) {
+      return softAcceptCandidate();
+    }
+    return null;
+  }
+  function trustedAuthProbeMaySoftAccept(probe) {
+    if (probe.status === 404) {
+      return false;
+    }
+    if (probe.dnsExists === true || probe.status === 0) {
+      return true;
+    }
+    return probe.status === 401 || probe.status === 403 || probe.status === 429;
+  }
+  function looksLikeBotGateHtml(html) {
+    if (!html) {
+      return false;
+    }
+    return /datadome|captcha|cf-challenge|attention required|access denied|cloudflare|bot[\s_-]?detect|perimeterx|akamai/i.test(
+      html
+    );
+  }
+  function isSameHostBareCommonLoginPath(primaryUrl, candidateUrl) {
+    try {
+      const primaryHost = new URL(primaryUrl).hostname.replace(/^www\./i, "").toLowerCase();
+      const candidateHost = new URL(candidateUrl).hostname.replace(/^www\./i, "").toLowerCase();
+      return primaryHost === candidateHost && isGenericLoginPathUrl(candidateUrl);
+    } catch {
+      return false;
+    }
+  }
+  function isDeadOrErrorLoginPage(documentRoot) {
+    const title = (documentRoot.title ?? "").trim();
+    const body = (documentRoot.body?.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
+    const blob = `${title}
+${body}`;
+    return /(?:^|\b)404\b|not found|page not found|cannot be found|doesn't exist|דף לא נמצא|העמוד לא נמצא|לא קיים/i.test(
+      blob
+    );
   }
   function isEmbeddedHomepageLoginForm(primaryUrl, candidate) {
     if (candidate.method !== "dedicated-login-page") {
@@ -960,6 +1639,13 @@
         primaryHasModalLoginTrigger: false
       });
       if (gate.accept) {
+        const canonicalUrl = canonicalizeFederatedIdPLoginUrl(primaryUrl, candidate.url);
+        if (canonicalUrl !== candidate.url) {
+          return {
+            accepted: { ...candidate, url: canonicalUrl },
+            rejected: firstRejected
+          };
+        }
         return { accepted: candidate, rejected: firstRejected };
       }
       if (!firstRejected) {
@@ -1030,6 +1716,83 @@
       rejectedLoginUrl: rejectedUrl
     };
   }
+  async function liveValidateTopCandidates(primaryUrl, allCandidates, options, extra) {
+    const ranked = [...allCandidates].filter((c) => Boolean(c.url) && !isAlternateAudiencePortalUrl(c.url)).filter((c) => {
+      const inspectingThis = options.pageUrl && (() => {
+        try {
+          return probeHtmlLookupKey(options.pageUrl) === probeHtmlLookupKey(c.url);
+        } catch {
+          return false;
+        }
+      })();
+      if (!inspectingThis && (options.pageHasAlternatePortalCandidate || options.primaryHasModalLoginTrigger) && isSameHostBareCommonLoginPath(primaryUrl, c.url)) {
+        return false;
+      }
+      return true;
+    }).sort((a, b) => b.score - a.score).slice(0, 8);
+    const seen = /* @__PURE__ */ new Set();
+    for (const candidate of ranked) {
+      const key = candidate.url;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const validated = await validateConsumerLoginPageUrl(
+        primaryUrl,
+        candidate.url,
+        options
+      );
+      if (validated) {
+        return discoverySuccess(
+          primaryUrl,
+          validated.url,
+          validated.method,
+          validated.confidence,
+          {
+            redirectChain: extra?.redirectChain,
+            finalUrlAfterRedirects: extra?.finalUrlAfterRedirects,
+            candidates: allCandidates,
+            loginEntryType: "navigable",
+            usesModal: Boolean(extra?.usesModal),
+            modalTrigger: extra?.modalTrigger,
+            rejectedLoginUrl: extra?.rejectedLoginUrl
+          }
+        );
+      }
+    }
+    return null;
+  }
+  async function tryProbeTrustedAuthHosts(primaryUrl, options, allCandidates, extra) {
+    const probeUrls = buildTrustedAuthHostProbeUrls(primaryUrl);
+    for (const probeUrl of probeUrls) {
+      const probeCandidate = {
+        url: probeUrl,
+        method: "common-path",
+        confidence: "low",
+        label: probeUrl,
+        score: 8
+      };
+      allCandidates.push(probeCandidate);
+      const validated = await validateConsumerLoginPageUrl(primaryUrl, probeUrl, options);
+      if (validated) {
+        return discoverySuccess(
+          primaryUrl,
+          validated.url,
+          validated.method,
+          validated.confidence,
+          {
+            redirectChain: extra?.redirectChain,
+            finalUrlAfterRedirects: extra?.finalUrlAfterRedirects,
+            candidates: allCandidates,
+            loginEntryType: "navigable",
+            usesModal: Boolean(extra?.usesModal),
+            modalTrigger: extra?.modalTrigger
+          }
+        );
+      }
+    }
+    return null;
+  }
   async function discoverLoginEntry(primaryUrl, options = {}) {
     const normalizedPrimary = normalizePrimaryUrl(primaryUrl);
     if (!normalizedPrimary) {
@@ -1037,12 +1800,14 @@
     }
     const followRedirects = options.followRedirects ?? true;
     const tryCommonPaths = options.tryCommonPaths ?? true;
+    const probeAuthHosts = options.probeAuthHosts ?? true;
     const allCandidates = [];
     let modalTriggers = [];
     let redirectChain;
     let finalUrlAfterRedirects;
     let pageTitle;
     let pageContextText;
+    let authHostsProbed = false;
     const pageUrl = options.pageUrl ?? normalizedPrimary;
     const htmlSnapshot = Boolean(options.assumeVisible) || Boolean(options.html && !options.document);
     const documentRoot = options.document ?? (options.html ? documentFromHtml(options.html) : void 0);
@@ -1075,25 +1840,80 @@
         primaryHasModalLoginTrigger: modalTriggers.length > 0,
         pageHasAlternatePortalCandidate: Boolean(portalOnPage)
       };
+      const validateOptions = {
+        ...options,
+        pageHasAlternatePortalCandidate: Boolean(portalOnPage),
+        primaryHasModalLoginTrigger: modalTriggers.length > 0
+      };
       const { accepted, rejected } = pickAudienceSafeCandidate(
         normalizedPrimary,
         inspection.candidates,
         audienceContext
       );
       if (accepted) {
-        return discoverySuccess(
+        const live = await validateConsumerLoginPageUrl(
           normalizedPrimary,
           accepted.url,
-          accepted.method,
-          accepted.confidence,
+          validateOptions
+        );
+        if (live) {
+          return discoverySuccess(
+            normalizedPrimary,
+            live.url,
+            live.method,
+            live.confidence,
+            {
+              candidates: allCandidates,
+              modalTrigger: modalTriggers[0],
+              loginEntryType: "navigable",
+              usesModal: modalTriggers.length > 0,
+              rejectedLoginUrl: (portalOnPage ?? rejected)?.url
+            }
+          );
+        }
+      }
+      {
+        const liveFromTop = await liveValidateTopCandidates(
+          normalizedPrimary,
+          allCandidates,
+          validateOptions,
           {
-            candidates: allCandidates,
-            modalTrigger: modalTriggers[0],
-            loginEntryType: "navigable",
             usesModal: modalTriggers.length > 0,
+            modalTrigger: modalTriggers[0],
             rejectedLoginUrl: (portalOnPage ?? rejected)?.url
           }
         );
+        if (liveFromTop) {
+          return liveFromTop;
+        }
+      }
+      if (probeAuthHosts && tryCommonPaths && !portalOnPage) {
+        const hasTrustedAuthDomCandidate = allCandidates.some((c) => {
+          try {
+            return isTrustedAuthSubdomain(new URL(c.url).hostname);
+          } catch {
+            return false;
+          }
+        });
+        const hasBareSameHostLoginCandidate = allCandidates.some(
+          (c) => isSameHostBareCommonLoginPath(normalizedPrimary, c.url)
+        );
+        const skipAuthInventBesideModalLogin = modalTriggers.length > 0 && !hasTrustedAuthDomCandidate && hasBareSameHostLoginCandidate;
+        if (!skipAuthInventBesideModalLogin) {
+          authHostsProbed = true;
+          const probed = await tryProbeTrustedAuthHosts(
+            normalizedPrimary,
+            validateOptions,
+            allCandidates,
+            {
+              usesModal: modalTriggers.length > 0,
+              modalTrigger: modalTriggers[0]
+            }
+          );
+          if (probed) {
+            return probed;
+          }
+        }
       }
       if (modalTriggers.length > 0) {
         return modalAudienceRejection(
@@ -1154,17 +1974,6 @@
       }
     }
     if (tryCommonPaths) {
-      if (modalTriggers.length > 0) {
-        return {
-          ...discoveryFailure(normalizedPrimary, "consumer_login_is_modal", {
-            ...partialBase(),
-            modalTrigger: modalTriggers[0]
-          }),
-          reason: CONSUMER_LOGIN_MODAL_REASON,
-          loginEntryType: "modal",
-          usesModal: true
-        };
-      }
       const portalSeen = allCandidates.some((c) => isAlternateAudiencePortalUrl(c.url));
       if (portalSeen) {
         const portal = allCandidates.find((c) => isAlternateAudiencePortalUrl(c.url)) ?? null;
@@ -1175,6 +1984,33 @@
           partialBase(),
           { pageTitle, pageContextText }
         );
+      }
+      if (probeAuthHosts && !authHostsProbed) {
+        authHostsProbed = true;
+        const probed = await tryProbeTrustedAuthHosts(
+          normalizedPrimary,
+          options,
+          allCandidates,
+          {
+            redirectChain,
+            finalUrlAfterRedirects,
+            usesModal: false
+          }
+        );
+        if (probed) {
+          return probed;
+        }
+      }
+      if (modalTriggers.length > 0) {
+        return {
+          ...discoveryFailure(normalizedPrimary, "consumer_login_is_modal", {
+            ...partialBase(),
+            modalTrigger: modalTriggers[0]
+          }),
+          reason: CONSUMER_LOGIN_MODAL_REASON,
+          loginEntryType: "modal",
+          usesModal: true
+        };
       }
       const pathCandidates = buildCommonPathCandidateEntries(normalizedPrimary);
       allCandidates.push(...pathCandidates);
@@ -1189,19 +2025,26 @@
         }
       );
       if (accepted) {
-        return discoverySuccess(
+        const validated = await validateConsumerLoginPageUrl(
           normalizedPrimary,
           accepted.url,
-          "common-path",
-          "low",
-          {
-            redirectChain,
-            finalUrlAfterRedirects,
-            candidates: allCandidates,
-            loginEntryType: "navigable",
-            usesModal: false
-          }
+          options
         );
+        if (validated) {
+          return discoverySuccess(
+            normalizedPrimary,
+            validated.url,
+            validated.method,
+            validated.confidence,
+            {
+              redirectChain,
+              finalUrlAfterRedirects,
+              candidates: allCandidates,
+              loginEntryType: "navigable",
+              usesModal: false
+            }
+          );
+        }
       }
       if (rejected) {
         return modalAudienceRejection(
@@ -1226,6 +2069,17 @@
         usesModal: true
       };
     }
+    if (allCandidates.length > 0) {
+      const late = await liveValidateTopCandidates(
+        normalizedPrimary,
+        allCandidates,
+        options,
+        { redirectChain, finalUrlAfterRedirects }
+      );
+      if (late) {
+        return late;
+      }
+    }
     return discoveryFailure(normalizedPrimary, "login_entry_not_found", {
       redirectChain,
       finalUrlAfterRedirects,
@@ -1234,12 +2088,132 @@
   }
 
   // src/extension/discoveryPageEntry.ts
+  var NO_CORS_PROBE_TIMEOUT_MS = 6e3;
+  var SW_PROBE_TIMEOUT_MS = 1e4;
+  function probeHostReachableNoCors(url) {
+    return new Promise((resolve) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => {
+        controller.abort();
+        resolve(false);
+      }, NO_CORS_PROBE_TIMEOUT_MS);
+      fetch(url, {
+        method: "GET",
+        mode: "no-cors",
+        cache: "no-store",
+        credentials: "omit",
+        redirect: "follow",
+        signal: controller.signal
+      }).then(() => {
+        clearTimeout(timer);
+        resolve(true);
+      }).catch(() => {
+        clearTimeout(timer);
+        resolve(false);
+      });
+    });
+  }
+  function fetchProbeHtmlFromServiceWorker(url) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+      const timer = setTimeout(() => {
+        finish({ ok: false, reached: false, reason: "sw_timeout" });
+      }, SW_PROBE_TIMEOUT_MS);
+      try {
+        const chromeApi = globalThis.chrome;
+        if (!chromeApi?.runtime?.sendMessage) {
+          clearTimeout(timer);
+          finish({ ok: false, reached: false, reason: "no_runtime" });
+          return;
+        }
+        chromeApi.runtime.sendMessage(
+          { type: "HUB_DISCOVERY_FETCH_HTML", url },
+          (response) => {
+            clearTimeout(timer);
+            if (chromeApi.runtime?.lastError) {
+              finish({
+                ok: false,
+                reached: false,
+                reason: chromeApi.runtime.lastError.message
+              });
+              return;
+            }
+            const payload = response;
+            if (!payload) {
+              finish({ ok: false, reached: false, reason: "empty_response" });
+              return;
+            }
+            if (payload.reached === false) {
+              finish({
+                ok: false,
+                reached: false,
+                reason: payload.reason
+              });
+              return;
+            }
+            if (payload.ok && typeof payload.html === "string") {
+              finish({
+                ok: true,
+                reached: true,
+                status: typeof payload.status === "number" ? payload.status : 200,
+                html: payload.html,
+                finalUrl: payload.finalUrl ?? url
+              });
+              return;
+            }
+            finish({
+              ok: false,
+              reached: true,
+              status: typeof payload.status === "number" ? payload.status : 0,
+              html: typeof payload.html === "string" ? payload.html : void 0,
+              finalUrl: payload.finalUrl,
+              reason: payload.reason,
+              dnsExists: payload.dnsExists === true
+            });
+          }
+        );
+      } catch {
+        clearTimeout(timer);
+        finish({ ok: false, reached: false, reason: "exception" });
+      }
+    });
+  }
+  async function fetchProbeHtmlViaBackground(url) {
+    const fromSw = await fetchProbeHtmlFromServiceWorker(url);
+    if (fromSw.ok) {
+      return fromSw;
+    }
+    if (fromSw.reached && typeof fromSw.status === "number" && fromSw.status !== 404 && (fromSw.dnsExists === true || fromSw.status === 0 || fromSw.status === 401 || fromSw.status === 403 || fromSw.status === 429)) {
+      return fromSw;
+    }
+    const reachable = await probeHostReachableNoCors(url);
+    if (reachable) {
+      return {
+        ok: false,
+        reached: true,
+        status: 0,
+        dnsExists: true,
+        finalUrl: url,
+        reason: "no_cors_reachable"
+      };
+    }
+    return fromSw;
+  }
   async function runLoginEntryDiscoveryInPage(primaryUrl) {
     return discoverLoginEntry(primaryUrl, {
       document: window.document,
       pageUrl: window.location.href,
       followRedirects: false,
-      tryCommonPaths: true
+      tryCommonPaths: true,
+      probeAuthHosts: true,
+      // Never invent auth-host /login without reachability (retail FP).
+      // Accept only when SW HTML / DNS / in-page no-cors proves the host exists.
+      fetchProbeHtml: fetchProbeHtmlViaBackground
     });
   }
   window.runLoginEntryDiscoveryInPage = runLoginEntryDiscoveryInPage;

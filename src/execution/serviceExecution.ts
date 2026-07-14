@@ -8,12 +8,18 @@ import {
   type Service,
 } from '../mockServices';
 import { getServiceAdapter, isSiteSpecificAdapter } from './adapters/registry';
-import { shouldAttemptGenericAutofill } from './autofillEligibility';
+import {
+  shouldAttemptGenericAutofill,
+  type AutofillHealthCode,
+} from './autofillEligibility';
 import { executeGenericAutofill } from './genericAutofill';
 import { openUrlInNewTab } from './extensionBridge';
 
 const MISSING_CREDENTIALS_MESSAGE =
   'הגדירו פרטי כניסה במסך «ניהול השירותים» — לחצו «הוסף שירותים נוספים».';
+
+const FILL_UNAVAILABLE_MESSAGE =
+  'האתר נפתח. מילוי אוטומטי לא זמין כרגע — ניתן למלא את השדות ידנית.';
 
 export type ServiceExecutionStatus =
   | 'ok'
@@ -25,12 +31,12 @@ export interface ServiceExecutionResult {
   extensionUsed: boolean;
   autofillAttempted: boolean;
   userMessage?: string;
-  /** Internal signal for future metadata-health UX (D-103-12). Never blocks open. */
-  metadataHealth?: 'fill_failed';
+  /** Non-sensitive signal for UX / Phase 112 (D-110-10). Never blocks open. */
+  metadataHealth?: AutofillHealthCode;
 }
 
 /**
- * Phase 103 unified tile execution (D-103-8):
+ * Phase 103 unified tile execution (D-103-8) — orchestration unchanged in Phase 110:
  * 1. openUrl = loginUrl ?? primaryUrl
  * 2. Site-specific adapters (htzone, practice) only
  * 3. Default: open tab (extension or window.open), then generic autofill when eligible
@@ -81,13 +87,19 @@ export function executeServiceFromTile(
 
   if (shouldAttemptGenericAutofill(service, credential, loginFields)) {
     const fillResult = executeGenericAutofill(openUrl, credential, loginFields);
+    if (fillResult.ok && !fillResult.extensionUsed) {
+      return {
+        status: 'ok',
+        extensionUsed: false,
+        autofillAttempted: true,
+        metadataHealth: 'fill_failed',
+        userMessage: FILL_UNAVAILABLE_MESSAGE,
+      };
+    }
     return {
       status: 'ok',
       extensionUsed: fillResult.ok && fillResult.extensionUsed,
       autofillAttempted: true,
-      ...(fillResult.ok && !fillResult.extensionUsed
-        ? { metadataHealth: 'fill_failed' as const }
-        : {}),
     };
   }
 

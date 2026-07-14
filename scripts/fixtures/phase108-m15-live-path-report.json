@@ -1,0 +1,81 @@
+{
+  "at": "2026-07-14T07:46:21.482Z",
+  "rows": [
+    {
+      "id": "paypal",
+      "primaryUrl": "https://www.paypal.com/",
+      "homeStatus": 200,
+      "success": true,
+      "loginUrl": "https://www.paypal.com/login",
+      "reason": null,
+      "method": "dedicated-login-page",
+      "persist": true,
+      "topCandidates": [
+        {
+          "url": "https://auth.paypal.com/login",
+          "score": 8,
+          "method": "common-path"
+        },
+        {
+          "url": "https://auth.paypal.com/signin",
+          "score": 8,
+          "method": "common-path"
+        },
+        {
+          "url": "https://auth.paypal.com/sign-in",
+          "score": 8,
+          "method": "common-path"
+        },
+        {
+          "url": "https://auth.paypal.com/account/login",
+          "score": 8,
+          "method": "common-path"
+        },
+        {
+          "url": "https://www.paypal.com/login",
+          "score": 25,
+          "method": "common-path"
+        }
+      ],
+      "expectOk": true
+    },
+    {
+      "id": "zoom",
+      "primaryUrl": "https://www.zoom.com/",
+      "homeStatus": 200,
+      "success": true,
+      "loginUrl": "https://zoom.us/signin",
+      "reason": null,
+      "method": "dedicated-login-page",
+      "persist": true,
+      "topCandidates": [
+        {
+          "url": "https://zoom.us/signin",
+          "score": 28,
+          "method": "visible-link"
+        },
+        {
+          "url": "https://zoom.us/signin",
+          "score": 28,
+          "method": "visible-link"
+        },
+        {
+          "url": "https://zoom.us/profile",
+          "score": 18,
+          "method": "visible-link"
+        },
+        {
+          "url": "https://zoom.us/multi_account/add_account",
+          "score": 18,
+          "method": "visible-link"
+        },
+        {
+          "url": "https://zoom.us/account",
+          "score": 18,
+          "method": "visible-link"
+        }
+      ],
+      "expectOk": true
+    }
+  ]
+}

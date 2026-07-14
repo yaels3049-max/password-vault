@@ -28,6 +28,7 @@ import {
   saveCredentialForProfile,
   setDefaultAccessProfile,
 } from './vault/profileManagement';
+import { deleteCloudEncryptedCredentialByLocalProfileId } from './supabase/persistence';
 import { toFriendlySecurityError } from './trust';
 
 interface ManageServicesProps {
@@ -510,9 +511,16 @@ export default function ManageServices({
               saveCredentialForProfile(state, profileId, credential),
             )
           }
-          onDeleteCredential={(profileId) =>
-            applyVaultUpdate((state) => deleteCredentialForProfile(state, profileId))
-          }
+          onDeleteCredential={async (profileId) => {
+            await applyVaultUpdate((state) => deleteCredentialForProfile(state, profileId));
+            try {
+              await deleteCloudEncryptedCredentialByLocalProfileId(profileId);
+            } catch (error) {
+              if (import.meta.env.DEV) {
+                console.warn('[vault] cloud credential delete failed:', error);
+              }
+            }
+          }}
         />
       )}
     </div>
@@ -528,6 +536,9 @@ function toHebrewProfileError(message: string): string {
   }
   if (message === 'Cannot delete the last profile for a service') {
     return 'לא ניתן למחוק את הפרופיל האחרון לשירות';
+  }
+  if (/marked default; exactly one is required/.test(message)) {
+    return 'מצב הפרופילים תוקן. סגרו את החלון, פתחו שוב ונסו להוסיף פרופיל.';
   }
   return message;
 }

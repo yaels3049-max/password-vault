@@ -13,6 +13,7 @@ export {
 export {
   validateAccessProfile,
   validateExactlyOneDefaultPerService,
+  normalizeExactlyOneDefaultPerService,
   validateUniqueProfileIds,
   type AccessProfileValidationResult,
   type ProfileCollectionValidationResult,

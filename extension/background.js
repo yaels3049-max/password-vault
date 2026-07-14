@@ -636,12 +636,60 @@ const GENERIC_REAL_SITE_SCRIPT_FILES = {
 };
 
 const GENERIC_REAL_SITE_RETRY_DELAY_MS = 300;
-const GENERIC_REAL_SITE_MAX_ATTEMPTS = 25;
-const GENERIC_REAL_SITE_INITIAL_DELAY_MS = 1500;
+const GENERIC_REAL_SITE_BOT_RETRY_DELAY_MS = 1000;
+const GENERIC_REAL_SITE_MAX_ATTEMPTS = 60;
+/** SPA banking portals often paint login inputs after first paint. */
+const GENERIC_REAL_SITE_INITIAL_DELAY_MS = 4000;
 /** Time allowed for a heavy real-site login page to reach the target URL. */
 const GENERIC_REAL_SITE_TAB_LOAD_TIMEOUT_MS = 120000;
 /** Time allowed for detect/fill once the login page is ready (retries included). */
-const GENERIC_REAL_SITE_OPERATION_TIMEOUT_MS = 90000;
+const GENERIC_REAL_SITE_OPERATION_TIMEOUT_MS = 120000;
+
+function genericRetryDelayMs(result) {
+  if (result && result.reason === 'bot_interstitial') {
+    return GENERIC_REAL_SITE_BOT_RETRY_DELAY_MS;
+  }
+  return GENERIC_REAL_SITE_RETRY_DELAY_MS;
+}
+
+/**
+ * Prefer a successful frame result when scripts run with allFrames:true
+ * (bank logins often live in an iframe, not the top document).
+ */
+function pickBestGenericFrameResult(results, fallbackReason) {
+  if (!results || !results.length) {
+    return { ok: false, reason: fallbackReason || 'no_result' };
+  }
+
+  var bestFail = null;
+  for (var i = 0; i < results.length; i += 1) {
+    var entry = results[i];
+    var result = entry && entry.result;
+    if (!result) {
+      continue;
+    }
+    if (result.ok) {
+      return result;
+    }
+    if (!bestFail) {
+      bestFail = result;
+      continue;
+    }
+    var filled = typeof result.filled === 'number' ? result.filled : 0;
+    var bestFilled = typeof bestFail.filled === 'number' ? bestFail.filled : 0;
+    if (filled > bestFilled) {
+      bestFail = result;
+    } else if (
+      bestFail.reason === 'form_not_found' &&
+      result.reason &&
+      result.reason !== 'form_not_found'
+    ) {
+      bestFail = result;
+    }
+  }
+
+  return bestFail || { ok: false, reason: fallbackReason || 'no_result' };
+}
 
 /** Phase 103 URL safety policy — user-initiated tile click is the trust boundary. */
 function isAllowedGenericAutofillUrl(urlString) {
@@ -681,10 +729,19 @@ function tabUrlMatchesGenericTarget(tabUrl, urlString) {
     if (parsed.origin !== expected.origin) {
       return false;
     }
-    if (expectedPath) {
-      return parsed.pathname.replace(/\/$/, '') === expectedPath;
+    if (!expectedPath) {
+      return parsed.hostname === expected.hostname;
     }
-    return parsed.hostname === expected.hostname;
+    var actualPath = parsed.pathname.replace(/\/$/, '');
+    if (actualPath === expectedPath) {
+      // Query params (e.g. users.php?act=login) are ignored after origin+path match.
+      return true;
+    }
+    // SPA login portals may land on a child path under the requested login entry.
+    return (
+      actualPath.indexOf(expectedPath + '/') === 0 ||
+      expectedPath.indexOf(actualPath + '/') === 0
+    );
   } catch (_error) {
     return false;
   }
@@ -821,7 +878,8 @@ function openGenericRealSiteTab(urlString, sendResponse, sessionLabel, onTabRead
 function runGenericDetectOnTab(tabId, loginFields, attempt, onDone) {
   chrome.scripting.executeScript(
     {
-      target: { tabId: tabId },
+      target: { tabId: tabId, allFrames: true },
+      world: 'MAIN',
       files: GENERIC_REAL_SITE_SCRIPT_FILES.detect,
     },
     function () {
@@ -841,7 +899,8 @@ function runGenericDetectOnTab(tabId, loginFields, attempt, onDone) {
 
       chrome.scripting.executeScript(
         {
-          target: { tabId: tabId },
+          target: { tabId: tabId, allFrames: true },
+          world: 'MAIN',
           func: function (fields) {
             if (typeof runGenericLoginFormDetection !== 'function') {
               return { ok: false, reason: 'detect_function_missing' };
@@ -867,13 +926,12 @@ function runGenericDetectOnTab(tabId, loginFields, attempt, onDone) {
             return;
           }
 
-          var result =
-            results && results[0] ? results[0].result : { ok: false, reason: 'no_result' };
+          var result = pickBestGenericFrameResult(results, 'no_result');
 
           if ((!result || !result.ok) && attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
             setTimeout(function () {
               runGenericDetectOnTab(tabId, loginFields, attempt + 1, onDone);
-            }, GENERIC_REAL_SITE_RETRY_DELAY_MS);
+            }, genericRetryDelayMs(result));
             return;
           }
 
@@ -887,7 +945,8 @@ function runGenericDetectOnTab(tabId, loginFields, attempt, onDone) {
 function runGenericAutofillOnTab(tabId, loginFields, credentials, attempt, onDone) {
   chrome.scripting.executeScript(
     {
-      target: { tabId: tabId },
+      target: { tabId: tabId, allFrames: true },
+      world: 'MAIN',
       files: GENERIC_REAL_SITE_SCRIPT_FILES.fill,
     },
     function () {
@@ -913,7 +972,8 @@ function runGenericAutofillOnTab(tabId, loginFields, credentials, attempt, onDon
 
       chrome.scripting.executeScript(
         {
-          target: { tabId: tabId },
+          target: { tabId: tabId, allFrames: true },
+          world: 'MAIN',
           func: function (fields, creds) {
             if (typeof runGenericAutofill !== 'function') {
               return { ok: false, reason: 'autofill_function_missing' };
@@ -946,8 +1006,7 @@ function runGenericAutofillOnTab(tabId, loginFields, credentials, attempt, onDon
             return;
           }
 
-          var result =
-            results && results[0] ? results[0].result : { ok: false, reason: 'no_result' };
+          var result = pickBestGenericFrameResult(results, 'no_result');
 
           if ((!result || !result.ok) && attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
             setTimeout(function () {
@@ -958,7 +1017,7 @@ function runGenericAutofillOnTab(tabId, loginFields, credentials, attempt, onDon
                 attempt + 1,
                 onDone,
               );
-            }, GENERIC_REAL_SITE_RETRY_DELAY_MS);
+            }, genericRetryDelayMs(result));
             return;
           }
 
@@ -1397,6 +1456,105 @@ chrome.runtime.onMessageExternal.addListener(function (
 
   if (message.type === 'HUB_LOGIN_ENTRY_DISCOVERY') {
     openPageAndDiscoverLoginEntry(message.primaryUrl, sendResponse);
+    return true;
+  }
+
+  if (message.type === 'HUB_DISCOVERY_FETCH_HTML') {
+    var fetchUrl = typeof message.url === 'string' ? message.url.trim() : '';
+    if (!fetchUrl) {
+      sendResponse({ ok: false, reached: false, reason: 'missing_url' });
+      return false;
+    }
+
+    function resolveHostnameViaDoh(hostname) {
+      return fetch(
+        'https://cloudflare-dns.com/dns-query?name=' +
+          encodeURIComponent(hostname) +
+          '&type=A',
+        {
+          method: 'GET',
+          cache: 'no-store',
+          headers: { Accept: 'application/dns-json' },
+        },
+      )
+        .then(function (response) {
+          return response.json();
+        })
+        .then(function (data) {
+          if (!data || data.Status !== 0) {
+            return false;
+          }
+          var answers = data.Answer || [];
+          return answers.some(function (answer) {
+            // 1=A, 28=AAAA, 5=CNAME — host is resolvable
+            return (
+              answer &&
+              (answer.type === 1 || answer.type === 28 || answer.type === 5)
+            );
+          });
+        })
+        .catch(function () {
+          return false;
+        });
+    }
+
+    fetch(fetchUrl, {
+      method: 'GET',
+      credentials: 'omit',
+      redirect: 'follow',
+      cache: 'no-store',
+      headers: { Accept: 'text/html,application/xhtml+xml' },
+    })
+      .then(function (response) {
+        return response.text().then(function (html) {
+          // Host answered (including 404) — distinct from NXDOMAIN / network miss.
+          sendResponse({
+            ok: response.ok,
+            reached: true,
+            status: response.status,
+            html: html,
+            finalUrl: response.url || fetchUrl,
+            reason: response.ok ? undefined : 'http_' + response.status,
+          });
+        });
+      })
+      .catch(function (error) {
+        var hostname = '';
+        try {
+          hostname = new URL(fetchUrl).hostname;
+        } catch (e) {
+          hostname = '';
+        }
+        var networkReason =
+          error && error.message ? error.message : 'network_error';
+        if (!hostname) {
+          sendResponse({
+            ok: false,
+            reached: false,
+            reason: networkReason,
+          });
+          return;
+        }
+        // Fetch failed (TLS/bot/offline path) but DNS may still prove auth host exists.
+        resolveHostnameViaDoh(hostname).then(function (exists) {
+          if (exists) {
+            sendResponse({
+              ok: false,
+              reached: true,
+              status: 0,
+              dnsExists: true,
+              finalUrl: fetchUrl,
+              reason: 'dns_exists_fetch_failed',
+            });
+            return;
+          }
+          sendResponse({
+            ok: false,
+            reached: false,
+            reason: networkReason,
+          });
+        });
+      });
     return true;
   }
 

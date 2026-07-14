@@ -17,9 +17,28 @@
       return { ok: false, reason: 'detector_unavailable' };
     }
 
+    if (
+      typeof detector.looksLikeBotInterstitial === 'function' &&
+      detector.looksLikeBotInterstitial()
+    ) {
+      return { ok: false, reason: 'bot_interstitial' };
+    }
+
     var detection = detector.detectVisibleLoginForm();
     if (!detection) {
       return { ok: false, reason: 'form_not_found' };
+    }
+
+    if (typeof detector.assessStandardLogin === 'function') {
+      var standard = detector.assessStandardLogin(detection);
+      if (!standard.ok) {
+        return {
+          ok: false,
+          reason: standard.reason || 'not_standard_login',
+          textFieldCount: detection.textInputs.length,
+          passwordFieldCount: detection.passwordInputs.length,
+        };
+      }
     }
 
     var result = {
@@ -56,6 +75,9 @@
         }),
       };
       result.ok = result.ok && mapResult.ok;
+      if (!mapResult.ok) {
+        result.reason = mapResult.reason || 'mapping_failed';
+      }
     }
 
     return result;

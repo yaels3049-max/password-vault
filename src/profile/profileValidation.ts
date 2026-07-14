@@ -247,3 +247,69 @@ export function validateExactlyOneDefaultPerService(
 
   return { valid: true };
 }
+
+/**
+ * Repair multi-profile services so exactly one profile is marked default.
+ * Prefers the first existing default (stable by id); otherwise the first profile.
+ * Single-profile groups are left unchanged.
+ */
+export function normalizeExactlyOneDefaultPerService(
+  profiles: AccessProfile[],
+): AccessProfile[] {
+  const byService = new Map<string, AccessProfile[]>();
+
+  for (const profile of profiles) {
+    const serviceId = profile.serviceId.trim();
+    const group = byService.get(serviceId) ?? [];
+    group.push(profile);
+    byService.set(serviceId, group);
+  }
+
+  const keepDefaultId = new Set<string>();
+  for (const [, group] of byService) {
+    if (group.length <= 1) {
+      continue;
+    }
+    const defaults = group
+      .filter((profile) => profile.isDefault === true)
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const chosen =
+      defaults[0] ??
+      [...group].sort((a, b) => a.id.localeCompare(b.id))[0];
+    if (chosen) {
+      keepDefaultId.add(chosen.id);
+    }
+  }
+
+  if (keepDefaultId.size === 0) {
+    return profiles;
+  }
+
+  let changed = false;
+  const now = new Date().toISOString();
+  const next = profiles.map((profile) => {
+    const group = byService.get(profile.serviceId.trim()) ?? [];
+    if (group.length <= 1) {
+      return profile;
+    }
+
+    const shouldBeDefault = keepDefaultId.has(profile.id);
+    const isDefault = profile.isDefault === true;
+
+    if (shouldBeDefault && !isDefault) {
+      changed = true;
+      return { ...profile, isDefault: true, updatedAt: now };
+    }
+
+    if (!shouldBeDefault && isDefault) {
+      changed = true;
+      const repaired = { ...profile, updatedAt: now };
+      delete repaired.isDefault;
+      return repaired;
+    }
+
+    return profile;
+  });
+
+  return changed ? next : profiles;
+}

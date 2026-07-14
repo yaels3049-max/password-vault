@@ -61,7 +61,21 @@ import {
   shouldForcePersistFailure,
 } from './serviceManagement/serviceSelection';
 
-import { lockVault, persistVault, unlockVault, emptyVaultState, WrongPasswordError, type VaultState } from './vault/vault';
+import {
+  lockVault,
+  persistVault,
+  unlockVault,
+  getActiveVaultCryptoKey,
+  getCloudCredentialCryptoKey,
+  emptyVaultState,
+  WrongPasswordError,
+  type VaultState,
+} from './vault/vault';
+import {
+  hydrateWorkspaceFromCloud,
+  syncVaultStateToSupabase,
+  removeUserServiceFromCloud,
+} from './supabase/persistence';
 
 import { ProfileResolution } from './profile';
 
@@ -441,26 +455,61 @@ function App() {
     return loaded.selectedIds.length > 0 ? 'dashboard' : 'manage';
   }
 
-  /** Single door: clear prior workspace, then unlock/create THIS userId's vault. */
+  /** Single door: clear prior workspace, unlock THIS userId's vault, hydrate cloud→local, then paint. */
   async function handleAuthenticated(profile: AppUserProfile, password: string) {
     clearWorkspaceMemory();
     try {
       const loaded = await unlockVault(password, profile.id);
+      const vaultKey = getActiveVaultCryptoKey();
+      const cloudCredKey = getCloudCredentialCryptoKey();
+      if (!vaultKey || !cloudCredKey) {
+        throw new Error('Vault key missing after unlock');
+      }
+
+      // Re-key cloud ciphertext under the deterministic cloud-cred key so Edge can decrypt.
+      // Uses local Chrome credentials when present (legacy vault-key dual-write era).
+      if (Object.keys(loaded.credentials).length > 0) {
+        try {
+          await syncVaultStateToSupabase(cloudCredKey, loaded);
+        } catch (error) {
+          if (isDevBuild()) {
+            console.warn('[vault] cloud credential re-key failed:', error);
+          }
+        }
+      }
+
+      // D-109-24 / AC-109-38: cloud→local before Digital Home paint (Chrome↔Edge parity).
+      const hydrated = await hydrateWorkspaceFromCloud(
+        profile.id,
+        [cloudCredKey, vaultKey],
+        loaded,
+      );
+      // Persist into THIS browser's IndexedDB; upsert-only dual-write repairs cloud
+      // without wiping ciphertext omitted from partial payloads (D-109-25).
+      await persistVault(hydrated, { skipCloudSync: true });
+      try {
+        await syncVaultStateToSupabase(cloudCredKey, hydrated);
+      } catch (error) {
+        if (isDevBuild()) {
+          console.warn('[vault] post-hydrate upsert-only sync failed:', error);
+        }
+      }
+
       setAccountProfile(profile);
       setAuthBootError(null);
       setLoginEmailPrefill(profile.email ?? '');
-      setVaultState(loaded);
+      setVaultState(hydrated);
       setIsUnlocked(true);
 
-      const nextScreen = await resolvePostAuthScreen(loaded, profile);
+      const nextScreen = await resolvePostAuthScreen(hydrated, profile);
 
       if (nextScreen === 'dashboard') {
         setManageIsFirstRun(false);
         setScreen('dashboard');
-      } else if (isDevBuild() && loaded.selectedIds.length === 0) {
+      } else if (isDevBuild() && hydrated.selectedIds.length === 0) {
         const initialIds = [HUB_PRACTICE_LOGIN_ID];
         const nextState: VaultState = {
-          ...loaded,
+          ...hydrated,
           selectedIds: initialIds,
         };
         setVaultState(nextState);
@@ -517,6 +566,15 @@ function App() {
         mode === 'add' ? addToSelection(vaultState, id) : removeFromSelection(vaultState, id);
 
       await persistSelectionState(next);
+      if (mode === 'remove') {
+        try {
+          await removeUserServiceFromCloud(id);
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.warn('[vault] cloud remove-service failed:', error);
+          }
+        }
+      }
       setVaultState(next);
     } catch (error) {
       if (import.meta.env.DEV) {

@@ -1,14 +1,44 @@
-import { isAlternateAudiencePortalUrl, evaluateLoginAudience } from '../discovery/loginAudienceGate';
+import {
+  isAlternateAudiencePortalUrl,
+  evaluateLoginAudience,
+  isSameBrandHost,
+  isTrustedAuthSubdomain,
+} from '../discovery/loginAudienceGate';
 import type { DiscoveryResult } from '../discovery';
 import type { ServiceRegistryRow } from './registryMapper';
 import { isAdminProtectedLoginUrl } from './loginUrlOverride';
 
 /**
+ * Auto-invented same-brand auth-host /login probe shape (U24 soft invent).
+ * Used to roll back dead invents (e.g. non-existent retail auth host) on rediscovery.
+ */
+function isAuthHostLoginInventUrl(primaryUrl: string, loginUrl: string): boolean {
+  try {
+    const login = new URL(loginUrl);
+    const path = login.pathname.replace(/\/$/, '') || '/';
+    if (path !== '/login') {
+      return false;
+    }
+    const host = login.hostname.replace(/^www\./i, '').toLowerCase();
+    if (!host.startsWith('auth.')) {
+      return false;
+    }
+    if (!isTrustedAuthSubdomain(login.hostname)) {
+      return false;
+    }
+    return isSameBrandHost(primaryUrl, loginUrl);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Whether rediscovery failure should clear an existing auto login_url (M11 / D-108-14…18).
  *
- * Clear only with positive evidence the stored URL is wrong (alternate-audience portal).
- * Weak failures (common-path, modal-only without portal evidence, extension timeout)
- * must not wipe previously good consumer login URLs (Shufersal/Clalit/HTZone class).
+ * Clear only with positive evidence the stored URL is wrong (alternate-audience portal
+ * or dead auth-host invent that rediscovery can no longer validate).
+ * Weak failures must not wipe previously good consumer login URLs
+ * (Shufersal/Clalit/HTZone class) that are not auth-host invents.
  */
 export function shouldClearAutoLoginUrlOnDiscoveryReject(
   row: Pick<ServiceRegistryRow, 'login_url' | 'primary_url' | 'metadata'>,
@@ -45,6 +75,16 @@ export function shouldClearAutoLoginUrlOnDiscoveryReject(
       primaryHasModalLoginTrigger: false,
     });
     if (!audience.accept) {
+      return true;
+    }
+
+    // Roll back unverified auth-host invents when rediscovery no longer persists them.
+    if (
+      discovery &&
+      !discovery.success &&
+      !discovery.loginUrl &&
+      isAuthHostLoginInventUrl(primary, existing)
+    ) {
       return true;
     }
   }

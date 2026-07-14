@@ -163,6 +163,27 @@ export function saltFromBase64(salt: string): Uint8Array {
   return fromBase64(salt);
 }
 
+/**
+ * Deterministic AES key for cloud `encrypted_credentials` (D-109-24).
+ * Same password + userId ⇒ same key on every browser. Salt is derived from userId
+ * (not secret). Local IndexedDB vault blobs keep their own random salt.
+ */
+export async function deriveCloudCredentialKey(
+  password: string,
+  userId: string,
+): Promise<CryptoKey> {
+  const trimmed = userId.trim();
+  if (!trimmed) {
+    throw new Error('userId is required for cloud credential key');
+  }
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`digital-home-cloud-cred-v1:${trimmed}`),
+  );
+  const salt = new Uint8Array(digest).slice(0, 16);
+  return createCryptoKey(password, salt, DEFAULT_KDF);
+}
+
 /** Encrypt a single profile credential object for Supabase dual-write (AES-256-GCM). */
 export async function encryptCredentialSet(
   cryptoKey: CryptoKey,
@@ -181,4 +202,42 @@ export async function encryptCredentialSet(
     iv: toBase64(iv),
     fieldIdsPresent: Object.keys(credential),
   };
+}
+
+/** Decrypt a single profile credential blob from Supabase (client-side only — ZK). */
+export async function decryptCredentialSet(
+  cryptoKey: CryptoKey,
+  ciphertext: string,
+  iv: string,
+): Promise<Credential> {
+  try {
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: fromBase64(iv) },
+      cryptoKey,
+      fromBase64(ciphertext),
+    );
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(decrypted));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Invalid credential payload');
+    }
+    return parsed as Credential;
+  } catch {
+    throw new Error('Credential decrypt failed');
+  }
+}
+
+/** Try each key until one decrypts (cloud-cred key first, then legacy vault key). */
+export async function decryptCredentialSetWithKeys(
+  cryptoKeys: CryptoKey[],
+  ciphertext: string,
+  iv: string,
+): Promise<Credential | null> {
+  for (const key of cryptoKeys) {
+    try {
+      return await decryptCredentialSet(key, ciphertext, iv);
+    } catch {
+      // try next key
+    }
+  }
+  return null;
 }

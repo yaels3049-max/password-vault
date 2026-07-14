@@ -217,19 +217,39 @@ async function main() {
       ).accept === true,
     );
 
-    // Case F — modal on primary blocks trusted auth auto-accept (consumer modal wins)
+    // Case F — M12 / D-108-21: homepage modal must NOT preempt same-brand trusted auth
     assert(
       evaluateLoginAudience(
         'https://www.brand.example.co.il/',
         'https://login.brand.example.co.il/signin',
         { primaryHasModalLoginTrigger: true },
-      ).accept === false,
+      ).accept === true,
+      'Trusted auth must ACCEPT even when primaryHasModalLoginTrigger',
     );
+
+    // Case F2 — Bank Hapoalim-class ng-portals + retail כניסת לקוחות wording must ACCEPT
+    {
+      const hapoalimLogin =
+        'https://login.bankhapoalim.co.il/ng-portals/auth/he/login';
+      assert(
+        isAlternateAudiencePortalUrl(hapoalimLogin) === false,
+        'ng-portals alone must not be alternate-audience evidence',
+      );
+      assert(
+        evaluateLoginAudience('https://www.bankhapoalim.co.il/', hapoalimLogin, {
+          primaryHasModalLoginTrigger: true,
+          pageTitle: 'כניסת לקוחות',
+          pageContextText: 'כניסת לקוחות | בנק הפועלים',
+          label: 'כניסה לחשבון',
+        }).accept === true,
+        'Hapoalim-class trusted auth must ACCEPT despite modal + retail wording',
+      );
+    }
 
     // Case G — untrusted cross-subdomain (bare /login must NOT escape via dedicated-path helper)
     const cross = evaluateLoginAudience(
       'https://www.brand.example.co.il/',
-      'https://portal.brand.example.co.il/login',
+      'https://payments.brand.example.co.il/login',
     );
     assert(cross.accept === false && cross.code === 'cross_subdomain_untrusted');
 
@@ -238,13 +258,14 @@ async function main() {
       evaluateLoginAudience(
         'https://www.bankjerusalem.co.il/',
         'https://services.bankjerusalem.co.il/Pages/Login.aspx',
+        { primaryHasModalLoginTrigger: true },
       ).accept === true,
-      'services.*/Pages/Login.aspx must be accepted',
+      'services.*/Pages/Login.aspx must be accepted (modal does not preempt)',
     );
 
     console.log('verifyPhase108ModalAudience: PASS');
     console.log(
-      'Cases: A retail+sa, B bank modal, C hub sanitize, D portals, E trusted auth, F modal blocks cross-subdomain, G untrusted, H services Login.aspx',
+      'Cases: A retail+sa, B bank modal, C hub sanitize, D portals, E trusted auth, F modal+trusted ACCEPT (M12), G untrusted, H services Login.aspx',
     );
   } finally {
     gateBundle.cleanup();

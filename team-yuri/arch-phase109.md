@@ -13,6 +13,10 @@ AMENDED: 2026-07-13 (admin access) — **D-109-22.** Admin console must offer Lo
 
 AMENDED: 2026-07-13 (workspace isolation) — **D-109-23.** Operator report: new user saw previous user’s Digital Home / Manage services. Root cause class: **device-global local vault / UI state not scoped by `userId`**. Adds AC-109-36/37. Client vault storage and Discover visibility must be user-scoped; private customs never leak across accounts.
 
+AMENDED: 2026-07-13 (cross-browser hydrate) — **D-109-24 / AC-109-38.** Operator report: same user has services in Chrome Digital Home but empty Home in Edge. Root cause: local IndexedDB is per-browser; login unlocked an empty Edge vault and never hydrated from cloud `user_services` / encrypted blobs. Cloud hydrate after login is mandatory for AC-109-17.
+
+AMENDED: 2026-07-13 (workspace durability) — **D-109-25 / AC-109-39.** Operator report: after internet dropout, one user’s Digital Home survived; the **admin** user’s services and passwords were gone and must be re-added. Likely class: **destructive sync/hydrate** (empty or partial local state dual-written / wiping cloud ciphertext; or empty cloud treated as authority after local cache loss) — **not** an inherent “admin role deletes Home” rule. Admin Digital Home uses the same vault/`userId` rules as any user. Adds anti-wipe constraints.
+
 ## Phase Goal
 Deliver a **production-ready user account and authentication foundation**: explicit Login and Create Account flows, **one user-facing Digital Home password**, one immutable authenticated `userId`, database-enforced user isolation, **client workspace isolation per `userId`**, session restore/logout, Chrome and Edge account continuity, and an audited cleanup path for unintended anonymous users — **without** a second vault-password screen, without redesigning Vault crypto algorithms, execution, or registry discovery, and without subscription/billing or MFA.
 
@@ -55,6 +59,8 @@ Phase 109 owns the **account shell** that future subscription (151), MFA/session
 | **D-109-21: MFA deferred** | Non-goals | No 2FA in 109. |
 | **D-109-22: Admin console access** | Phase 107 | `#/admin` Login when unauthenticated; one SPA. |
 | **D-109-23: Client workspace isolation (userId-scoped vault)** | AC-109-11, AC-109-12, AC-109-36, AC-109-37; operator bug | **Local vault ciphertext / IndexedDB (or equivalent) MUST be keyed by authenticated `userId`.** Same password on two accounts must not open the other account’s workspace. On login/register/logout/account-switch: clear previous user’s in-memory `VaultState` / UI selections before loading the new user’s namespace. Digital Home and Manage derive only from the current `userId`. **Discover catalog:** show global rows (`built_in`, `admin`, `approved_global`) to all users; show `source_type=user` private customs **only** when `owner_user_id = auth.uid()`. Never paint another user’s customs or selections. |
+| **D-109-24: Cross-browser workspace hydrate (cloud authority)** | AC-109-17, AC-109-18, AC-109-38; operator bug Chrome≠Edge | IndexedDB is **per-browser**. After Login: `hydrateWorkspaceFromCloud(userId)` before paint. Cloud membership authoritative **when cloud has selections**; decrypt credentials client-side; persist into this browser’s vault. |
+| **D-109-25: Workspace durability / anti-wipe** | AC-109-39; operator data-loss after outage | **Admin role does not own a separate Digital Home vault** — same `userId`-scoped rules as any user. Hard rules: (1) **Hydrate must never replace a non-empty local workspace with an empty result** solely because cloud read returned zero rows, timed out, or failed partially — treat uncertain cloud as “keep local”. (2) **Dual-write must never delete cloud `encrypted_credentials` for a profile merely because the in-memory credential map omitted that profile’s values** during re-key/sync — delete ciphertext only on explicit user remove-credential / remove-service flows. (3) **Dual-write must never delete `user_services` rows** that are absent from a partial local snapshot unless the user explicitly removed those services. (4) Offline / reconnect: local IndexedDB remains source of truth until a **successful, complete** cloud read; then merge with non-destructive rules (union or cloud-wins-only-when-cloud-non-empty for membership; never empty-wins over local non-empty). (5) Creating a new empty local vault blob (missing IndexedDB) must still hydrate from cloud when online; if both empty, that is true empty — not a wipe. |
 
 ### Normative entry / session flow
 
@@ -62,7 +68,9 @@ Phase 109 owns the **account shell** that future subscription (151), MFA/session
 App load (Digital Home)
   → no usable session OR vault key missing?
        YES → Auth entry (Login | Create Account)
-       NO  → load vault namespace for auth.uid() only → route by THAT user’s user_services
+       NO  → unlock vault namespace for auth.uid()
+           → if online: hydrateWorkspaceFromCloud(userId) then paint
+           → route by THAT user’s user_services
 
 App load (#/admin or /admin)
   → no email session? → Admin Login (same password)
@@ -72,11 +80,42 @@ Login / Create Account (email + Digital Home password)
   → authenticate / register (never anonymous create)
   → clear any previous user’s in-memory vault/UI state
   → unlock/create vault blob for THIS userId with the same password
-  → load THIS user’s user_services / profiles / credentials only
+  → hydrateWorkspaceFromCloud(THIS userId)   // REQUIRED for Chrome↔Edge parity
+  → paint Digital Home / Manage from hydrated state
   → route
 
 Vault lock / Logout
   → auth.signOut + lockVault + clear in-memory workspace → Auth Login
+```
+
+### Normative cross-browser continuity
+
+```text
+Chrome (user U): add services → dual-write user_services + encrypted blobs
+Edge (same U): Login with same Digital Home password
+  → same userId
+  → local Edge vault may be empty
+  → hydrate from Supabase → Digital Home shows same service tiles
+  → decrypt credentials client-side with password-derived key
+  → persist into Edge IndexedDB user:U for offline
+```
+
+### Normative hydrate / sync durability (D-109-25)
+
+```text
+hydrate(local, cloud):
+  if cloud_read_failed OR cloud_read_incomplete → return local unchanged
+  if cloud.selectedIds empty AND local.selectedIds non-empty → keep local membership
+  if cloud.selectedIds non-empty → use cloud membership (AC-109-38)
+  credentials: merge; never drop local credential for profile P because cloud decrypt failed
+       unless user explicitly removed P
+  persist local; dual-write only additive/upsert of known-good credentials
+
+dual-write(state):
+  upsert user_services / profiles present in state
+  upsert encrypted_credentials only when credential values present
+  DO NOT delete cloud encrypted_credentials for “missing in this payload”
+  DO NOT delete user_services not present in this payload (except explicit remove-service API)
 ```
 
 ### Normative Discover visibility
@@ -109,6 +148,8 @@ Validate + pending guard
 - **Lock = logout → Login** (AC-109-24).
 - **Admin URL shows Login when unauthenticated** (D-109-22).
 - **No cross-user workspace leak** (AC-109-36); vault storage scoped by `userId` (D-109-23).
+- **Same user Chrome↔Edge must show the same Digital Home after login** via cloud hydrate (AC-109-17, AC-109-38, D-109-24).
+- **Never wipe a non-empty workspace via empty/partial hydrate or destructive dual-write** (AC-109-39, D-109-25).
 - **Private customs only for owner** in Discover (AC-109-37).
 - Ownership only via `userId`; RLS; ADR-002 ciphertext client-side.
 - No subscription/billing; no MFA in this phase.
@@ -134,16 +175,17 @@ Validate + pending guard
 | Auth entry UI | Login / Create Account; drives vault unlock for **current userId** |
 | Admin gate + Admin Login | D-109-22 |
 | `src/vault/*` | **Namespace persisted vault by userId**; clear memory on switch |
-| `src/App.tsx` | On auth success/logout: reset UI state; load only current user workspace |
+| `src/App.tsx` | On auth success/logout: reset UI state; load only current user workspace; **await hydrate before paint** |
+| `src/supabase/persistence.ts` (or `src/workspace/`) | Dual-write **and** hydrate (D-109-24) **with anti-wipe** (D-109-25): no `deleteEncryptedCredential` on missing payload values |
 | Catalog / registry loader | Discover filter per D-109-23 / AC-109-37 |
-| `docs/MIGRATION_PHASE_109.md` | Coupling; lock=logout; admin bookmark; **userId vault namespaces** |
-| `scripts/verifyPhase109Accounts.mjs` | Assert userId-scoped vault API / no shared global vault key; catalog visibility helpers |
+| `docs/MIGRATION_PHASE_109.md` | Coupling; lock=logout; admin bookmark; userId vault; **Chrome↔Edge hydrate** |
+| `scripts/verifyPhase109Accounts.mjs` | userId vault namespace; hydrate helper exists; Discover filters |
 
 ## Data / State Considerations
 - Local vault ciphertext remains device-local and Zero-Knowledge; **one blob (or key prefix) per `userId`**.
 - New account on a device that previously held another user’s vault: start empty for the new `userId` — do not inherit prior `selectedIds` / customs.
 - Cloud `user_services` / profiles / credentials remain RLS-scoped; client must not overlay another user’s local selection on top.
-- Dual-write era: when session exists, prefer authoritative cloud `user_services` for **this** userId after login.
+- Dual-write era: push local→cloud on save; **hydrate cloud→local on login** when online (D-109-24). Cloud membership wins **only when cloud selection is non-empty**; never empty-win over local (D-109-25). Dual-write upserts only; no delete of cloud credentials/`user_services` on partial payloads.
 
 ## Security / Privacy Considerations
 - Cross-account UI leak is a **privacy defect** even if RLS would block server reads — treat AC-109-36 as a hard gate.
@@ -151,30 +193,32 @@ Validate + pending guard
 - Single-password tradeoff (Auth + KDF) remains; MFA later (191).
 
 ## Testing and Lint Expectations
-- Build + `verifyPhase109Accounts.mjs` PASS (include userId vault namespace + discover filter assertions).
-- **Manual hard gate:** Create User A with selections/customs → logout → Create/Login User B → User B must **not** see A’s Digital Home tiles or A’s private customs in Discover; B sees global catalog only (+ B’s own customs if any).
+- Build + `verifyPhase109Accounts.mjs` PASS (userId vault + hydrate path + discover filters).
+- **Manual hard gate (cross-user):** User A then User B on one browser — no leak (AC-109-36/37).
+- **Manual hard gate (durability):** Populate Home → simulate offline / reconnect / re-login → services+passwords still present (AC-109-39). Repeat for an `is_admin` user — same expectation.
 - Phase 103/108 static regression as applicable.
 
 ## Functional Testability
 
 - **Screens:** Auth; Digital Home; Manage/Discover — each user’s personal area.
 - **Cross-user:** A’s workspace never appears for B.
+- **Cross-browser:** Chrome and Edge for the same user show the same Home after Login + hydrate.
 - **Discover:** globals for all; private customs owner-only.
 - **E2E:** Register B on device used by A → empty or B-only Home; Discover without A’s customs.
 
 ## Handoff Notes for Manager
 
-1. Sync `manager-phase109.md` with **D-109-23** and **AC-109-36/37**.
-2. Treat operator report as **architecture-confirmed defect** (not “works as designed”).
-3. Developer must: namespace local vault by `userId`; clear memory on account switch; enforce Discover visibility; evidence with two-user UAT on one browser.
-4. Keep prior amendments (single password, Admin Login, no MFA).
-5. Do not “fix” by sharing one vault across accounts when passwords match.
+1. Sync `manager-phase109.md` with **D-109-23/24/25** and **AC-109-36/37/38/39**.
+2. Operator Chrome≠Edge empty Home → hydrate (D-109-24). Operator outage data-loss (admin Home wiped) → **anti-wipe** (D-109-25); do not blame `is_admin` without evidence.
+3. Developer must: fix destructive `deleteEncryptedCredential` on empty payload sync; hydrate must not empty-win over local; evidence reconnect/outage UAT.
+4. Keep prior amendments (single password, Admin Login, isolation, hydrate, no MFA).
+5. Phase 110 does not own this fix — schedule under Phase 109 correction even if PHASE.md is 110.
 
 ## Architect Review
 ARCHITECT_REVIEW_STATUS: NOT_REVIEWED
 
 ### Review Notes
-_Operator 2026-07-13: new user opened previous user’s Digital Home / Manage. Confirmed architectural gap under single-password + device-global vault. D-109-23 + AC-109-36/37 added. Pending Manager sync + Developer fix evidence._
+_Operator 2026-07-13: after internet drop, non-admin retained Home; admin user lost services+passwords. Architecture: not “admin clears Home”; likely destructive sync/hydrate or cloud never durable + local cache loss. D-109-25 / AC-109-39 added._
 
 ### Required Corrections
-_Manager: sync plan. Developer: implement userId-scoped vault + catalog visibility; two-user isolation UAT._
+_Manager sync; Developer: anti-wipe dual-write + hydrate; verify outage/reconnect does not blank a populated workspace._

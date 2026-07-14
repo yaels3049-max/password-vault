@@ -9,6 +9,8 @@
  *   - Docs: coupling + MFA deferral (not password split)
  *   - requireAuthenticatedUserId; no production anonymous create
  *   - Client register does not set role / is_admin
+ *   - D-109-23 userId vault namespace + Discover own customs
+ *   - D-109-24 hydrateWorkspaceFromCloud after Login (Chrome↔Edge)
  *
  * Usage: node scripts/verifyPhase109Accounts.mjs
  */
@@ -130,6 +132,16 @@ function main() {
     'App must clear prior workspace and unlock vault for profile.id namespace',
   );
   assert(
+    app.includes('hydrateWorkspaceFromCloud') &&
+      /hydrateWorkspaceFromCloud\s*\(/.test(app) &&
+      app.includes('handleAuthenticated'),
+    'App must call hydrateWorkspaceFromCloud after Login before paint (D-109-24)',
+  );
+  assert(
+    /hydrateWorkspaceFromCloud[\s\S]*persistVault|persistVault\(hydrated/.test(app),
+    'App must persist hydrated state into this browser vault before paint',
+  );
+  assert(
     app.includes('handleLockVault') && app.includes('handleLogout'),
     'App must support lock and logout',
   );
@@ -225,6 +237,111 @@ function main() {
     'Discover globals must include built_in, admin, approved_global',
   );
 
+  // --- D-109-24 cross-browser hydrate ---
+  const persistence = read('src/supabase/persistence.ts');
+  const cryptoSrc = read('src/vault/crypto.ts');
+  assert(
+    persistence.includes('export async function hydrateWorkspaceFromCloud'),
+    'hydrateWorkspaceFromCloud must exist in persistence layer',
+  );
+  assert(
+    persistence.includes('user_services') &&
+      persistence.includes('access_profiles') &&
+      persistence.includes('encrypted_credentials') &&
+      persistence.includes("source_type', 'user'"),
+    'hydrate must load user_services, access profiles, encrypted_credentials, owned customs',
+  );
+  assert(
+    persistence.includes('decryptCredentialSetWithKeys') ||
+      persistence.includes('decryptCredentialSet'),
+    'hydrate must decrypt credentials client-side (ZK)',
+  );
+  assert(
+    cryptoSrc.includes('deriveCloudCredentialKey'),
+    'deriveCloudCredentialKey must exist for cross-browser credential decrypt',
+  );
+  assert(
+    !/from\('encrypted_credentials'\)[\s\S]{0,200}\.insert\([^)]*password/i.test(persistence),
+    'hydrate must not insert plaintext password fields into encrypted_credentials',
+  );
+  assert(
+    persistence.includes('Never send plaintext') ||
+      persistence.includes('never sends plaintext') ||
+      persistence.includes('Never sends plaintext') ||
+      /NEVER send plaintext/i.test(persistence) ||
+      persistence.includes('do not upload plaintext'),
+    'hydrate must document ZK (no plaintext to server)',
+  );
+
+  assert(
+    cryptoSrc.includes('export async function decryptCredentialSet'),
+    'decryptCredentialSet must exist for ZK hydrate',
+  );
+
+  assert(
+    vaultApi.includes('fetchVaultKdf') || persistence.includes('fetchVaultKdf'),
+    'Cross-browser hydrate requires vault_kdf fetch for key parity',
+  );
+  assert(
+    persistence.includes('ensureVaultKdfSeeded') || persistence.includes('vault_kdf'),
+    'vault_kdf must be seeded for Chrome↔Edge credential decrypt',
+  );
+
+  // --- D-109-25 workspace durability / anti-wipe ---
+  assert(
+    persistence.includes('D-109-25') || persistence.includes('Anti-wipe') || /anti-wipe|AC-109-39/i.test(persistence),
+    'persistence must document anti-wipe / D-109-25',
+  );
+  assert(
+    persistence.includes('deleteCloudEncryptedCredentialByLocalProfileId'),
+    'Explicit cloud credential delete API required (not via sync omission)',
+  );
+  assert(
+    persistence.includes('removeUserServiceFromCloud'),
+    'Explicit cloud remove-service API required (not via sync omission)',
+  );
+  // syncVaultStateToSupabase body must not delete encrypted_credentials on missing values
+  const syncFnMatch = persistence.match(
+    /export async function syncVaultStateToSupabase[\s\S]*?^export async function syncVaultStateToSupabaseSafe/m,
+  );
+  const syncBody = syncFnMatch?.[0] ?? '';
+  assert(
+    syncBody.length > 0,
+    'Could not locate syncVaultStateToSupabase for anti-wipe assert',
+  );
+  assert(
+    !/\.from\(['"]encrypted_credentials['"]\)\s*\.delete\(/.test(syncBody) &&
+      !syncBody.includes('deleteEncryptedCredential('),
+    'syncVaultStateToSupabase must not delete encrypted_credentials (D-109-25)',
+  );
+  assert(
+    !/\.from\(['"]user_services['"]\)\s*\.delete\(/.test(syncBody),
+    'syncVaultStateToSupabase must not delete user_services (D-109-25)',
+  );
+  assert(
+    persistence.includes('keepLocalMembership') ||
+      /empty cloud must not|empty-win|keep local membership/i.test(persistence),
+    'hydrate must not empty-win over non-empty local membership',
+  );
+
+  const appSrc = read('src/App.tsx');
+  assert(
+    appSrc.includes('removeUserServiceFromCloud'),
+    'App must call removeUserServiceFromCloud on explicit remove-service',
+  );
+
+  const manageSrc = read('src/ManageServices.tsx');
+  assert(
+    manageSrc.includes('deleteCloudEncryptedCredentialByLocalProfileId'),
+    'ManageServices must delete cloud ciphertext only on explicit credential delete',
+  );
+
+  const vaultKdfMigration = listFiles(join(root, 'supabase/migrations'), (name) =>
+    name.includes('vault_kdf'),
+  );
+  assert(vaultKdfMigration.length >= 1, 'Migration must add users.vault_kdf for cross-browser key parity');
+
+
   // Dual-door ban across Hub source (allow doc comments that say "no dual-door")
   const hubFiles = listFiles(join(root, 'src'), (name) => name.endsWith('.ts') || name.endsWith('.tsx'));
   const dualDoor = [];
@@ -285,6 +402,14 @@ function main() {
     'Migration doc must document userId-scoped vault / workspace isolation',
   );
   assert(
+    /hydrateWorkspaceFromCloud|D-109-24|AC-109-38|Chrome.*Edge/i.test(migration),
+    'Migration doc must document cross-browser hydrate (D-109-24 / AC-109-38)',
+  );
+  assert(
+    /D-109-25|AC-109-39|anti-wipe|durability/i.test(migration),
+    'Migration doc must document workspace durability / anti-wipe (D-109-25)',
+  );
+  assert(
     migration.includes('development') || migration.includes('פיתוח'),
     'Migration doc must mention development password policy isolation',
   );
@@ -330,7 +455,7 @@ function main() {
 
   console.log('verifyPhase109Accounts: PASS');
   console.log(
-    'Single password; lock=logout; Admin Login; userId vault namespace; Discover own customs only; MFA deferred',
+    'Single password; lock=logout; Admin Login; userId vault; Discover; hydrateWorkspaceFromCloud; MFA deferred',
   );
 }
 

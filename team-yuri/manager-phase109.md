@@ -14,26 +14,30 @@ STATUS: READY_FOR_DEVELOPER
 
 **Amendment C — Client workspace isolation (D-109-23; AC-109-36/37).** Operator report: new user saw previous user’s Digital Home / Manage. **Local vault / IndexedDB MUST be keyed by authenticated `userId`.** Same password on two accounts must not open the other workspace. Clear prior in-memory vault/UI on login/register/logout/switch. Discover = global catalog (`built_in`, `admin`, `approved_global`) for all + **own** `source_type=user` customs only. **Hard gate before approval:** two users on one browser — B must not see A’s Home/Manage; Discover must not list A’s private customs.
 
+**Amendment D — Cross-browser workspace hydrate (D-109-24; AC-109-38).** Operator report: same user has tiles in Chrome Digital Home but empty Home in Edge. Root cause: IndexedDB is **per-browser**; Login unlocked an empty Edge vault and never pulled cloud `user_services` / encrypted blobs. **After successful Login/Create Account** (vault unlocked): run **`hydrateWorkspaceFromCloud(userId)`** before painting Digital Home — load `user_services`, Access Profiles, `encrypted_credentials` (decrypt **client-side** with vault key), and owned private customs; merge into `VaultState` and persist into **this browser’s** user-scoped IndexedDB. Cloud is authoritative for online workspace membership; local vault is decryption/offline cache. Dual-write on save remains. **Keep ZK — no plaintext to server.** UAT: Chrome add services → Edge login same user → same tiles.
+
 **Required corrections before approval:**
 1. Dual-door UX — reverse to single password + lock=logout.
 2. Admin unauthenticated path — Admin Login on `#/admin` (not deny-only).
 3. **Cross-user workspace leak** — userId-scoped vault + clear-on-switch + Discover visibility (D-109-23).
+4. **Chrome↔Edge empty Home** — `hydrateWorkspaceFromCloud` after Login (D-109-24 / AC-109-38).
 
 ## Phase Goal
-Deliver a **production-ready user account and authentication foundation**: explicit Login and Create Account flows, **one user-facing Digital Home password**, one immutable authenticated `userId`, database-enforced user isolation, **client workspace isolation per `userId`**, session restore/logout, Chrome and Edge account continuity, and an audited cleanup path for unintended anonymous users — **without** a second vault-password screen, without redesigning Vault crypto algorithms, execution, or registry discovery, and without subscription/billing or MFA.
+Deliver a **production-ready user account and authentication foundation**: explicit Login and Create Account flows, **one user-facing Digital Home password**, one immutable authenticated `userId`, database-enforced user isolation, **client workspace isolation per `userId`**, **cloud→local hydrate so Chrome and Edge show the same Digital Home**, session restore/logout, and an audited cleanup path for unintended anonymous users — **without** a second vault-password screen, without redesigning Vault crypto algorithms, execution, or registry discovery, and without subscription/billing or MFA.
 
-Phase 109 owns the **account shell** that future subscription (151), MFA/session hardening (191), and vault/account security (192) extend. It stops anonymous user proliferation, dual-door UX, and **cross-account workspace leakage** on shared browsers.
+Phase 109 owns the **account shell** that future subscription (151), MFA/session hardening (191), and vault/account security (192) extend. It stops anonymous user proliferation, dual-door UX, **cross-account workspace leakage**, and **cross-browser empty Home** when cloud membership exists.
 
 ## Source References
-- `team-Yuri/arch-phase109.md` (AMENDED 2026-07-13 — single password + D-109-22 + **D-109-23 workspace isolation**)
-- `team-Yuri/PLAN.md` §18 — Ownership Authority; Client workspace isolation; Catalog/Discover visibility; AC-109-1 … AC-109-37
+- `team-Yuri/arch-phase109.md` (AMENDED 2026-07-13 — single password + D-109-22 + D-109-23 + **D-109-24 hydrate**)
+- `team-Yuri/PLAN.md` §18 — Ownership Authority; Chrome/Edge continuity + normative hydrate; AC-109-1 … **AC-109-38**
 - `team-Yuri/PHASE.md` — `PHASE=109`
 - `docs/DECISIONS.md` — ADR-002
 - `team-Yuri/arch-phase107.md` — `AdminGate` / `is_admin()`
 - `team-Yuri/arch-phase108.md` — regression only; Phase 108 M11 out of scope
 - `src/vault/vault.ts` — KDF unchanged; **storage must be userId-namespaced**
-- `src/App.tsx` — clear prior user in-memory state on auth switch
-- `team-Yuri/dev-phase109.md` — prior dual-door + isolation fixes required
+- `src/App.tsx` — clear prior user in-memory state; **await hydrate before paint**
+- `src/supabase/persistence.ts` (or `src/workspace/`) — dual-write **and** `hydrateWorkspaceFromCloud`
+- `team-Yuri/dev-phase109.md` — prior dual-door + isolation + hydrate fixes required
 
 ## Parallel-track note — Phase 108 M11
 Phase 108 live discovery (M11) may still be open. Phase 109 must not own discovery fixes. Re-run Phase 103/108 static gates as regression only.
@@ -48,7 +52,8 @@ Phase 108 live discovery (M11) may still be open. Phase 109 must not own discove
 - **MFA deferred (D-109-21).**
 - **Admin Login (D-109-22):** `#/admin` Login when unauthenticated; one SPA bookmark.
 - **Client workspace isolation (D-109-23, AC-109-36/37):** Local vault/IndexedDB **keyed by `userId`**. Same password across two accounts must not share workspace. Clear prior `VaultState`/UI on login/register/logout/switch. Digital Home + Manage = current user only. Discover = globals for all + own private customs only.
-- Profile schema, email uniqueness, atomic registration, RLS, Chrome/Edge, audit, no subscription/billing — as prior.
+- **Cross-browser hydrate (D-109-24, AC-109-38):** After Login/Create Account when online, **`hydrateWorkspaceFromCloud(userId)`** before paint. Cloud membership (`user_services` + related owned data) is authoritative for online Digital Home tiles; empty local vault must not blank Home when cloud has selections. Decrypt credentials client-side only (ZK).
+- Profile schema, email uniqueness, atomic registration, RLS, audit, no subscription/billing — as prior.
 
 ### Normative entry / session flow
 
@@ -56,7 +61,9 @@ Phase 108 live discovery (M11) may still be open. Phase 109 must not own discove
 App load (Digital Home)
   → no usable session OR vault key missing?
        YES → Auth entry (Login | Create Account)
-       NO  → load vault namespace for auth.uid() only → route by THAT user’s user_services
+       NO  → load vault namespace for auth.uid() only
+            → if online: hydrateWorkspaceFromCloud(userId) then paint
+            → route by THAT user’s user_services (cloud-authoritative when online)
 
 App load (#/admin or /admin)
   → no email session? → Admin Login (same password)
@@ -66,11 +73,25 @@ Login / Create Account (email + Digital Home password)
   → authenticate / register (never anonymous create)
   → clear any previous user’s in-memory vault/UI state
   → unlock/create vault blob for THIS userId with the same password
-  → load THIS user’s user_services / profiles / credentials only
+  → hydrateWorkspaceFromCloud(THIS userId)   // REQUIRED — Chrome↔Edge parity
+  → paint Digital Home / Manage from hydrated state
   → route
 
 Vault lock / Logout
   → auth.signOut + lockVault + clear in-memory workspace → Auth Login
+```
+
+### Normative hydrate contents (D-109-24)
+
+```text
+hydrateWorkspaceFromCloud(userId):
+  → user_services (selection / Digital Home membership)
+  → access_profiles
+  → encrypted_credentials (fetch ciphertext; decrypt client-side with vault key)
+  → owned private custom services (source_type=user, owner_user_id=userId)
+  → merge into VaultState
+  → persist into THIS browser’s userId-scoped IndexedDB
+  → NEVER send plaintext credentials/passwords to the server
 ```
 
 ### Normative Discover visibility (AC-109-37)
@@ -123,6 +144,7 @@ Digital Home: only current user’s user_services / vault selection for that use
 | AC-109-35 | Build passes |
 | AC-109-36 | After login or registration, Digital Home and Service Management show only the authenticated user’s workspace — never another user’s selections, profiles, or credentials (client vault/storage must be scoped by `userId`) |
 | AC-109-37 | Discover / Add Services lists global catalog services (`built_in`, `admin`, `approved_global`) for all users, and lists private user-created custom services only for the owning user |
+| AC-109-38 | After online Login on a second supported browser (e.g. Edge after Chrome), Digital Home shows the same user’s persisted service selections hydrated from cloud (`user_services` and related owned data); an empty local vault alone must not leave Home blank when cloud membership exists |
 
 ## AC → Milestone → Verify Script Mapping
 
@@ -134,7 +156,7 @@ Digital Home: only current user’s user_services / vault selection for that use
 | AC-109-4 | M4 | Form fields | Registration form |
 | AC-109-5…13 | M2, M3 | Schema + RLS | As prior |
 | AC-109-14…16 | M6 | Routing | Home vs Manage |
-| AC-109-17…19 | M9 | — | Chrome↔Edge; extension off |
+| AC-109-17…19 | **M9, M12** | hydrate helper in verify | Chrome↔Edge; extension off |
 | AC-109-20…22 | M2, M5, M10 | role=user; client cannot set role; AdminGate | Bootstrap SQL; **Admin Login on `#/admin`** (D-109-22) |
 | AC-109-23 | M5 | — | Refresh → Login if vault key gone (same password once) |
 | AC-109-24 | M4, M5 | Lock→logout path in verify | Lock **and** logout → Login |
@@ -145,6 +167,7 @@ Digital Home: only current user’s user_services / vault selection for that use
 | AC-109-33…35 | M10 | Phase 103/108 static + build | Regression |
 | **AC-109-36** | **M4, M7, M11** | userId vault namespace in verify | **Two-user UAT: B ≠ A’s Home/Manage** |
 | **AC-109-37** | **M6, M11** | Discover filter assertions | Globals for all; own customs only |
+| **AC-109-38** | **M4, M9, M12** | `hydrateWorkspaceFromCloud` exists; called after Login | **Chrome tiles → Edge login → same Home** |
 
 ## Ordered Milestones
 
@@ -153,14 +176,15 @@ Digital Home: only current user’s user_services / vault selection for that use
 | M1 | Auth audit + kill anonymous design | Root cause + call-site inventory; `requireAuthenticatedUserId` design | Documented in `dev-phase109.md` | AC-109-2, AC-109-30 |
 | M2 | Schema: profile, email unique, role/status | Migration; UNIQUE email; role↔is_admin; client cannot set role | Migration applied | AC-109-5, AC-109-6, AC-109-12, AC-109-13, AC-109-20…22 |
 | M3 | Registration atomicity + login | Auth + profile atomic; login never creates; then same-password vault in M4 path | User-count stable on fail | AC-109-2, AC-109-3, AC-109-7…10 |
-| **M4** | **Auth UI + vault in one step** | Same password unlocks/creates **this userId’s** vault namespace; remove second door; clear prior user memory on success | One password → Home/Manage; no Master Password screen | AC-109-1, AC-109-4, AC-109-24, AC-109-25, AC-109-32, **AC-109-36** |
-| M5 | Session / lock=logout / Admin Login | Refresh + lock=logout; `#/admin` Login then `is_admin` | Lock→Login; Admin Login not deny-only | AC-109-23, AC-109-24, AC-109-20…22 |
-| M6 | Post-auth routing + Discover visibility | Route by `user_services`; Discover globals + own customs only | Routing + AC-109-37 | AC-109-14…16, **AC-109-37** |
+| **M4** | **Auth UI + vault in one step + hydrate** | Same password unlocks/creates **this userId’s** vault namespace; **await `hydrateWorkspaceFromCloud` before paint**; remove second door; clear prior user memory on success | One password → hydrated Home/Manage; no Master Password screen | AC-109-1, AC-109-4, AC-109-24, AC-109-25, AC-109-32, **AC-109-36**, **AC-109-38** |
+| M5 | Session / lock=logout / Admin Login | Refresh + lock=logout; `#/admin` Login then `is_admin`; session restore also hydrates when online | Lock→Login; Admin Login not deny-only | AC-109-23, AC-109-24, AC-109-20…22 |
+| M6 | Post-auth routing + Discover visibility | Route by hydrated `user_services`; Discover globals + own customs only | Routing + AC-109-37 | AC-109-14…16, **AC-109-37** |
 | M7 | Replace anonymous call sites | Kill `ensureAnonymousUserId` | verify PASS | AC-109-2, AC-109-3, AC-109-30 |
 | M8 | Unintended-user audit + cleanup | Audit; empty-only delete | Audit evidence | AC-109-28…30 |
 | M9 | Chrome + Edge continuity UAT | Same account both browsers; extension-unavailable OK | UAT PASS | AC-109-17…19 |
-| M10 | Docs + verify + regression + build | Coupling + admin bookmark + **userId vault namespaces**; verify + Phase 103/108 static + build | Scripts + build PASS | AC-109-31…35 |
+| M10 | Docs + verify + regression + build | Coupling + admin bookmark + userId vault + **Chrome↔Edge hydrate**; verify + Phase 103/108 static + build | Scripts + build PASS | AC-109-31…35, **AC-109-38** |
 | **M11** | **Client workspace isolation hard gate** | userId-scoped vault; clear-on-switch; two-user UAT on one browser | **B never sees A’s Home/Manage; Discover excludes A’s customs** | **AC-109-36, AC-109-37** |
+| **M12** | **Cross-browser hydrate hard gate** | Implement + wire `hydrateWorkspaceFromCloud`; Chrome→Edge UAT | **Edge Home matches Chrome tiles for same user** | **AC-109-17, AC-109-38** |
 
 ## Hard Gates (Manager approval blockers)
 
@@ -183,8 +207,8 @@ Vault lock / global lock clears auth session + decrypted vault state and returns
 ### H5 — Unintended-user audit before cleanup (AC-109-28, AC-109-29)
 Audit first; empty-only auto-delete; no silent merge of data-bearing rows.
 
-### H6 — Chrome + Edge + extension-unavailable (AC-109-17…19)
-Same account continuity; login + Digital Home without extension.
+### H6 — Chrome + Edge + extension-unavailable (AC-109-17…19, AC-109-38)
+Same account continuity via **hydrate** (H10); login + Digital Home without extension.
 
 ### H7 — No MFA / no subscription in Phase 109
 MFA is Phase 191+; no billing/entitlements.
@@ -207,6 +231,21 @@ MFA is Phase 191+; no billing/entitlements.
 
 Do **not** “fix” by sharing one vault when passwords match.
 
+### H10 — Cross-browser hydrate (D-109-24, AC-109-38) — **HARD GATE**
+**Manager will not approve Phase 109 without this evidence.**
+
+| Requirement | Expected |
+|---|---|
+| API | `hydrateWorkspaceFromCloud(userId)` exists and loads `user_services`, access profiles, encrypted credentials (client decrypt), owned customs |
+| Timing | After Login/Create Account vault unlock; **before** Digital Home paint |
+| Persist | Hydrated state written into **this browser’s** userId-scoped IndexedDB |
+| ZK | No plaintext credentials/passwords sent to server; only ciphertext round-trips |
+| Dual-write | Save path still dual-writes local→cloud (unchanged authority for writes) |
+| UAT | Chrome: add ≥1 service → Edge: Login same user → **same Digital Home tiles** (not empty Home) |
+| Verify | Script asserts hydrate helper / call path exists |
+
+An empty local vault after Login is **not** acceptable when cloud `user_services` rows exist for that user.
+
 ## Required Correction (dual-door already shipped)
 
 Developer evidence currently claims M4 as Auth + separate Master Password unlock and H3 as “Account ≠ Master Password”. **That is obsolete and must be reversed:**
@@ -220,6 +259,7 @@ Developer evidence currently claims M4 as Auth + separate Master Password unlock
 | `verifyPhase109Accounts.mjs` expecting password split | Assert **no** dual unlock screen; lock→login path |
 | `AdminGate` deny-only when unauthenticated | Show Admin Login first; then `is_admin` / `role` check |
 | Device-global vault / User B sees User A Home | **userId-scoped vault** + clear-on-switch + Discover filter (D-109-23) |
+| Edge empty Home after Chrome populated (same user) | **`hydrateWorkspaceFromCloud` after Login** before paint (D-109-24) |
 
 Update `dev-phase109.md` accordingly before Manager re-review.
 
@@ -234,19 +274,21 @@ Profile columns, UNIQUE `email_normalized`, role/status/`deleted`, role↔`is_ad
 ### M3 — Registration + login (auth identity)
 Atomic Auth + profile; login never creates users; prove AC-109-2 with counts.
 
-### M4 — Auth UI + vault unlock/create in one step (**correction focus**)
+### M4 — Auth UI + vault unlock/create in one step + hydrate (**correction focus**)
 - Auth entry: Login | Create Account only.
-- On success: clear prior user memory → unlock/create vault for **THIS `userId`** with the same password → route.
+- On success: clear prior user memory → unlock/create vault for **THIS `userId`** with the same password → **await `hydrateWorkspaceFromCloud(userId)`** → paint/route.
 - Retire post-auth Master Password `UnlockScreen`.
 - Scrub dual-door trust copy; wire lock → logout.
+- Hydrate must cover: `user_services`, access profiles, encrypted credentials (client decrypt), owned customs; persist into this browser’s userId vault; ZK (no plaintext to server).
 
 ### M5 — Session / lock = logout / Admin Login (D-109-22)
 - Refresh with missing vault key → Login; lock/logout → Login.
+- Session restore when online: hydrate before paint (same helper as Login).
 - `#/admin` unauthenticated → Admin Login → re-check `is_admin`/`role`.
 - SQL promote → refresh/re-login picks up admin.
 
 ### M6 — Post-auth routing + Discover visibility (AC-109-37)
-- `user_services` non-empty → Digital Home; else Manage (current user only).
+- Hydrated `user_services` non-empty → Digital Home; else Manage (current user only).
 - Discover/catalog loader: include globals (`built_in`, `admin`, `approved_global`); include private customs only when `owner_user_id = auth.uid()`; **never** list other users’ customs.
 
 ### M7 — Replace all anonymous call sites
@@ -259,9 +301,9 @@ Audit → empty-only delete; no silent merge.
 | # | Scenario | Expected |
 |---:|---|---|
 | C1 | Register (one password) | Account + vault ready → Home/Manage **without** second password screen |
-| C2 | Login Edge same account | Same `userId` / Home |
+| C2 | Login Edge same account (after Chrome had tiles) | Same `userId` / **same Home tiles via hydrate** (AC-109-38) |
 | C3 | Wrong password | User count unchanged |
-| C4 | Extension off | Login + Home usable |
+| C4 | Extension off | Login + Home usable (from hydrate when online) |
 | C5 | Vault lock / global lock | Returns to **Login** |
 | C6 | Logout | Same as lock for session clear; data retained |
 | A1 | Open `#/admin` logged out | **Admin Login** shown (not deny-only) |
@@ -270,6 +312,7 @@ Audit → empty-only delete; no silent merge.
 | A4 | SQL promote then refresh/re-login | Admin access picked up |
 | A5 | Docs / operator note | One SPA deploy; `#/admin` bookmark |
 | I1 | Two users one browser (M11) | B never sees A’s Home/Manage; Discover excludes A’s customs |
+| H1 | Chrome add services → Edge Login (M12) | Edge Digital Home matches Chrome |
 
 ### M10 — Docs, verify, regression, build
 **Docs** `docs/MIGRATION_PHASE_109.md` must cover:
@@ -278,6 +321,7 @@ Audit → empty-only delete; no silent merge.
 - Lock = logout
 - Admin access (D-109-22): one Hub deploy; `#/admin` bookmark
 - **Client workspace isolation (D-109-23):** userId-scoped vault; Discover visibility; clear-on-switch
+- **Cross-browser hydrate (D-109-24):** cloud→local after Login; Chrome↔Edge parity; ZK
 - Dev vs production password policy; cleanup; bootstrap admin
 
 **`scripts/verifyPhase109Accounts.mjs`** must prove:
@@ -286,7 +330,8 @@ Audit → empty-only delete; no silent merge.
 - No production anonymous ensure; client cannot set role
 - **userId-scoped vault storage / API**
 - **Discover filter** (globals + own customs only)
-- Docs reference coupling + admin bookmark + vault namespaces
+- **`hydrateWorkspaceFromCloud` exists / wired after Login**
+- Docs reference coupling + admin bookmark + vault namespaces + hydrate
 
 **Regression:** `verifyPhase103Execution.mjs` PASS; Phase 108 static as applicable; `npm run build` PASS.
 
@@ -306,6 +351,22 @@ Audit → empty-only delete; no silent merge.
 
 Without Pass on steps 3–5, Phase 109 is **not** approvable.
 
+### M12 — Cross-browser hydrate hard gate (D-109-24) — **REQUIRED**
+1. Implement `hydrateWorkspaceFromCloud(userId)` in persistence/workspace layer.
+2. Wire after Login/Create Account (and online session restore) **before** Digital Home paint.
+3. Hydrate: `user_services`, access profiles, `encrypted_credentials` (client decrypt), owned customs → persist to this browser’s userId vault.
+4. Keep ZK — no plaintext to server.
+5. **Live Chrome→Edge UAT** (document in `dev-phase109.md`):
+
+| Step | Action | Expected |
+|---:|---|---|
+| 1 | Chrome: Login; add ≥1 service to Digital Home; confirm tiles | Cloud dual-write succeeded |
+| 2 | Edge (fresh / empty local vault for this user): Login same email+password | Auth + vault unlock for same `userId` |
+| 3 | Inspect Edge Digital Home **after** hydrate | **Same service tiles as Chrome** — not empty Home |
+| 4 | Confirm credentials usable where applicable | Client-side decrypt from hydrated ciphertext |
+
+Without Pass on step 3, Phase 109 is **not** approvable (AC-109-17 / AC-109-38).
+
 ## Functional Test Matrix
 
 | # | Test | Expected | AC |
@@ -319,7 +380,7 @@ Without Pass on steps 3–5, Phase 109 is **not** approvable.
 | T7 | Logout | → Login; data retained | AC-109-24 |
 | T8 | Refresh without vault key | Login (same password once) | AC-109-23, AC-109-32 |
 | T9–T21 | Isolation, routing, role, audit, Chrome/Edge | As prior | AC-109-5…22, 25…31 |
-| T22 | verifyPhase109Accounts | PASS (incl. userId vault + Discover) | — |
+| T22 | verifyPhase109Accounts | PASS (userId vault + Discover + hydrate path) | — |
 | T23 | verifyPhase103Execution | PASS | AC-109-34 |
 | T24 | Phase 108 static | PASS as applicable | AC-109-33 |
 | T25 | Build | PASS | AC-109-35 |
@@ -332,8 +393,11 @@ Without Pass on steps 3–5, Phase 109 is **not** approvable.
 | **T32** | **Two-user Manage isolation** | B does not see A’s selections | **AC-109-36** |
 | **T33** | **Discover private customs** | A’s custom absent for B; globals present | **AC-109-37** |
 | **T34** | **Same password, two accounts** | Still isolated workspaces | **AC-109-36** |
+| **T35** | **Chrome→Edge hydrate** | Edge Home shows same tiles as Chrome after Login | **AC-109-38** |
+| **T36** | **Empty local + cloud membership** | Hydrate fills Home; not blank | **AC-109-38** |
+| **T37** | **ZK on hydrate** | No plaintext credentials uploaded during hydrate | **AC-109-26**, D-109-24 |
 
-**Critical:** T3–T6, T22, T27–T30; **T31–T34 (workspace isolation hard gate)**.
+**Critical:** T3–T6, T22, T27–T30; **T31–T34 (isolation)**; **T35–T37 (hydrate)**.
 
 ## Required Developer Evidence
 `team-Yuri/dev-phase109.md` must include:
@@ -342,15 +406,17 @@ Without Pass on steps 3–5, Phase 109 is **not** approvable.
 |---|---|
 | Dual-door correction | Second door removed |
 | M4 one-step auth→vault | Same password; **this userId** namespace |
+| **D-109-24 / M12 hydrate** | `hydrateWorkspaceFromCloud` implemented; wired before paint; contents listed |
 | AC-109-24 | Lock and logout → Login |
 | AC-109-32 docs | Coupling + MFA deferral |
 | **D-109-22 Admin Login** | A1–A5 UAT |
 | **D-109-23 / M11** | userId-scoped vault; clear-on-switch; **two-user UAT Pass (T31–T34)** |
 | **AC-109-36/37** | Explicit Pass with observations |
-| `verifyPhase109Accounts.mjs` | PASS (vault namespace + Discover filter) |
+| **AC-109-38 / T35–T37** | Chrome→Edge UAT Pass; empty-local-not-blank; ZK affirmation |
+| `verifyPhase109Accounts.mjs` | PASS (vault namespace + Discover + hydrate) |
 | Phase 103 / 108 static | PASS as applicable |
 | Build | PASS |
-| Scope | No MFA; no shared vault when passwords match |
+| Scope | No MFA; no shared vault when passwords match; no plaintext to server |
 
 ## Out of Scope
 - MFA / 2FA (Phase 191+)
@@ -363,20 +429,23 @@ Without Pass on steps 3–5, Phase 109 is **not** approvable.
 - Sharing one vault across accounts when passwords match
 - Silent merge of data-bearing unintended users
 - Advertising admin in end-user primary nav
+- Server-side credential decryption / plaintext cloud storage
 
 ## Risks / Open Questions
 - Device-global vault under single-password is the confirmed cross-user leak — M11 is mandatory.
+- Per-browser empty vault without hydrate is the confirmed Chrome≠Edge leak — M12 is mandatory.
 - Incomplete M4 / UnlockScreen left reachable blocks approval.
 - AdminGate deny-only blocks operators — D-109-22 mandatory.
-- Migrating existing single-blob vaults: document how prior device data maps (or starts empty per new userId).
+- Migrating existing single-blob vaults: document how prior device data maps (or starts empty per new userId until hydrate).
+- Offline Login: hydrate skips/degrades; document behavior (local cache only until online).
 
 ## Manager Review
 MANAGER_REVIEW_STATUS: REJECTED
 
 ### Review Notes
-- Synced **D-109-23** + **AC-109-36/37** (2026-07-13 workspace isolation).
-- Operator cross-user Digital Home leak is an architecture-confirmed defect — **H9 / M11 hard gate**.
-- Phase approval blocked until: single-password + Admin Login + **two-user isolation UAT Pass** + verify evidence.
+- Synced **D-109-23** + **AC-109-36/37** (workspace isolation) and **D-109-24** + **AC-109-38** (cross-browser hydrate) 2026-07-13.
+- Operator Chrome≠Edge empty Home is architecture-confirmed — **H10 / M12 hard gate**.
+- Phase approval blocked until: single-password + Admin Login + **two-user isolation UAT** + **Chrome→Edge hydrate UAT** + verify evidence.
 
 ### Required Corrections
 1. Single Digital Home password; remove Master Password door; lock=logout.
@@ -384,5 +453,6 @@ MANAGER_REVIEW_STATUS: REJECTED
 3. D-109-22 Admin Login on `#/admin`.
 4. **D-109-23:** userId-scoped local vault; clear-on-switch; Discover = globals + own customs only.
 5. Evidence: two users on one browser — B must not see A’s Home/Manage; A’s private custom absent from B’s Discover.
-6. Update `verifyPhase109Accounts.mjs` + `dev-phase109.md`.
-7. No MFA; do not share one vault when passwords match.
+6. **D-109-24:** implement + wire `hydrateWorkspaceFromCloud` after Login before paint; Chrome→Edge UAT (T35–T37).
+7. Update `verifyPhase109Accounts.mjs` + `dev-phase109.md` + migration docs (hydrate + ZK).
+8. No MFA; do not share one vault when passwords match; no plaintext to server.

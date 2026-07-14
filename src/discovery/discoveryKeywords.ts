@@ -49,6 +49,22 @@ export const AUTH_SUBDOMAIN_PREFIXES = [
   'secure',
   'id',
   'online',
+  // Federated / parent IdP hosts (D-108-27) — also same-brand probeable.
+  'sso',
+  'identity',
+] as const;
+
+/**
+ * Trusted IdP host labels for cross-registrable federated accept (D-108-27).
+ * Subset of AUTH-style prefixes that commonly host parent-company SSO.
+ */
+export const FEDERATED_IDP_HOST_PREFIXES = [
+  'id',
+  'login',
+  'auth',
+  'accounts',
+  'sso',
+  'identity',
 ] as const;
 
 export const COMMON_LOGIN_PATH_FALLBACKS = [

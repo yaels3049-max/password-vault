@@ -149,18 +149,55 @@ function assertSourceContracts() {
     !autofill.includes('phase112Deferred') && !autofill.toLowerCase().includes('openmodal'),
     'Phase 108 must not implement Phase 112 modal open/fill',
   );
+
+  const audience = read('src/discovery/loginAudienceGate.ts');
+  assert(
+    audience.includes('D-108-21') && audience.includes('trustedOrDedicated'),
+    'M12 evaluateLoginAudience must document D-108-21 trusted-auth priority',
+  );
+  assert(
+    !audience.includes("'כניסת לקוחות'") && !audience.includes('"כניסת לקוחות"'),
+    'D-108-22: bare כניסת לקוחות must not be a standalone reject token',
+  );
+  assert(
+    audience.includes('stripApplicationShellPathTokens') ||
+      audience.includes('ng-portals'),
+    'D-108-23: ng-portals / portal shell tokens must not be portal evidence alone',
+  );
+
+  assert(
+    discover.includes('buildTrustedAuthHostProbeUrls') &&
+      discover.includes('validateConsumerLoginPageUrl') &&
+      discover.includes('probeAuthHosts'),
+    'M13 D-108-24 trusted-auth host probe required in discoverLoginEntry',
+  );
+  assert(
+    !/if\s*\(\s*result\.method\s*===\s*'common-path'\s*\|\|\s*result\.confidence\s*===\s*'low'\s*\)\s*\{\s*return false/.test(
+      policy,
+    ),
+    'D-108-26: must not blank-reject solely for common-path / low in shouldPersistDiscoveredLoginUrl',
+  );
   assertNoServiceBranching();
 }
 
-async function runDiscovery(discoverLoginEntry, sanitizeDiscoveryResult, html, pageUrl, primary) {
+async function runDiscovery(
+  discoverLoginEntry,
+  sanitizeDiscoveryResult,
+  html,
+  pageUrl,
+  primary,
+  extraOptions = {},
+) {
   const dom = installDom(html, pageUrl);
   try {
     const raw = await discoverLoginEntry(primary, {
       document: dom.document,
       pageUrl,
       followRedirects: false,
-      tryCommonPaths: false,
+      tryCommonPaths: true,
       assumeVisible: true,
+      probeAuthHosts: true,
+      ...extraOptions,
     });
     return sanitizeDiscoveryResult(raw);
   } finally {
@@ -197,8 +234,27 @@ async function main() {
     const acceptGithubHtml = read('scripts/fixtures/phase108-accept-github-login-link.html');
     const acceptBankAuthHtml = read('scripts/fixtures/phase108-accept-auth-subdomain-login.html');
     const acceptClalitHomeHtml = read('scripts/fixtures/phase108-accept-clalit-home-chrome.html');
+    const acceptHapoalimNgPortalsHtml = read(
+      'scripts/fixtures/phase108-accept-hapoalim-ng-portals.html',
+    );
+    const acceptKspHomeHtml = read('scripts/fixtures/phase108-accept-ksp-home-no-link.html');
+    const acceptKspAuthLoginHtml = read('scripts/fixtures/phase108-accept-ksp-auth-login.html');
+    const acceptGithubNoLinkHtml = read(
+      'scripts/fixtures/phase108-accept-github-home-no-link.html',
+    );
+    const acceptGithubLoginPageHtml = read(
+      'scripts/fixtures/phase108-accept-github-login-page.html',
+    );
     const acceptServicesLoginHtml = read(
       'scripts/fixtures/phase108-accept-services-login-aspx.html',
+    );
+    const acceptTrelloIdpHtml = read('scripts/fixtures/phase108-accept-trello-home-idp.html');
+    const acceptPaypalHomeHtml = read('scripts/fixtures/phase108-accept-paypal-home.html');
+    const acceptPaypalLoginHtml = read('scripts/fixtures/phase108-accept-paypal-login.html');
+    const acceptZoomHomeHtml = read('scripts/fixtures/phase108-accept-zoom-home.html');
+    const acceptZoomSigninHtml = read('scripts/fixtures/phase108-accept-zoom-signin.html');
+    const zapPortalWithFieldsHtml = read(
+      'scripts/fixtures/phase108-zap-class-portal-with-fields.html',
     );
 
     // --- T24 Zap-class home (REJECT) ---
@@ -431,6 +487,11 @@ async function main() {
         acceptModalNavHtml,
         primary,
         primary,
+        {
+          probeHtmlByUrl: {
+            'https://www.example-shop.co.il/online/he/login': acceptLoginHtml,
+          },
+        },
       );
       assert(result.success && result.loginUrl, 'T28: modal must not veto navigable');
       assert(
@@ -456,6 +517,11 @@ async function main() {
         acceptPortalSiblingHtml,
         primary,
         primary,
+        {
+          probeHtmlByUrl: {
+            'https://www.example-retail.co.il/online/he/login': acceptLoginHtml,
+          },
+        },
       );
       assert(result.success && result.loginUrl, 'T29: consumer must win over portal sibling');
       assert(
@@ -499,6 +565,12 @@ async function main() {
         acceptAuthSubHtml,
         primary,
         primary,
+        {
+          probeHtmlByUrl: {
+            'https://e-services.example-health.co.il/onlineweb/general/login.aspx':
+              acceptLoginHtml,
+          },
+        },
       );
       assert(result.success && result.loginUrl, 'T31: trusted auth subdomain ACCEPT');
       assert(
@@ -517,6 +589,11 @@ async function main() {
         acceptGithubHtml,
         primary,
         primary,
+        {
+          probeHtmlByUrl: {
+            'https://github.com/login': acceptGithubLoginPageHtml,
+          },
+        },
       );
       assert(result.success && result.loginUrl, 'T32: GitHub-class /login must be found');
       assert(
@@ -535,6 +612,12 @@ async function main() {
         acceptBankAuthHtml,
         primary,
         primary,
+        {
+          probeHtmlByUrl: {
+            'https://login.example-bank.co.il/':
+              '<!doctype html><html><head><title>Sign in</title></head><body><div id="root"></div></body></html>',
+          },
+        },
       );
       assert(result.success && result.loginUrl, 'T33: auth subdomain login must be found');
       assert(
@@ -554,6 +637,12 @@ async function main() {
         acceptClalitHomeHtml,
         pageUrl,
         primary,
+        {
+          probeHtmlByUrl: {
+            'https://e-services.example-health.co.il/onlineweb/general/login.aspx':
+              acceptLoginHtml,
+          },
+        },
       );
       assert(result.success && result.loginUrl, 'T33b: must find consumer login');
       assert(
@@ -576,6 +665,11 @@ async function main() {
         acceptServicesLoginHtml,
         primary,
         primary,
+        {
+          probeHtmlByUrl: {
+            'https://services.example-bank.co.il/Pages/Login.aspx': acceptLoginHtml,
+          },
+        },
       );
       assert(result.success && result.loginUrl, 'T33c: services.* Login.aspx must be found');
       assert(
@@ -613,6 +707,760 @@ async function main() {
       } finally {
         gateBundle.cleanup();
       }
+    }
+
+    // --- T37 ACCEPT: Bank Hapoalim-class login.* / ng-portals + homepage modal (AC-108-22) ---
+    {
+      const primary = 'https://www.example-bank.co.il/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptHapoalimNgPortalsHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            'https://login.example-bank.co.il/ng-portals/auth/he/login':
+              '<!doctype html><html><head><title>כניסה</title></head><body><div id="root"></div></body></html>',
+          },
+        },
+      );
+      assert(result.success && result.loginUrl, 'T37: Hapoalim-class auth URL must be found');
+      assert(
+        /login\.example-bank\.co\.il\/ng-portals\/auth\/he\/login/i.test(result.loginUrl),
+        'T37: persist login.*/ng-portals/auth/he/login',
+      );
+      assert(shouldPersistDiscoveredLoginUrl(result) === true, 'T37: persist ACCEPT');
+      assert(
+        result.success === true && Boolean(result.loginUrl),
+        'T37: must not blank trusted-auth as needs_review / portal deferral',
+      );
+    }
+
+    // Direct gate: Hapoalim-class URL + modal + retail wording must ACCEPT (D-108-21…23)
+    {
+      const gateBundle = await bundle('src/discovery/loginAudienceGate.ts');
+      try {
+        const {
+          evaluateLoginAudience,
+          isAlternateAudiencePortalUrl,
+          textHasAlternateAudienceWording,
+          ALTERNATE_AUDIENCE_WORDING,
+        } = gateBundle.mod;
+        const hapoalimLogin =
+          'https://login.bankhapoalim.co.il/ng-portals/auth/he/login';
+        assert(
+          isAlternateAudiencePortalUrl(hapoalimLogin) === false,
+          'T37b: ng-portals alone must not mark portal',
+        );
+        assert(
+          !ALTERNATE_AUDIENCE_WORDING.includes('כניסת לקוחות'),
+          'T37b: bare כניסת לקוחות removed from wording list',
+        );
+        assert(
+          textHasAlternateAudienceWording('כניסת לקוחות') === false,
+          'T37b: bare כניסת לקוחות must not match wording',
+        );
+        assert(
+          evaluateLoginAudience('https://www.bankhapoalim.co.il/', hapoalimLogin, {
+            primaryHasModalLoginTrigger: true,
+            pageTitle: 'כניסת לקוחות',
+            pageContextText: 'כניסת לקוחות',
+          }).accept === true,
+          'T37b: trusted auth ACCEPT despite modal + retail wording',
+        );
+        // Zap still REJECT
+        assert(
+          evaluateLoginAudience(
+            'https://www.zap.co.il/',
+            'https://sa.zap.co.il/login/index',
+            { primaryHasModalLoginTrigger: true },
+          ).accept === false,
+          'T37b: Zap-class sa.* still REJECT',
+        );
+      } finally {
+        gateBundle.cleanup();
+      }
+    }
+
+    // --- T41 ACCEPT: KSP-class auth host probe (AC-108-23 / D-108-24…25) ---
+    {
+      const primary = 'https://www.ksp.co.il/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptKspHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            'https://auth.ksp.co.il/login': acceptKspAuthLoginHtml,
+            // Dead invent — empty non-login page must NOT win over auth probe.
+            'https://www.ksp.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+            'https://ksp.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+          },
+        },
+      );
+      assert(result.success && result.loginUrl, 'T41: KSP auth probe must find loginUrl');
+      assert(
+        /auth\.ksp\.co\.il\/login/i.test(result.loginUrl),
+        'T41: persist auth.ksp.co.il/login (not dead ksp.co.il/login)',
+      );
+      assert(
+        !/^https:\/\/(www\.)?ksp\.co\.il\/login/i.test(result.loginUrl),
+        'T41: must not prefer dead same-origin invent',
+      );
+      assert(shouldPersistDiscoveredLoginUrl(result) === true, 'T41: persist ACCEPT');
+    }
+
+    // --- T42 ACCEPT: GitHub-class validated common-path (AC-108-23 / D-108-26) ---
+    {
+      const primary = 'https://github.com/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptGithubNoLinkHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            'https://github.com/login': acceptGithubLoginPageHtml,
+          },
+        },
+      );
+      assert(result.success && result.loginUrl, 'T42: GitHub /login must be found after validation');
+      assert(
+        /github\.com\/login/i.test(result.loginUrl),
+        'T42: persist https://github.com/login',
+      );
+      assert(shouldPersistDiscoveredLoginUrl(result) === true, 'T42: persist ACCEPT');
+      assert(
+        result.method === 'dedicated-login-page' || result.confidence !== 'low',
+        'T42: validated common-path should upgrade method/confidence',
+      );
+    }
+
+    // D-108-26 direct persist: common-path + medium must not blank-reject
+    {
+      const githubCommonPath = {
+        success: true,
+        primaryUrl: 'https://github.com/',
+        loginUrl: 'https://github.com/login',
+        method: 'common-path',
+        confidence: 'medium',
+        loginEntryType: 'navigable',
+      };
+      assert(
+        shouldPersistDiscoveredLoginUrl(githubCommonPath) === true,
+        'T42b: validated common-path/medium must persist (D-108-26)',
+      );
+    }
+
+    // --- T41c: SPA auth shell (fetched, no password) still persists (U24) ---
+    {
+      const acceptKspSpaShellHtml = read(
+        'scripts/fixtures/phase108-accept-ksp-auth-spa-shell.html',
+      );
+      const primary = 'https://www.ksp.co.il/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptKspHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            'https://auth.ksp.co.il/login': acceptKspSpaShellHtml,
+            'https://www.ksp.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+            'https://ksp.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+          },
+        },
+      );
+      assert(result.success && result.loginUrl, 'T41c: SPA shell must set loginUrl');
+      assert(
+        /auth\.ksp\.co\.il\/login/i.test(result.loginUrl),
+        'T41c: persist auth.ksp SPA shell with login title',
+      );
+      assert(shouldPersistDiscoveredLoginUrl(result) === true, 'T41c: persist ACCEPT');
+    }
+
+    // --- T41e: minimal #root SPA without login wording still ACCEPT when host 2xx ---
+    {
+      const primary = 'https://www.ksp.co.il/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptKspHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            'https://auth.ksp.co.il/login':
+              '<!doctype html><html><body><div id="root"></div><script src="/app.js"></script></body></html>',
+            'https://www.ksp.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+          },
+        },
+      );
+      assert(result.success && result.loginUrl, 'T41e: minimal SPA shell must ACCEPT');
+      assert(/auth\.ksp\.co\.il\/login/i.test(result.loginUrl), 'T41e: auth.ksp URL');
+    }
+
+    // --- T41d: missing probe HTML must NOT invent auth.*/login (Zap-class FP) ---
+    {
+      const primary = 'https://www.ksp.co.il/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptKspHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            'https://www.ksp.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+            'https://ksp.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+          },
+        },
+      );
+      assert(!result.loginUrl, 'T41d: unreachable auth host → must not invent loginUrl');
+      assert(shouldPersistDiscoveredLoginUrl(result) === false, 'T41d: must not persist');
+    }
+
+    // --- T41f: fetchProbeHtml reached:false must not invent; reached+2xx SPA must ---
+    {
+      const primary = 'https://www.ksp.co.il/';
+      const miss = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptKspHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {},
+          fetchProbeHtml: async () => ({ ok: false, reached: false, reason: 'network_error' }),
+        },
+      );
+      assert(!miss.loginUrl, 'T41f-miss: reached false → NULL');
+
+      const hit = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptKspHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {},
+          fetchProbeHtml: async (url) => {
+            if (/auth\.ksp\.co\.il\/login/i.test(url)) {
+              return {
+                ok: true,
+                reached: true,
+                status: 200,
+                html: '<!doctype html><html><body><div id="root"></div><script src="/x.js"></script></body></html>',
+                finalUrl: url,
+              };
+            }
+            return { ok: false, reached: false, reason: 'skip' };
+          },
+        },
+      );
+      assert(hit.success && /auth\.ksp\.co\.il\/login/i.test(hit.loginUrl || ''), 'T41f-hit: 2xx SPA ACCEPT');
+    }
+
+    // --- T41g: DNS exists + fetch failed → ACCEPT; NXDOMAIN → NULL ---
+    {
+      const primary = 'https://www.ksp.co.il/';
+      const dnsHit = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptKspHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {},
+          fetchProbeHtml: async (url) => {
+            if (/auth\.ksp\.co\.il\/login/i.test(url)) {
+              return {
+                ok: false,
+                reached: true,
+                status: 0,
+                dnsExists: true,
+                finalUrl: url,
+                reason: 'dns_exists_fetch_failed',
+              };
+            }
+            return { ok: false, reached: false, reason: 'skip' };
+          },
+        },
+      );
+      assert(
+        dnsHit.success && /auth\.ksp\.co\.il\/login/i.test(dnsHit.loginUrl || ''),
+        'T41g: DNS-proven auth host must ACCEPT',
+      );
+
+      const nx = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptKspHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {},
+          fetchProbeHtml: async () => ({ ok: false, reached: false, reason: 'nxdomain' }),
+        },
+      );
+      assert(!nx.loginUrl, 'T41g: NXDOMAIN must stay NULL');
+    }
+
+    // --- T41i: unverified invent removed; no-cors/DNS proof required ---
+    {
+      const primary = 'https://www.ksp.co.il/';
+      const without = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptKspHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {},
+          fetchProbeHtml: async () => ({ ok: false, reached: false }),
+        },
+      );
+      assert(!without.loginUrl, 'T41i: unreachable must NOT invent loginUrl');
+
+      const withReach = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptKspHomeHtml,
+        primary,
+        primary,
+        {
+          allowUnverifiedAuthLoginInvent: true,
+          probeHtmlByUrl: {},
+          fetchProbeHtml: async (url) => {
+            if (/auth\.ksp\.co\.il\/login/i.test(url)) {
+              return {
+                ok: false,
+                reached: true,
+                status: 0,
+                dnsExists: true,
+                finalUrl: url,
+                reason: 'no_cors_reachable',
+              };
+            }
+            return { ok: false, reached: false };
+          },
+        },
+      );
+      assert(
+        withReach.success && /auth\.ksp\.co\.il\/login/i.test(withReach.loginUrl || ''),
+        'T41i: no-cors/DNS reachability must ACCEPT auth-host /login',
+      );
+      assert(shouldPersistDiscoveredLoginUrl(withReach) === true, 'T41i: persist ACCEPT');
+    }
+
+    // --- T50c: retail auth invent without reachability must stay NULL ---
+    {
+      const retailNoLoginHtml = read(
+        'scripts/fixtures/phase108-reject-retail-no-login-invent.html',
+      );
+      const primary = 'https://www.example-retail.co.il/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        retailNoLoginHtml,
+        primary,
+        primary,
+        {
+          allowUnverifiedAuthLoginInvent: true,
+          probeHtmlByUrl: {},
+          fetchProbeHtml: async () => ({ ok: false, reached: false }),
+        },
+      );
+      assert(!result.loginUrl, 'T50c: unverified flag must not invent auth.*/login');
+      assert(
+        !/auth\.example-retail\.co\.il/i.test(String(result.loginUrl ?? '')),
+        'T50c: never invent dead auth host',
+      );
+    }
+
+    // --- T41h: homepage modal must not block trusted-auth probe (U24) ---
+    {
+      const kspModalHtml = `<!doctype html><html lang="he"><head><title>KSP</title></head>
+        <body><button type="button" aria-haspopup="dialog">התחברות</button>
+        <main><h1>חנות</h1></main></body></html>`;
+      const primary = 'https://www.ksp.co.il/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        kspModalHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {},
+          fetchProbeHtml: async (url) => {
+            if (/auth\.ksp\.co\.il\/login/i.test(url)) {
+              return {
+                ok: false,
+                reached: true,
+                status: 0,
+                dnsExists: true,
+                finalUrl: url,
+              };
+            }
+            return { ok: false, reached: false };
+          },
+        },
+      );
+      assert(result.success && result.loginUrl, 'T41h: probe before modal must set loginUrl');
+      assert(/auth\.ksp\.co\.il\/login/i.test(result.loginUrl), 'T41h: auth.ksp URL');
+    }
+
+    // --- T50: retail home + invented auth.*/login without evidence → NULL (Zap FP) ---
+    {
+      const retailNoLoginHtml = read(
+        'scripts/fixtures/phase108-reject-retail-no-login-invent.html',
+      );
+      const primary = 'https://www.example-retail.co.il/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        retailNoLoginHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            // Dead invented hosts — must not soft-accept.
+            'https://auth.example-retail.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+            'https://login.example-retail.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+            'https://www.example-retail.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+          },
+        },
+      );
+      assert(!result.loginUrl, 'T50: must not persist invented auth.*/login');
+      assert(
+        !/auth\.example-retail\.co\.il/i.test(String(result.loginUrl ?? '')),
+        'T50: never auth.example-retail',
+      );
+      assert(shouldPersistDiscoveredLoginUrl(result) === false, 'T50: persist REJECT');
+    }
+
+    // --- T50b: missing probe HTML also must not invent (fetch-miss FP) ---
+    {
+      const retailNoLoginHtml = read(
+        'scripts/fixtures/phase108-reject-retail-no-login-invent.html',
+      );
+      const primary = 'https://www.example-retail.co.il/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        retailNoLoginHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            'https://www.example-retail.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+          },
+        },
+      );
+      assert(!result.loginUrl, 'T50b: missing auth HTML → NULL');
+      assert(shouldPersistDiscoveredLoginUrl(result) === false, 'T50b: persist REJECT');
+    }
+
+    // --- T46 ACCEPT: Trello-class federated IdP (AC-108-24 / D-108-27) ---
+    {
+      const primary = 'https://trello.com/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptTrelloIdpHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            'https://id.atlassian.com/login':
+              '<!doctype html><html><head><title>Log in to continue - Log in with Atlassian account</title></head><body><div id="root"></div></body></html>',
+            'https://id.atlassian.com/signup':
+              '<!doctype html><html><head><title>Sign up</title></head><body><div id="root"></div></body></html>',
+          },
+        },
+      );
+      assert(result.success && result.loginUrl, 'T46: Trello IdP must find loginUrl');
+      assert(
+        /id\.atlassian\.com\/login/i.test(result.loginUrl),
+        'T46: persist canonical id.atlassian.com/login (not /signup shell)',
+      );
+      assert(
+        !/\/signup/i.test(result.loginUrl),
+        'T46: must canonicalize signup → login',
+      );
+      assert(
+        /continue=.*trello\.com|application=trello/i.test(result.loginUrl),
+        'T46: brand-return evidence present',
+      );
+      assert(shouldPersistDiscoveredLoginUrl(result) === true, 'T46: persist ACCEPT');
+      assert(
+        result.loginEntryType === 'navigable',
+        'T46: navigable IdP wins over homepage Log in modal',
+      );
+    }
+
+    // --- T48: signup in path/application= must not sole-reject when IdP + brand-return ---
+    {
+      const gateBundle = await bundle('src/discovery/loginAudienceGate.ts');
+      try {
+        const {
+          evaluateLoginAudience,
+          hasPrimaryBrandReturnEvidence,
+          canonicalizeFederatedIdPLoginUrl,
+        } = gateBundle.mod;
+        const trelloSignup =
+          'https://id.atlassian.com/signup?application=trello--direct-signup&continue=https://trello.com/auth/atlassian/callback?createMember=true';
+        assert(
+          hasPrimaryBrandReturnEvidence('https://trello.com/', trelloSignup) === true,
+          'T48: brand-return from application=trello + continue',
+        );
+        assert(
+          evaluateLoginAudience('https://trello.com/', trelloSignup, {
+            primaryHasModalLoginTrigger: true,
+            pageContextText: 'Trello for Business teams',
+            pageTitle: 'Trello',
+          }).accept === true,
+          'T48: ACCEPT signup shell despite Business page context + modal',
+        );
+        const canonical = canonicalizeFederatedIdPLoginUrl('https://trello.com/', trelloSignup);
+        assert(
+          /id\.atlassian\.com\/login/i.test(canonical) && !/\/signup/i.test(canonical),
+          'T48: canonicalize signup → login',
+        );
+      } finally {
+        gateBundle.cleanup();
+      }
+    }
+
+    // --- T49: cross-domain IdP-shaped host without brand-return → REJECT ---
+    {
+      const gateBundle = await bundle('src/discovery/loginAudienceGate.ts');
+      try {
+        const { evaluateLoginAudience } = gateBundle.mod;
+        assert(
+          evaluateLoginAudience(
+            'https://trello.com/',
+            'https://id.evil-example.com/login',
+          ).accept === false,
+          'T49: no brand-return → REJECT',
+        );
+        assert(
+          evaluateLoginAudience(
+            'https://www.zap.co.il/',
+            'https://sa.zap.co.il/login/index',
+          ).accept === false,
+          'T49b: Zap REJECT unchanged',
+        );
+      } finally {
+        gateBundle.cleanup();
+      }
+    }
+
+    // --- T50 ACCEPT: PayPal-class live-validated same-origin /login (AC-108-25 / D-108-28) ---
+    {
+      const primary = 'https://www.paypal.com/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptPaypalHomeHtml,
+        primary,
+        primary,
+        {
+          // Live PayPal often returns DataDome 403 on /login with no identity fields.
+          probeHtmlByUrl: {},
+          fetchProbeHtml: async (url) => {
+            if (/paypal\.com\/login/i.test(url)) {
+              return {
+                ok: false,
+                reached: true,
+                status: 403,
+                html: '<!doctype html><title>paypal.com</title><body>datadome</body>',
+                finalUrl: 'https://www.paypal.com/signin',
+                reason: 'http_403',
+              };
+            }
+            return { ok: false, reached: false, reason: 'skip' };
+          },
+        },
+      );
+      assert(result.success && result.loginUrl, 'T50: PayPal login must be found');
+      assert(
+        /paypal\.com\/login/i.test(result.loginUrl),
+        'T50: persist https://www.paypal.com/login',
+      );
+      assert(shouldPersistDiscoveredLoginUrl(result) === true, 'T50: persist ACCEPT');
+    }
+
+    // --- T50d ACCEPT: PayPal SPA shell 2xx without identity fields ---
+    {
+      const primary = 'https://www.paypal.com/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptPaypalHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            'https://www.paypal.com/login': acceptPaypalLoginHtml,
+          },
+        },
+      );
+      assert(result.success && result.loginUrl, 'T50d: PayPal SPA shell must ACCEPT');
+      assert(/paypal\.com\/login/i.test(result.loginUrl), 'T50d: persist /login');
+    }
+
+    // --- T51 ACCEPT: Zoom sibling-TLD signin (AC-108-25 / D-108-29) ---
+    {
+      const primary = 'https://www.zoom.com/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        acceptZoomHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            'https://zoom.us/signin': acceptZoomSigninHtml,
+          },
+        },
+      );
+      assert(result.success && result.loginUrl, 'T51: Zoom signin must be found');
+      assert(/zoom\.us\/signin/i.test(result.loginUrl), 'T51: persist https://zoom.us/signin');
+      assert(shouldPersistDiscoveredLoginUrl(result) === true, 'T51: persist ACCEPT');
+      assert(
+        result.loginEntryType === 'navigable',
+        'T51: sibling-TLD navigable must win over homepage modal',
+      );
+    }
+
+    // --- T52 REJECT: Zap-class portal WITH identity fields (D-108-30) ---
+    {
+      const primary = 'https://www.example-retail.co.il/';
+      const portalUrl = 'https://sa.example-retail.co.il/login/index';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        zapHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            // Portal page HAS identity fields — must still REJECT (D-108-30).
+            [portalUrl]: zapPortalWithFieldsHtml,
+            // Dead invents must not become ACCEPTs via portal HTML reuse.
+            'https://www.example-retail.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+            'https://auth.example-retail.co.il/login':
+              '<!doctype html><title>404</title><body><p>Not found</p></body>',
+          },
+        },
+      );
+      assert(!result.loginUrl, 'T52: loginUrl must stay null despite form fields');
+      assert(
+        !/sa\.example-retail\.co\.il/i.test(String(result.loginUrl ?? '')),
+        'T52: never persist sa.* even with identity fields',
+      );
+      assert(shouldPersistDiscoveredLoginUrl(result) === false, 'T52: persist REJECT');
+
+      const gateBundle = await bundle('src/discovery/loginAudienceGate.ts');
+      try {
+        const { evaluateLoginAudience, isAlternateAudiencePortalUrl } = gateBundle.mod;
+        assert(
+          isAlternateAudiencePortalUrl(portalUrl) === true,
+          'T56: portal URL is alternate-audience',
+        );
+        assert(
+          evaluateLoginAudience(primary, portalUrl, {
+            pageTitle: 'כניסה לממשק העסק',
+            pageContextText: 'ממשק העסק',
+          }).accept === false,
+          'T56: audience REJECT wins over field presence',
+        );
+      } finally {
+        gateBundle.cleanup();
+      }
+    }
+
+    // --- T52b REJECT: modal + portal + reachable bare /login SPA (live retail FP) ---
+    {
+      const primary = 'https://www.example-retail.co.il/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        zapHomeHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {
+            'https://sa.example-retail.co.il/login/index': zapPortalWithFieldsHtml,
+            'https://www.example-retail.co.il/login':
+              '<!doctype html><html><head><title>כניסה לחשבון</title></head><body><div id="root"></div><h1>כניסה</h1></body></html>',
+          },
+          fetchProbeHtml: async (url) => {
+            if (/\/login$/i.test(url) && !/sa\./i.test(url)) {
+              return {
+                ok: true,
+                reached: true,
+                status: 200,
+                html: '<!doctype html><title>כניסה</title><body><div id="app"></div></body>',
+                finalUrl: url,
+              };
+            }
+            return { ok: false, reached: false, reason: 'skip' };
+          },
+        },
+      );
+      assert(!result.loginUrl, 'T52b: bare /login must stay NULL beside modal+portal');
+      assert(shouldPersistDiscoveredLoginUrl(result) === false, 'T52b: persist REJECT');
+    }
+
+    // --- T52c REJECT: modal + bare /login bot-403 without portal link (still NULL) ---
+    {
+      const modalBareLoginHtml = `<!doctype html><html lang="he"><head><title>השוואת מחירים</title></head>
+<body><button type="button" aria-haspopup="dialog">התחברות</button>
+<a href="/login">כניסה לחשבון</a></body></html>`;
+      const primary = 'https://www.example-retail.co.il/';
+      const result = await runDiscovery(
+        discoverLoginEntry,
+        sanitizeDiscoveryResult,
+        modalBareLoginHtml,
+        primary,
+        primary,
+        {
+          probeHtmlByUrl: {},
+          fetchProbeHtml: async (url) => {
+            if (/example-retail\.co\.il\/login/i.test(url)) {
+              return {
+                ok: false,
+                reached: true,
+                status: 403,
+                html: '<!doctype html><title>blocked</title><body>forbidden</body>',
+                finalUrl: url,
+                reason: 'http_403',
+              };
+            }
+            return { ok: false, reached: false, reason: 'skip' };
+          },
+        },
+      );
+      assert(!result.loginUrl, 'T52c: modal + bare /login 403 must not soft-ACCEPT');
     }
 
     // --- U22 catalog-equivalent persist shapes (static proxy for rediscovery) ---
@@ -664,8 +1512,9 @@ async function main() {
       'REJECT: Zap-class home/portal, modal-only, common-path /login, portal-shadowed bare /login, clientslogin',
     );
     console.log(
-      'ACCEPT: dedicated form, modal+navigable, portal-sibling+consumer, /login form, e-services, GitHub /login, login.* bank, services Login.aspx; U22 shapes',
+      'ACCEPT: dedicated form, modal+navigable, portal-sibling+consumer, /login form, e-services, GitHub /login, login.* bank, services Login.aspx, Hapoalim ng-portals (T37), KSP auth probe (T41/T41c), GitHub validated common-path (T42), Trello IdP (T46), PayPal live-validate (T50), Zoom sibling-TLD (T51); U22 shapes',
     );
+    console.log('REJECT also: Zap portal with identity fields (T52) — fields never override audience');
   } finally {
     discoverBundle.cleanup();
     policyBundle.cleanup();

@@ -91,6 +91,15 @@ export default function Dashboard({
       return;
     }
 
+    if (outcome.status === 'ok' && outcome.metadataHealth === 'fill_failed') {
+      clearStatusSoon(
+        outcome.userMessage ??
+          'האתר נפתח. מילוי אוטומטי לא זמין כרגע — ניתן למלא ידנית.',
+        'info',
+      );
+      return;
+    }
+
     if (outcome.userMessage) {
       clearStatusSoon(
         outcome.userMessage,

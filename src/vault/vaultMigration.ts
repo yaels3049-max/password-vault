@@ -3,7 +3,10 @@ import {
   createAccessProfile,
   getDefaultProfile,
 } from '../profile/accessProfileModel';
-import { validateAccessProfile } from '../profile/profileValidation';
+import {
+  normalizeExactlyOneDefaultPerService,
+  validateAccessProfile,
+} from '../profile/profileValidation';
 import type { VaultPayload } from './crypto';
 
 const DEFAULT_MIGRATED_PROFILE_LABEL = 'ראשי';
@@ -98,6 +101,12 @@ export function migrateVaultPayload(payload: VaultPayload): VaultMigrationResult
       delete credentials[key];
       migrated = true;
     }
+  }
+
+  const normalizedProfiles = normalizeExactlyOneDefaultPerService(profiles);
+  if (normalizedProfiles !== profiles) {
+    profiles = normalizedProfiles;
+    migrated = true;
   }
 
   return {

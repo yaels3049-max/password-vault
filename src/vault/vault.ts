@@ -6,19 +6,27 @@ import {
   createEmptyPayload,
   decryptPayload,
   DEFAULT_KDF,
+  deriveCloudCredentialKey,
   encryptPayload,
   generateSalt,
   normalizePayload,
   saltFromBase64,
   saltToBase64,
   WrongPasswordError,
+  type KdfParams,
   type VaultPayload,
 } from './crypto';
 import { getVault, putVault, vaultStorageIdForUser, type VaultRecord } from './db';
 import { migrateVaultPayload } from './vaultMigration';
-import { syncVaultStateToSupabaseSafe } from '../supabase/persistence';
+import {
+  ensureVaultKdfSeeded,
+  fetchVaultKdf,
+  syncVaultStateToSupabaseSafe,
+} from '../supabase/persistence';
 
 let vaultKey: CryptoKey | null = null;
+/** Deterministic cloud dual-write / hydrate key (password + userId). */
+let cloudCredentialKey: CryptoKey | null = null;
 /** Kept with vaultKey so persist can recreate an IndexedDB row if storage was evicted. */
 let vaultKdf: VaultRecord['kdf'] | null = null;
 /** Active vault namespace — must match authenticated userId (D-109-23). */
@@ -50,9 +58,20 @@ export function getActiveVaultUserId(): string | null {
   return activeVaultUserId;
 }
 
+/** Session vault AES key for local IndexedDB blob (null when locked). */
+export function getActiveVaultCryptoKey(): CryptoKey | null {
+  return vaultKey;
+}
+
+/** Cross-browser cloud credential key (null when locked). */
+export function getCloudCredentialCryptoKey(): CryptoKey | null {
+  return cloudCredentialKey;
+}
+
 /** Clear in-memory vault key/session (does not delete IndexedDB ciphertext). */
 export function lockVault(): void {
   vaultKey = null;
+  cloudCredentialKey = null;
   vaultKdf = null;
   activeVaultUserId = null;
 }
@@ -81,9 +100,21 @@ function payloadFromVaultState(state: VaultState): VaultPayload {
   };
 }
 
+async function resolveKdfForNewVault(userId: string): Promise<KdfParams> {
+  const cloudKdf = await fetchVaultKdf(userId);
+  if (cloudKdf) {
+    return cloudKdf;
+  }
+  const salt = generateSalt();
+  return {
+    salt: saltToBase64(salt),
+    ...DEFAULT_KDF,
+  };
+}
+
 /**
  * Unlock or create the local vault blob for THIS userId only (AC-109-36).
- * Same password string on two accounts opens different namespaces.
+ * Also derives the deterministic cloud credential key for hydrate / dual-write.
  */
 export async function unlockVault(
   masterPassword: string,
@@ -98,19 +129,19 @@ export async function unlockVault(
   lockVault();
 
   const existing = await getVault(trimmedUserId);
+  const cloudKey = await deriveCloudCredentialKey(masterPassword, trimmedUserId);
 
   if (!existing) {
-    const salt = generateSalt();
-    const kdf: VaultRecord['kdf'] = {
-      salt: saltToBase64(salt),
-      ...DEFAULT_KDF,
-    };
-    const key = await createCryptoKey(masterPassword, salt, DEFAULT_KDF);
+    const kdf = await resolveKdfForNewVault(trimmedUserId);
+    const salt = saltFromBase64(kdf.salt);
+    const key = await createCryptoKey(masterPassword, salt, kdf);
     const payload = createEmptyPayload();
     await saveEncrypted(trimmedUserId, key, kdf, payload);
     vaultKey = key;
+    cloudCredentialKey = cloudKey;
     vaultKdf = kdf;
     activeVaultUserId = trimmedUserId;
+    void ensureVaultKdfSeeded(trimmedUserId, kdf);
     return payload;
   }
 
@@ -125,12 +156,17 @@ export async function unlockVault(
   }
 
   vaultKey = key;
+  cloudCredentialKey = cloudKey;
   vaultKdf = existing.kdf;
   activeVaultUserId = trimmedUserId;
+  void ensureVaultKdfSeeded(trimmedUserId, existing.kdf);
   return payload;
 }
 
-export async function persistVault(state: VaultState): Promise<void> {
+export async function persistVault(
+  state: VaultState,
+  options?: { skipCloudSync?: boolean },
+): Promise<void> {
   if (!vaultKey || !vaultKdf || !activeVaultUserId) {
     throw new Error('Vault is locked');
   }
@@ -141,8 +177,12 @@ export async function persistVault(state: VaultState): Promise<void> {
   vaultKdf = kdf;
 
   await saveEncrypted(userId, vaultKey, kdf, payloadFromVaultState(state));
-
-  void syncVaultStateToSupabaseSafe(vaultKey, state);
+  void ensureVaultKdfSeeded(userId, kdf);
+  if (!options?.skipCloudSync) {
+    // Dual-write credentials with cross-browser cloud key when available.
+    const syncKey = cloudCredentialKey ?? vaultKey;
+    void syncVaultStateToSupabaseSafe(syncKey, state);
+  }
 }
 
 export async function vaultExists(userId: string): Promise<boolean> {

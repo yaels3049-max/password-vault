@@ -64,22 +64,7 @@ function hasStrongConsumerNavigableEvidence(result: DiscoveryResult): boolean {
   if (result.method === 'dedicated-login-page') {
     return true;
   }
-  if (result.method === 'common-path' || result.confidence === 'low') {
-    return false;
-  }
 
-  const confidenceOk = result.confidence === 'high' || result.confidence === 'medium';
-  if (!confidenceOk) {
-    return false;
-  }
-
-  // Non-bare paths (e.g. /online/he/login) with medium/high confidence are consumer-strong.
-  if (!isGenericLoginPathOnly(result.loginUrl)) {
-    return true;
-  }
-
-  // Bare /login: same-origin strong link/button/redirect is enough
-  // unless a portal sibling is also present (alternate-audience shadow).
   try {
     if (isTrustedAuthSubdomain(new URL(result.loginUrl).hostname)) {
       return true;
@@ -89,8 +74,26 @@ function hasStrongConsumerNavigableEvidence(result: DiscoveryResult): boolean {
   }
 
   const portalSibling = result.candidates?.some((c) => isAlternateAudiencePortalUrl(c.url));
-  if (portalSibling) {
+  if (portalSibling && isGenericLoginPathOnly(result.loginUrl)) {
     return false;
+  }
+
+  // D-108-26: validated common-path (engine upgrades most to dedicated-login-page;
+  // if method remains common-path with medium/high + navigable, allow persist).
+  if (result.method === 'common-path') {
+    return (
+      result.loginEntryType === 'navigable' &&
+      (result.confidence === 'high' || result.confidence === 'medium')
+    );
+  }
+
+  if (result.confidence === 'low') {
+    return false;
+  }
+
+  // Non-bare paths (e.g. /online/he/login) with medium/high confidence are consumer-strong.
+  if (!isGenericLoginPathOnly(result.loginUrl)) {
+    return true;
   }
 
   return (
@@ -146,10 +149,11 @@ export function resolvePhase112Deferral(result: DiscoveryResult | null): Phase11
   }
 
   if (
-    reason === CROSS_SUBDOMAIN_NEEDS_REVIEW_REASON ||
-    reason === 'cross_subdomain_untrusted' ||
-    result.confidence === 'low' ||
-    result.method === 'common-path'
+    !result.success &&
+    (reason === CROSS_SUBDOMAIN_NEEDS_REVIEW_REASON ||
+      reason === 'cross_subdomain_untrusted' ||
+      result.confidence === 'low' ||
+      result.method === 'common-path')
   ) {
     return {
       phase112Deferred: true,
@@ -168,16 +172,14 @@ export function resolvePhase112Deferral(result: DiscoveryResult | null): Phase11
 }
 
 /**
- * Whether a discovered login URL is stable enough to persist (D-108-14 revised / D-108-18).
+ * Whether a discovered login URL is stable enough to persist (D-108-14 revised / D-108-18 / D-108-26).
  * Reject only with positive bad evidence; homepage modal / portal siblings must not
  * blank-veto a stronger same-origin consumer candidate.
+ *
+ * D-108-26: do NOT blank-reject solely because method=common-path or confidence=low.
  */
 export function shouldPersistDiscoveredLoginUrl(result: DiscoveryResult): boolean {
   if (!result.success || !result.loginUrl) {
-    return false;
-  }
-
-  if (result.method === 'common-path' || result.confidence === 'low') {
     return false;
   }
 
@@ -351,10 +353,11 @@ export function classifyDiscoveryReviewStatus(result: DiscoveryResult): {
   }
 
   if (
-    reason === CROSS_SUBDOMAIN_NEEDS_REVIEW_REASON ||
-    reason === 'cross_subdomain_untrusted' ||
-    result.confidence === 'low' ||
-    result.method === 'common-path'
+    !result.success &&
+    (reason === CROSS_SUBDOMAIN_NEEDS_REVIEW_REASON ||
+      reason === 'cross_subdomain_untrusted' ||
+      result.confidence === 'low' ||
+      result.method === 'common-path')
   ) {
     return {
       loginUrlStatus: 'needs_review',

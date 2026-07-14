@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Version** | 5.0 |
+| **Version** | 5.12 |
 | **Status** | Production Ready |
-| **Last updated** | 2026-07-12 |
+| **Last updated** | 2026-07-14 |
 
 This document describes *what* the product is and *how* it is shaped at a system level. It does not prescribe implementation details, file layouts, or step-by-step build plans.
 
@@ -1471,6 +1471,53 @@ A URL/link containing `login` is **not** sufficient to accept a **portal**. It i
 
 **Reject only with positive evidence** of alternate audience on the candidate, or modal-only consumer login with no remaining consumer navigable candidate. Weak homepage “login button / modal trigger” signals must **not** blank all navigable results.
 
+**Trusted consumer auth host priority (normative — M12):**
+
+When a candidate hostname is a **trusted consumer auth subdomain** on the **same registrable brand** as `primaryUrl` (prefixes such as `login`, `auth`, `signin`, `secure`, `e-services`, `services`, `online`, and equivalents already in discovery keywords), Phase 108 **must persist** that consumer navigable URL unless the **candidate itself** has **strong positive** alternate-audience evidence (e.g. `sa.` / seller / b2b host, business/merchant path, audience query, or strong business wording such as `ממשק העסק` / `לקוחות עסקיים` / “business interface”).
+
+- A homepage modal/login-button trigger on `primaryUrl` must **not** veto such a trusted-auth candidate.
+- Weak wording alone (especially retail Hebrew `כניסת לקוחות`) must **not** veto such a trusted-auth candidate.
+- Path tokens that only mean an application shell (`portal` / `portals` / `ng-portals`) are **not** alternate-audience evidence by themselves.
+- Zap-class business portals remain rejected.
+- Finding a trusted-auth consumer URL and leaving `login_url=NULL` is a Phase 108 gate bug — **not** a Phase 112 deferral case.
+
+**Trusted-auth host probe (normative — M13):**
+
+When link/DOM discovery on `primaryUrl` does **not** produce a **high-confidence** consumer navigable `loginUrl`, Phase 108 **must probe** same-brand hosts built from trusted auth subdomain prefixes (`auth`, `login`, `secure`, `e-services`, …) with common login paths (at least `/login`). Persist only after **login-page evidence** and audience-gate pass.
+
+- Canonical gap: KSP homepage does not expose `https://auth.ksp.co.il/login`; `common-path` invents dead `https://ksp.co.il/login` at low confidence — probe must find and persist the auth host.
+- **Unvalidated** low-confidence same-origin common-path must **not** win over a validated trusted-auth probe.
+- **Validated** same-origin common-path (login-page evidence + audience pass) **must persist** — e.g. [GitHub](https://github.com/) → `https://github.com/login`. Do not blank-reject solely because `method=common-path` or initial `confidence=low`.
+- Validated same-brand trusted-auth **probe** candidates (e.g. `auth.ksp.co.il/login` listed in discovery candidates) **must persist** — appearing in `topCandidates` with empty `login_url` is a Phase 108 persist bug.
+- Do **not** probe cross-brand hosts or alternate-audience prefixes (`sa`, `seller`, …) as invent-probes.
+- Zap REJECT unchanged.
+
+**Federated / parent IdP (normative — M14):**
+
+When a discovered candidate is on a **different registrable domain** than `primaryUrl` but the host is a **trusted IdP** label (`id`, `login`, `auth`, `accounts`, `sso`, `identity`, …) **and** the URL carries **brand-return evidence** that the login serves the primary site (`continue` / `callback` / `return` / `redirect_uri` / `redirect_url` / `next` / `application` value containing the primary brand, etc. pointing at the primary registrable domain), Phase 108 **must persist** that IdP URL as consumer `loginUrl`.
+
+- Canonical ACCEPT: [Trello](https://trello.com/) → `https://id.atlassian.com/login?...&continue=https://trello.com/...`
+- Do not reject solely because a query param contains `signup` when the host is IdP login and brand-return evidence is present.
+- Do not accept arbitrary cross-domain URLs without brand-return evidence.
+- Zap-class alternate-audience portals without consumer brand-return remain REJECT.
+
+**Live candidate page validation (normative — M15):**
+
+Before persisting a candidate (and before concluding `no_login_page_found` / `login_entry_not_found` when candidates exist), Phase 108 **must** open/inspect the candidate in the DiscoveryExecutor and require:
+
+1. **Reachable** login surface (not a dead invent / empty soft-404).
+2. **≥1 consumer identity input** (email / username / phone / equivalent) — read-only DOM inspection. No credentials, autofill, or submit.
+
+**Critical — Zap / portal safety:** A page that has identity fields is **not** automatically consumer login. **Alternate-audience evidence still rejects** (Zap `sa.zap…` / business-interface `/login` / “ממשק העסק”). Field validation must run **after or with** the audience gate and must **not** override it. Historical failure mode: fixing common-path/true positives while accidentally persisting Zap’s wrong or business portal URL.
+
+**M15 dual gate (hard):** PayPal/Zoom ACCEPT on a build is incomplete unless the **same** build keeps Zap `login_url=NULL` (same bar as M13: KSP found + Zap NULL).
+
+Canonical ACCEPT: PayPal `https://www.paypal.com/login`. Path/score alone is insufficient.
+
+**Sibling-TLD / same SLD brand (normative — M15):**
+
+Hosts sharing the same second-level label under different public suffixes (e.g. `zoom.com` ↔ `zoom.us`) are **same brand** for discovery audience/cross-host gates when the candidate is a consumer sign-in URL with link or live-validation evidence. Canonical ACCEPT: Zoom → `https://zoom.us/signin`. Sibling-TLD must not weaken Zap dual gate.
+
 Phase 108 must not:
 
 - perform credential autofill
@@ -1492,6 +1539,12 @@ Its responsibility ends once a **confident consumer** login entry point has been
 | Alternate-audience portal mistaken for login | Zap business interface at `/login` | **NULL** | `rejectedLoginUrl`, reason code, `phase112Deferred=true`, `loginIntelligenceHint=alternate_audience_portal` |
 | Consumer login is modal on `primaryUrl` **and no** separate consumer navigable URL | Zap home floating login only | **NULL** | `loginEntryType=modal`, `usesModal=true`, `phase112Deferred=true`, `loginIntelligenceHint=modal_on_primary` |
 | Homepage has login button/modal **and** a separate consumer navigable login page | Typical retail sites | **Persist** navigable consumer URL | Do not veto because of homepage modal trigger |
+| Trusted auth host on same brand; homepage also has modal | Bank Hapoalim `login.bankhapoalim.co.il/.../login` | **Persist** trusted-auth URL | Do not classify as `alternate_audience_portal` / Phase 112 solely because of modal or weak wording |
+| Homepage has no link to auth host; `common-path` invents dead `/login` | KSP `auth.ksp.co.il/login` vs dead `ksp.co.il/login` | **Persist** probed trusted-auth URL | Probe same-brand `auth.`/`login.`; do not prefer unvalidated common-path |
+| Same-origin `/login` found via common-path and is a real login page | GitHub `https://github.com/login` | **Persist** after login-page validation | Do not blank-reject solely for `method=common-path` / low confidence |
+| Parent IdP on other registrable domain; continue/callback to primary | Trello → `id.atlassian.com/login?...&continue=trello.com/...` | **Persist** IdP login URL | Federated IdP + brand-return evidence (M14) |
+| Correct `/login` in candidates but scored only by path | PayPal `https://www.paypal.com/login` | **Persist** after live page validation | Reachable + ≥1 identity field (M15) |
+| Marketing TLD vs product TLD same SLD | Zoom `zoom.com` → `zoom.us/signin` | **Persist** sibling-TLD signin | Same-brand sibling TLD (M15); not portal |
 | Navigable consumer login page still needs modal/complex steps | Mizrahi Tefahot login page + floating step | **Persist** navigable consumer URL when audience is consumer | `loginIntelligenceHint=complex_login_surface`, `phase112Deferred=true` — Phase 112 owns interaction |
 
 Phase 108 may write **discovery deferral signals** into `service_registry.metadata`. Phase 112 remains the authoritative owner of Login Intelligence classification (`loginComplexity`, etc.) and consumes these signals.
@@ -1534,6 +1587,10 @@ Phase 112 classifies login complexity and extends execution for modal / multi-st
 | AC-108-19 | When consumer login is modal/overlay on `primaryUrl` **and** there is no separate validated consumer navigable login URL, `login_url` remains `NULL` and `metadata` records `loginEntryType=modal` / `usesModal=true` / `phase112Deferred=true`. A homepage modal trigger must not veto a separate consumer navigable candidate |
 | AC-108-20 | Reject with **positive evidence** of wrong audience or modal-only surface; document deferrals in `metadata`. Do not blank-reject ordinary same-origin consumer login pages solely because path contains `login` or a weak modal heuristic fired |
 | AC-108-21 | True-positive regression: after false-positive gate changes, rediscovery of known consumer catalog services (at least Shufersal, Clalit, HTZone or current Phase 103 equivalents) must still persist a non-NULL consumer `login_url`, while Zap-class portals remain rejected |
+| AC-108-22 | Trusted consumer auth host priority: when discovery finds a same-brand trusted auth-host candidate (e.g. `login.*` / `auth.*` / `e-services.*` / `services.*`) that is a consumer navigable login URL, persist it unless the **candidate** has strong positive alternate-audience evidence. Homepage modal triggers and weak wording (including retail `כניסת לקוחות`, and path tokens `portal`/`portals`/`ng-portals` alone) must not force `login_url=NULL`. Bank Hapoalim-class ACCEPT; Zap-class REJECT remains required |
+| AC-108-23 | Trusted-auth host probe **and** validated common-path persist: (1) when DOM/link discovery yields no high-confidence consumer `loginUrl`, probe same-brand trusted auth hosts (`auth.` / `login.` / equivalents), validate login-page evidence, and persist (KSP-class: `auth.ksp.co.il/login`, not dead `ksp.co.il/login`); (2) when same-origin `/login` (e.g. `https://github.com/login`) is validated as a consumer login page, persist it — do **not** leave `needs_review` solely because `method=common-path` or initial `confidence=low`. Probed candidates that appear in `topCandidates` must not leave `login_url` empty. Zap-class REJECT remains required; no cross-brand invent-probing |
+| AC-108-24 | Federated / parent IdP: when discovery finds a trusted IdP host on a different registrable domain (`id.` / `login.` / `auth.` / `accounts.` / equivalents) **and** brand-return evidence ties the login to the primary site (`continue` / `callback` / `redirect_*` / `application` containing primary brand, etc.), persist that IdP `loginUrl`. Trello → `id.atlassian.com/login` ACCEPT; do not reject solely for `signup` in query when brand-return is present; arbitrary cross-domain without brand-return remains REJECT; Zap-class REJECT unchanged |
+| AC-108-25 | Live candidate validation **and** sibling-TLD brand **with Zap dual-gate hard:** (1) open/inspect top candidates — reachable + ≥1 identity field (no fill/submit) — PayPal `https://www.paypal.com/login` is the normative auto target; (2) sibling-TLD same SLD — Zoom `https://zoom.us/signin` ACCEPT; (3) identity fields must not override alternate-audience reject — Zap stays NULL; (4) **Operator closeout 2026-07-14:** live Zoom + Zap + KSP accepted; **PayPal auto-discovery (U27) explicitly deferred** to a later Phase 108 milestone (M16) with interim catalog/admin seed — dual-gate stability preferred over further heuristic churn (D-108-31) |
 
 ---
 
@@ -1937,16 +1994,29 @@ Expected behavior:
 - User registers once.
 - User may log in later from Chrome or Edge.
 - The same authenticated `userId` is resolved.
-- The same persisted services are loaded.
+- The same persisted services are loaded on Digital Home (service tiles).
 - The same Access Profiles and encrypted credential records are associated with the account.
 - No duplicate user is created because a different browser is used.
+
+Browser-local IndexedDB must **not** be the sole source of Digital Home membership after online Login.
+
+**Normative hydrate (required):**
+
+After successful Login / Create Account on a browser (including a browser that has never held this user’s local vault):
+
+1. Unlock or create the **userId-scoped** local vault with the Digital Home password.
+2. **Hydrate** workspace from Supabase for that `userId`: `user_services` (selection), Access Profiles, `encrypted_credentials` (decrypt client-side only), and owned private custom services.
+3. Persist the hydrated state into that browser’s local vault for offline use.
+4. Paint Digital Home / Manage from the hydrated state.
+
+Cloud dual-write on save remains; hydrate on login closes Chrome↔Edge empty-Home gaps.
 
 Browser-local state must not become the authoritative identity source.
 
 If the browser extension is unavailable:
 
 - account login must still work
-- Digital Home must still load
+- Digital Home must still load (from hydrate / cloud membership)
 - services must still open where possible
 - extension-dependent autofill may degrade gracefully according to existing architecture
 
@@ -2203,6 +2273,8 @@ The development team must provide:
 | AC-109-35 | Build passes |
 | AC-109-36 | After login or registration, Digital Home and Service Management show only the authenticated user’s workspace — never another user’s selections, profiles, or credentials (client vault/storage must be scoped by `userId`) |
 | AC-109-37 | Discover / Add Services lists global catalog services (`built_in`, `admin`, `approved_global`) for all users, and lists private user-created custom services only for the owning user |
+| AC-109-38 | After online Login on a second supported browser (e.g. Edge after Chrome), Digital Home shows the same user’s persisted service selections hydrated from cloud (`user_services` and related owned data); an empty local vault alone must not leave Home blank when cloud membership exists |
+| AC-109-39 | A non-empty user workspace must not be wiped by offline/reconnect, empty/partial cloud reads, or dual-write re-key: hydrate must not empty-win over local non-empty membership; dual-write must not delete cloud encrypted credentials or `user_services` unless the user explicitly removed them; admin role does not change these durability rules |
 
 > **Note:** Prior Phase 109 content (Credential Lifecycle UX) is deferred. Related signals belong with Phase 115 (Credential Change Detection) and Trust/execution failure hints — not renumbered here.
 
@@ -2359,44 +2431,413 @@ Phase 110 must not:
 
 ### Phase 111 — Service Assets and Icon Management
 
-**Goal:** Provide reliable, centralized, and performant management of service visual assets, especially icons, for Digital Home, Service Management, and Admin surfaces.
+**Goal:**
 
-**Scope:**
+Provide a centralized, secure, cacheable and maintainable Service Asset Management architecture for Digital Home.
+
+Phase 111 establishes the infrastructure for managing service visual assets, beginning with service icons, while remaining extensible for future asset types without redesigning the architecture.
+
+---
+
+## Architectural purpose
+
+Most services already have icons.
+
+The purpose of Phase 111 is not merely to discover icons, but to ensure that service visual assets become:
+
+- centrally managed
+- validated
+- versioned
+- cached
+- reusable
+- independent from third-party availability
+
+Visual assets must never become a dependency for service execution.
+
+---
+
+## Architectural principles
+
+- Service execution must never depend on visual assets.
+- Assets are metadata, not business logic.
+- Assets are immutable once published until replaced by a newer version.
+- Third-party websites must not be contacted during normal application rendering.
+- The application must always prefer locally managed assets.
+- Missing assets must never break the UI.
+- User-owned assets and global assets must remain isolated.
+- Admin-approved assets take precedence over automatically discovered assets.
+
+---
+
+## Scope
+
+Phase 111 includes:
 
 - Service icon discovery
-- Favicon and apple-touch-icon detection
-- OpenGraph/logo fallback discovery where appropriate
-- Icon normalization and validation
-- Icon caching
-- Supabase Storage usage for icon files
-- Registry metadata for icon references
-- Admin-managed icon override
-- Fallback icon rules
+- Asset validation
+- Asset normalization
+- Asset optimization
+- Asset caching
 - Asset versioning
-- Consistent icon rendering across Digital Home and Service Management
+- Asset lifecycle
+- Asset ownership
+- Supabase Storage integration
+- Registry asset metadata
+- Admin asset management
+- Fallback asset generation
+- Bulk asset refresh
+- Consistent rendering across all application surfaces
 
-**Architecture rules:**
+---
 
-- Do not store image binary data directly in `service_registry` rows.
-- Store icon files in object storage, such as Supabase Storage.
-- Store only icon metadata/reference in `service_registry`.
-- Execution must never depend on icon availability.
-- Missing or broken icons must fall back to deterministic safe icons.
-- User-created services may receive automatically discovered icons.
-- Admin-approved global services may receive curated icons.
-- Icon updates must not require changing credentials or access profiles.
+## Supported asset types
+
+Initial implementation:
+
+- favicon
+- apple-touch-icon
+- application icon
+
+Future-compatible architecture:
+
+- logo
+- banner
+- thumbnail
+- screenshots
+- category artwork
+
+The architecture must support future asset types without redesign.
+
+---
+
+## Asset discovery
+
+When a service is created or refreshed, the system may attempt asset discovery.
+
+Candidate discovery order:
+
+1. Admin-approved asset
+2. Existing managed asset
+3. apple-touch-icon
+4. favicon
+5. OpenGraph image (only if suitable)
+6. Generated fallback icon
+
+Discovery must be deterministic.
+
+Discovery failure must never prevent service creation.
+
+---
+
+## Asset validation
+
+Downloaded assets must be validated before storage.
+
+Validation includes:
+
+- supported MIME type
+- supported format
+- maximum file size
+- minimum resolution
+- maximum resolution
+- image readability
+- successful decoding
+- safe URL
+- allowed protocol
+- redirect validation
+
+Unsupported or invalid assets must be rejected.
+
+---
+
+## Supported formats
+
+Supported formats may include:
+
+- PNG
+- ICO
+- WebP
+- JPEG
+
+SVG support requires explicit sanitization before use.
+
+Unsupported formats must not be stored.
+
+---
+
+## Asset normalization
+
+Approved assets should be normalized into a consistent presentation.
+
+Normalization may include:
+
+- resizing
+- padding
+- square canvas generation
+- transparency preservation
+- quality optimization
+- format conversion
+- multiple output sizes
+
+Suggested sizes:
+
+- 32x32
+- 64x64
+- 128x128
+- 256x256
+
+Normalization must preserve visual quality.
+
+---
+
+## Storage architecture
+
+Image binaries must never be stored directly inside `service_registry`.
+
+Store binaries in object storage such as Supabase Storage.
+
+`service_registry` stores only metadata and references.
+
+Suggested metadata:
+
+- assetId
+- assetType
+- assetStatus
+- assetSource
+- assetVersion
+- assetPath
+- lastValidatedAt
+- lastRefreshedAt
+
+Exact schema may follow existing conventions.
+
+---
+
+## Asset ownership
+
+Global catalog services use shared global assets.
+
+User-created services may own private assets.
+
+Private assets must never automatically become global assets.
+
+Admin approval is required before promoting an asset to global use.
+
+---
+
+## Asset lifecycle
+
+Suggested lifecycle:
+
+- discovering
+- discovered
+- approved
+- active
+- stale
+- failed
+- archived
+
+Only active assets should be rendered.
+
+---
+
+## Asset sources
+
+Possible values:
+
+- admin
+- auto
+- user
+- imported
+- fallback
+
+Admin assets have highest priority.
+
+---
+
+## Asset refresh
+
+The system should support:
+
+- refresh one asset
+- refresh selected services
+- refresh all services
+
+Refresh must:
+
+- run asynchronously
+- avoid blocking the application
+- preserve approved admin assets
+- update metadata
+- invalidate cache safely
+
+---
+
+## Duplicate prevention
+
+Identical assets should not be stored repeatedly.
+
+The implementation should reuse existing managed assets where possible.
+
+Duplicate uploads should be avoided using deterministic asset identity or checksum.
+
+---
+
+## Rendering rules
+
+Digital Home
+
+Service Management
+
+Admin
+
+Catalog
+
+must all render the same managed asset.
+
+Rendering must:
+
+- use local managed assets
+- never request third-party assets during normal use
+- support light and dark themes
+- preserve layout stability
+- provide accessible alternative text where appropriate
+
+---
+
+## Fallback rules
+
+If no approved asset exists:
+
+Display a deterministic fallback.
+
+Fallback may include:
+
+- generic service icon
+- generated initial
+- category icon
+
+Fallback selection must remain consistent.
+
+---
+
+## Administrator management
+
+Administrator capabilities include:
+
+- preview current asset
+- upload replacement asset
+- approve discovered asset
+- reject asset
+- refresh discovery
+- restore fallback
+- view discovery source
+- view asset version
+- view validation status
+- view refresh history
+
+---
+
+## Operational visibility
+
+The system should expose operational metrics such as:
+
+- discovery success rate
+- validation failures
+- refresh failures
+- fallback usage
+- duplicate prevention statistics
+
+No user credentials or private information may appear.
+
+---
+
+## Security rules
+
+Phase 111 must:
+
+- never trust external image URLs blindly
+- validate redirects
+- reject unsupported formats
+- reject oversized assets
+- avoid server-side request forgery risks
+- isolate private user assets
+- never expose Storage internals to clients unnecessarily
+
+---
+
+## Relationship to Other Phases
+
+- Phase 102 owns Service Registry persistence.
+- Phase 108 discovers login entry points.
+- Phase 111 owns managed service visual assets.
+- Phase 110 and Phase 112 consume service metadata but never depend on asset availability.
+- Phase 107 exposes administrator asset management.
+
+---
+
+## Regression protection
+
+Phase 111 must not modify:
+
+- Service Identity
+- loginUrl
+- Access Profiles
+- credentials
+- execution pipeline
+- login discovery
+- autofill behavior
+- Service Registry ownership
+
+Visual assets remain independent metadata.
+
+---
+
+## Non-goals
+
+Phase 111 does not include:
+
+- credential management
+- login discovery
+- autofill
+- service execution
+- password handling
+- user profile images
+- subscription branding
+
+---
+
+## Required engineering deliverables
+
+The development team must provide:
+
+- Asset architecture diagram
+- Storage structure
+- Asset metadata model
+- Discovery flow
+- Validation rules
+- Refresh flow
+- Admin asset management implementation
+- Cache strategy
+- Regression report
 
 | Acceptance criteria | |
 |---------------------|---|
-| AC-111-1 | Service registry supports icon metadata/reference for every service |
-| AC-111-2 | Icons are loaded from a managed asset location, not directly from third-party sites during normal app use |
-| AC-111-3 | The system can discover candidate icons from a service URL |
-| AC-111-4 | The system stores approved/discovered icons in Supabase Storage or equivalent |
-| AC-111-5 | Digital Home and Service Management render icons consistently |
-| AC-111-6 | Missing or failed icons use fallback icons |
-| AC-111-7 | Admin can override or refresh service icons |
-| AC-111-8 | Icon changes are versioned or timestamped |
-| AC-111-9 | Icon handling works for built-in, admin-managed, and user-created services |
+| AC-111-1 | Every service supports managed visual asset metadata |
+| AC-111-2 | Image binaries are stored in managed object storage rather than service_registry |
+| AC-111-3 | The system can discover candidate icons deterministically |
+| AC-111-4 | Approved assets are normalized before use |
+| AC-111-5 | Local managed assets are used during normal application rendering |
+| AC-111-6 | Missing assets render deterministic fallback icons |
+| AC-111-7 | Asset discovery failure never blocks service creation |
+| AC-111-8 | Admin can upload, approve, replace, refresh and restore assets |
+| AC-111-9 | Duplicate asset storage is prevented |
+| AC-111-10 | Asset refresh preserves approved admin assets |
+| AC-111-11 | Global and private assets remain isolated |
+| AC-111-12 | Rendering is consistent across Digital Home, Service Management and Admin |
+| AC-111-13 | Asset version and validation metadata are maintained |
+| AC-111-14 | Visual assets never affect login, execution or credential handling |
+| AC-111-15 | Build passes |
 
 ---
 
@@ -4396,5 +4837,13 @@ flowchart LR
 | **5.3** | 2026-07-13 | **Phase 109 — single Digital Home password.** Remove second vault-unlock door; lock returns to Login; Auth password unlocks/creates vault in the same step; MFA deferred to Phase 191. AC-109-24/32 and Phase 191 scope clarified. |
 | **5.4** | 2026-07-13 | **Phase 109 — admin access.** Same SPA: `#/admin` shows Login when unauthenticated; one deploy URL; admin role via SQL only (arch D-109-22). |
 | **5.5** | 2026-07-13 | **Phase 109 — client workspace isolation.** Local vault/storage scoped by `userId`; Discover shows global catalog + own customs only; AC-109-36/37. Closes cross-user Digital Home leak on shared devices. |
+| **5.6** | 2026-07-13 | **Phase 109 — cross-browser hydrate.** After Login, hydrate Digital Home from cloud `user_services` / profiles / encrypted credentials into the browser-local vault (D-109-24, AC-109-38). Closes Chrome≠Edge empty Home for the same user. |
+| **5.7** | 2026-07-13 | **Phase 109 — workspace durability.** Anti-wipe hydrate/dual-write rules after operator outage data-loss (D-109-25, AC-109-39). Admin role is not a separate Home vault. |
+| **5.8** | 2026-07-13 | **Phase 108 — trusted-auth priority (M12).** Same-brand `login.*` / auth hosts must persist despite homepage modal or weak portal wording; Bank Hapoalim-class ACCEPT; Zap REJECT unchanged. AC-108-22. |
+| **5.9** | 2026-07-13 | **Phase 108 — trusted-auth host probe + validated common-path (M13).** Probe same-brand `auth.`/`login.` (KSP); persist validated same-origin `/login` (GitHub); demote dead common-path invents. AC-108-23. |
+| **5.10** | 2026-07-13 | **Phase 108 — federated / parent IdP (M14).** Persist IdP login on another registrable domain when brand-return evidence binds primary (Trello→Atlassian). AC-108-24. M13 U24 (KSP persist from topCandidates) remains required. |
+| **5.11** | 2026-07-14 | **Phase 108 — live candidate validation + sibling-TLD (M15).** Open/inspect candidates: reachable + ≥1 identity field (PayPal); same-SLD across TLDs (Zoom); **fields must not accept Zap portal**; dual gate PayPal/Zoom PASS + Zap NULL required. AC-108-25 / D-108-30. |
+| **5.12** | 2026-07-14 | **Phase 111 rewritten — Service Assets and Icon Management.** Centralized, versioned, cacheable assets; Storage-backed binaries; discovery/validation/normalization/lifecycle; admin management; AC-111-1 through AC-111-15. |
+| **5.13** | 2026-07-14 | **Phase 108 — M15 closeout with PayPal deferred.** Operator: Zap NULL + KSP + Zoom live green; PayPal auto-discovery deferred (U27→M16); interim seed/admin; freeze discovery churn (D-108-31). |
 
 Implementation plans for individual production phases may be authored separately; they must align with this document and must not duplicate it as a second architecture source.
