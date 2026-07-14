@@ -167,7 +167,7 @@ Phase 103 contract (AC-105-17 / AC-105-19). No discovery tab opened on either ro
 
 ## Soft-Deferred
 - Phase 111 icon pipeline (interim `useServiceLogos`)
-- Phase 113 URL canonicalization
+- Phase 116 URL canonicalization
 - Useful Services ranking / Notifications engine
 
 ## Scope Compliance

@@ -1,0 +1,15 @@
+{
+  "id": "email-first",
+  "description": "Email field visible, no password — AC-112-4",
+  "signals": {
+    "hasVisibleEmail": true,
+    "hasVisiblePassword": false,
+    "hasContinueOrNext": true,
+    "isMultiStepHint": true
+  },
+  "expect": {
+    "loginComplexity": "medium",
+    "loginFlowType": "email_first",
+    "isMultiStep": true
+  }
+}

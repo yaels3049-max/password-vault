@@ -103,10 +103,10 @@ function tileExecutionToGenericResult(
 }
 
 /** Dev-only: same orchestrator path as Dashboard tile open (D-103-15). */
-export function openShufersalLoginFromTile(
+export async function openShufersalLoginFromTile(
   credential: Credential | undefined,
   loginFields: LoginField[] = DEFAULT_LOGIN_FIELDS,
-): ReturnType<typeof executeGenericAutofill> {
+): Promise<ReturnType<typeof executeGenericAutofill>> {
   const shufersalService = findRuntimeService(SHUFERSAL_SERVICE_ID);
   if (!shufersalService) {
     return executeGenericAutofill(
@@ -116,15 +116,15 @@ export function openShufersalLoginFromTile(
     );
   }
   return tileExecutionToGenericResult(
-    executeServiceFromTile(shufersalService, credential, loginFields),
+    await executeServiceFromTile(shufersalService, credential, loginFields),
   );
 }
 
 /** Dev-only: same orchestrator path as Dashboard tile open (D-103-15). */
-export function openClalitLoginFromTile(
+export async function openClalitLoginFromTile(
   credential: Credential | undefined,
   loginFields: LoginField[] = DEFAULT_LOGIN_FIELDS,
-): ReturnType<typeof executeGenericAutofill> {
+): Promise<ReturnType<typeof executeGenericAutofill>> {
   const clalitService = findRuntimeService(CLALIT_SERVICE_ID);
   if (!clalitService) {
     return executeGenericAutofill(
@@ -134,7 +134,7 @@ export function openClalitLoginFromTile(
     );
   }
   return tileExecutionToGenericResult(
-    executeServiceFromTile(clalitService, credential, loginFields),
+    await executeServiceFromTile(clalitService, credential, loginFields),
   );
 }
 

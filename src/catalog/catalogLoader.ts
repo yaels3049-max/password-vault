@@ -4,7 +4,7 @@ import type { ServiceDefinition } from '../service/serviceModel';
 
 /**
  * Load runtime built-in catalog from Supabase service_registry (AC-102-2).
- * Dev-only practice service is injected by registryLoader when isDevBuild().
+ * Practice login is excluded from the user-facing catalog (AC-113-30).
  */
 export async function loadBuiltinCatalogDefinitions(): Promise<ServiceDefinition[]> {
   if (!isSupabaseConfigured()) {

@@ -1,6 +1,6 @@
 import { requireAuthenticatedUserId, tryGetAuthenticatedUserId } from '../auth';
 import { isDevBuild } from '../dev/devMode';
-import { BUILTIN_CATALOG_DEFINITIONS, HUB_PRACTICE_LOGIN_ID } from '../catalog/builtinCatalog';
+import { HUB_PRACTICE_LOGIN_ID } from '../catalog/builtinCatalog';
 import { applyBuiltinCatalogOverlayAll } from '../catalog/builtinCatalogOverlay';
 import { isSupabaseConfigured } from '../supabase/env';
 import { getSupabaseClient } from '../supabase/client';
@@ -58,28 +58,10 @@ export function isCatalogVisibleRegistryRow(
 /** Exported for verify / docs — global Discover source types. */
 export const DISCOVER_GLOBAL_SOURCE_TYPES = GLOBAL_CATALOG_SOURCE_TYPES;
 
-function getDevPracticeDefinition(): ServiceDefinition {
-  const practice = BUILTIN_CATALOG_DEFINITIONS.find(
-    (definition) => definition.id === HUB_PRACTICE_LOGIN_ID,
-  );
-
-  if (!practice) {
-    throw new CatalogLoadError('Dev practice service definition is missing');
-  }
-
-  return practice;
-}
-
-function injectDevPractice(definitions: ServiceDefinition[]): ServiceDefinition[] {
-  if (!isDevBuild()) {
-    return definitions;
-  }
-
-  if (definitions.some((definition) => definition.id === HUB_PRACTICE_LOGIN_ID)) {
-    return definitions;
-  }
-
-  return [getDevPracticeDefinition(), ...definitions];
+function excludeUserFacingPractice(
+  definitions: ServiceDefinition[],
+): ServiceDefinition[] {
+  return definitions.filter((definition) => definition.id !== HUB_PRACTICE_LOGIN_ID);
 }
 
 async function ensureRegistryAuth(): Promise<string> {
@@ -123,6 +105,7 @@ export function clearRegistryCatalogCache(): void {
 /**
  * Load built-in + user registry catalog from Supabase (AC-102-2).
  * Production never reads BUILTIN_CATALOG_DEFINITIONS for runtime catalog.
+ * Practice login is excluded from user-facing catalog (AC-113-30 / D-113-18).
  */
 export async function loadRegistryCatalog(): Promise<ServiceDefinition[]> {
   if (!isSupabaseConfigured()) {
@@ -147,7 +130,7 @@ export async function loadRegistryCatalog(): Promise<ServiceDefinition[]> {
       catalogRows.map(registryRowToServiceDefinition),
     );
 
-    // Catalog UI shows only what is in service_registry (+ dev practice inject).
+    // Catalog UI shows only what is in service_registry.
     // Known-service seed restore happens on add/select via ensureKnownBuiltinRegistryRow
     // — do not inject missing builtins here (avoids ghost tiles after DB wipe).
     if (globalBuiltIns.length === 0 && !isDevBuild() && definitions.length === 0) {
@@ -156,7 +139,7 @@ export async function loadRegistryCatalog(): Promise<ServiceDefinition[]> {
       );
     }
 
-    sessionCache = injectDevPractice(definitions);
+    sessionCache = excludeUserFacingPractice(definitions);
     return sessionCache;
   } catch (error) {
     if (sessionCache) {

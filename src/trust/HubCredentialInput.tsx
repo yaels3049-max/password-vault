@@ -95,6 +95,8 @@ interface HubCredentialInputProps
   serviceId: string;
   fieldId: string;
   fieldType: 'text' | 'password';
+  /** When true, password fields render as plain text while keeping PM-hardening. */
+  revealAsText?: boolean;
 }
 
 /**
@@ -106,16 +108,19 @@ export default function HubCredentialInput({
   serviceId,
   fieldId,
   fieldType,
+  revealAsText = false,
   onFocus,
   ...rest
 }: HubCredentialInputProps) {
   const isPassword = isHubCredentialPasswordField(fieldType);
+  const inputType =
+    isPassword && revealAsText ? 'text' : fieldType;
 
   return (
     <input
       {...(isPassword ? HUB_CREDENTIAL_PASSWORD_PROPS : {})}
       {...rest}
-      type={fieldType}
+      type={inputType}
       name={hubCredentialFieldName(serviceId, fieldId, fieldType)}
       autoComplete={hubCredentialAutoComplete(fieldId, fieldType)}
       inputMode={hubCredentialInputMode(fieldId, fieldType)}

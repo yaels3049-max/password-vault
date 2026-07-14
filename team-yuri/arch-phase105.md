@@ -42,7 +42,7 @@ Phase 105 owns **Digital Home presentation and UX orchestration** only. It does 
 | **D-105-11: Empty / loading / offline** | AC-105-12, AC-105-13, AC-105-14 | Empty selected set → guide user to Service Management (clear CTA). Loading → stable layout, no major jumps. Offline/error → Hebrew friendly copy; no technical/stack traces; do not block viewing already-loaded selected tiles when possible. |
 | **D-105-12: Tile presentation** | AC-105-9, AC-105-15 | Tile shows icon + name. Optional **minimal** execution-relevant indicator only (e.g. credentials-ready hint) — never management controls. Hover/focus must feel interactive. Interim logos via existing `useServiceLogos` (Phase 111 deferred). |
 | **D-105-13: Origin independence** | AC-105-18 | Custom and admin-managed selected services appear and execute identically to built-in catalog services (metadata-driven Phase 103 path). |
-| **D-105-14: Soft upstream deps** | PLAN dependency note | Phase 111 (icons) and Phase 113 (URL canonicalization) remain **soft**. Phase 105 ships with interim favicon/logo resolution and existing login/primary URL open rules. Do not block Phase 105 on 111/113. |
+| **D-105-14: Soft upstream deps** | PLAN dependency note | Phase 111 (icons) and Phase 116 (URL canonicalization) remain **soft**. Phase 105 ships with interim favicon/logo resolution and existing login/primary URL open rules. Do not block Phase 105 on 111/113. |
 | **D-105-15: Dev-only surfaces** | Phase 100 | POC/demo fill buttons remain behind `isPocControlsVisible()` / `isDevBuild()`. Production Digital Home must not show them. |
 
 ### Normative page map
@@ -82,7 +82,7 @@ Tile click
 - Admin platform / registry CRUD (Phase 107).
 - Lifecycle health UX for stale `loginUrl` (Phase 109).
 - Full icon asset pipeline / Storage (Phase 111).
-- URL canonicalization / duplicate prevention (Phase 113).
+- URL canonicalization / duplicate prevention (Phase 116).
 - Advanced notification engine; full Useful Services ranking algorithm.
 - New login discovery on tile click.
 - New execution adapters or changes to `executeServiceFromTile` orchestration.

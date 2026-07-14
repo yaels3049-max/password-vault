@@ -90,7 +90,7 @@ The hook is a no-op in production builds.
 
 - **Phase 111** — full icon asset pipeline / Supabase Storage. Phase 104 uses interim
   favicon/logo resolution (`useServiceLogos`).
-- **Phase 113** — URL canonicalization and duplicate-registry prevention. Custom add reuses
+- **Phase 116** — URL canonicalization and duplicate-registry prevention. Custom add reuses
   the Phase 102 discovery contract; duplicate messaging only where existing logic detects it.
 - Digital Home production redesign (Phase 105), registry CRUD/admin (Phase 107),
   lifecycle health UX (Phase 109).

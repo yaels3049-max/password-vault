@@ -1,0 +1,13 @@
+{
+  "id": "standard-basic",
+  "description": "Username+password same page — AC-112-1/3 basic→110",
+  "signals": {
+    "hasVisibleUsername": true,
+    "hasVisiblePassword": true
+  },
+  "expect": {
+    "loginComplexity": "basic",
+    "loginFlowType": "standard_single_page",
+    "integrationHealth": "healthy"
+  }
+}

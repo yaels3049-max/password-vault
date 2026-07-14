@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <title>Phase 113 — vault chrome inside shell</title>
+    <style>
+      :root {
+        --app-content-max: 880px;
+        --app-shell-radius: 24px;
+        --app-shell-bg-image: url('../../src/assets/backgrounds/digital-home-shell.jpg');
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #e8eef6;
+        color: #0f172a;
+      }
+      .wrap {
+        display: grid;
+        gap: 1.25rem;
+        padding: 1.25rem;
+      }
+      .dashboard,
+      .service-management {
+        max-width: var(--app-content-max);
+        margin: 0 auto;
+        padding: 1.5rem 1.25rem 2.5rem;
+        border-radius: var(--app-shell-radius);
+        overflow: hidden;
+        background-color: #e8eef6;
+        background-image: var(--app-shell-bg-image);
+        background-size: cover;
+        background-position: center bottom;
+        background-repeat: no-repeat;
+        box-shadow:
+          0 16px 40px rgba(120, 150, 185, 0.14),
+          0 1px 0 rgba(255, 255, 255, 0.7) inset;
+        min-height: 48vh;
+      }
+      .shell-lock-row {
+        display: flex;
+        justify-content: flex-end;
+        width: 100%;
+        margin: 0 0 0.35rem;
+      }
+      .vault-state-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1d4ed8;
+      }
+      .vault-state-badge-dot {
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        background: #2563eb;
+      }
+      .vault-state-badge-lock {
+        border: none;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        padding: 0 0.15rem;
+      }
+      header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        text-align: center;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.5rem;
+      }
+      p {
+        margin: 0;
+        color: #334155;
+        font-size: 0.9rem;
+      }
+      .note {
+        margin-top: 1rem;
+        text-align: center;
+        font-size: 0.8rem;
+        color: #64748b;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="dashboard" id="home">
+        <header>
+          <div class="shell-lock-row" aria-label="מצב כספת">
+            <div class="vault-state-badge">
+              <span class="vault-state-badge-dot"></span>
+              <span>הגישה פתוחה</span>
+              <button type="button" class="vault-state-badge-lock">נעל</button>
+            </div>
+          </div>
+          <h1>הבית הדיגיטלי של משתמש</h1>
+          <p>Lock inside shell — no name/email chip — no exterior chrome.</p>
+        </header>
+      </section>
+      <section class="service-management" id="manage">
+        <header>
+          <div class="shell-lock-row" aria-label="מצב כספת">
+            <div class="vault-state-badge">
+              <span class="vault-state-badge-dot"></span>
+              <span>הגישה פתוחה</span>
+              <button type="button" class="vault-state-badge-lock">נעל</button>
+            </div>
+          </div>
+          <h1>ניהול אתרים</h1>
+          <p>Same lock placement inside Manage shell.</p>
+        </header>
+      </section>
+      <p class="note">AC-113-35 / D-113-23 fixture — gray margins have no floating vault chrome.</p>
+    </div>
+  </body>
+</html>

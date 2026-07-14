@@ -316,8 +316,82 @@
     return { ok: true, mappings: mappings };
   }
 
+  /**
+   * Phase 112 M9 — map non-password loginFields only (D-112-20/21).
+   * Password vault fields are skipped when no password input is on the page.
+   */
+  function mapIdentityFieldsOnly(loginFields, formDetection) {
+    if (!loginFields || !formDetection) {
+      return { ok: false, reason: 'missing_input', mappings: [] };
+    }
+
+    var identityFields = [];
+    for (var f = 0; f < loginFields.length; f += 1) {
+      if (loginFields[f].type !== 'password') {
+        identityFields.push(loginFields[f]);
+      }
+    }
+
+    if (identityFields.length === 0) {
+      return { ok: false, reason: 'no_identity_fields', mappings: [] };
+    }
+
+    var usedInputs = new Set();
+    var mappings = [];
+
+    for (var i = 0; i < identityFields.length; i += 1) {
+      var field = identityFields[i];
+      var pool = formDetection.textInputs || [];
+      var bestInput = null;
+      var bestScore = -1;
+      var secondScore = -1;
+
+      for (var j = 0; j < pool.length; j += 1) {
+        var input = pool[j];
+        if (usedInputs.has(input)) {
+          continue;
+        }
+        var score = scoreInputForField(input, field);
+        if (score > bestScore) {
+          secondScore = bestScore;
+          bestScore = score;
+          bestInput = input;
+        } else if (score > secondScore) {
+          secondScore = score;
+        }
+      }
+
+      var minScore = minScoreForField(field);
+      if (!bestInput || bestScore < minScore) {
+        // Soft-skip this vault field; another identity field may still map.
+        continue;
+      }
+
+      if (
+        secondScore >= minScore &&
+        bestScore - secondScore <= AMBIGUITY_MARGIN
+      ) {
+        continue;
+      }
+
+      usedInputs.add(bestInput);
+      mappings.push({
+        fieldId: field.id,
+        element: bestInput,
+        score: bestScore,
+      });
+    }
+
+    if (mappings.length < 1) {
+      return { ok: false, reason: 'no_identity_mapping', mappings: [] };
+    }
+
+    return { ok: true, mappings: mappings };
+  }
+
   root.GenericFieldMapper = {
     mapLoginFields: mapLoginFields,
+    mapIdentityFieldsOnly: mapIdentityFieldsOnly,
     getLabelText: getLabelText,
     MIN_IDENTITY_SCORE: MIN_IDENTITY_SCORE,
     MIN_PASSWORD_SCORE: MIN_PASSWORD_SCORE,

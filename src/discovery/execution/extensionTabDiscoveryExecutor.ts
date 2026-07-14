@@ -72,11 +72,11 @@ async function requestExtensionLoginDiscovery(
 }
 
 /**
- * Production discovery executor (Phase 108 M2).
+ * Production discovery executor (Phase 108 M2 + D-108-32).
  *
- * Opens a **background** temporary tab via the Hub extension, runs the discovery engine against
- * the live DOM, returns the result, closes the tab, and refocuses the Hub tab.
- * Hub-side timeout: DISCOVERY_HUB_TIMEOUT_MS (30s default).
+ * Asks the Hub extension to open an **unfocused off-screen popup window** (not a tab in
+ * the Hub strip), run the discovery engine against the live DOM, return the result, and
+ * close the discovery window. Hub-side timeout: DISCOVERY_HUB_TIMEOUT_MS (30s default).
  */
 export const extensionTabDiscoveryExecutor: DiscoveryExecutor = {
   id: 'extension-tab',

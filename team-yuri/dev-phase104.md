@@ -353,7 +353,7 @@ R3/R4 and R1/R2 respectively; all remaining rows are enforced statically or by b
 ## Deferred (out of scope, per arch)
 
 - Phase 111 — full icon asset pipeline / Supabase Storage (interim favicon/logo used).
-- Phase 113 — URL canonicalization / duplicate-registry prevention.
+- Phase 116 — URL canonicalization / duplicate-registry prevention.
 - Phase 105 Digital Home redesign, Phase 107 registry CRUD, Phase 109 lifecycle health.
 
 ## UX Adjustment — Service Management card sizing (2026-07-07)

@@ -131,7 +131,7 @@ Metadata proposal / silent `loginFields` enrichment **deferred**. `POC_GENERIC_D
 - No Phase 112 complex-login classifiers invented (signals only)
 - No Phase 108 discovery ownership
 - No Phase 109 auth/hydrate ownership
-- No Phase 113 canonicalization
+- No Phase 116 canonicalization
 - No `executeServiceFromTile` redesign
 
 ## Developer Declaration

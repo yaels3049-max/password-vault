@@ -1,18 +1,34 @@
 import type { Service, ServiceCategory } from '../service/legacyService';
 import type { ServiceDefinition } from '../service/serviceModel';
+import { resolveManagedIconUrl } from '../serviceAssets/resolveActiveManagedAsset';
+import { readLoginIntelligence } from '../loginIntelligence/readWrite';
 
+/** Pre-111 presentation helper — still used as cascade tier (2). */
 export function highResFavicon(siteUrl: string): string {
   return `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(siteUrl)}&size=128`;
 }
 
+/**
+ * Phase 111 M8 paint cascade (D-111-6 / D-111-17):
+ * (1) active managed Storage URL if present
+ * (2) else pre-111 path (explicit logoUrl / faviconSiteUrl → highResFavicon)
+ * (3) else undefined → UI emoji/initial fallback
+ *
+ * Admin upload wins via metadata.activeIcon. Day-one must NOT be Storage-only.
+ */
 function resolveLogoUrl(definition: ServiceDefinition): string | undefined {
+  const managed = resolveManagedIconUrl(definition, 128);
+  if (managed) {
+    return managed;
+  }
+
   const metadata = definition.metadata;
   if (!metadata) {
     return undefined;
   }
 
   if (typeof metadata.logoUrl === 'string' && metadata.logoUrl.trim()) {
-    return metadata.logoUrl;
+    return metadata.logoUrl.trim();
   }
 
   if (typeof metadata.faviconSiteUrl === 'string' && metadata.faviconSiteUrl.trim()) {
@@ -51,6 +67,14 @@ export function definitionToLegacyService(definition: ServiceDefinition): Servic
   }
   if (definition.adapterId) {
     service.adapterId = definition.adapterId;
+  }
+
+  if (definition.metadata) {
+    service.metadata = definition.metadata;
+    const li = readLoginIntelligence(definition.metadata);
+    if (li) {
+      service.loginIntelligence = li;
+    }
   }
 
   const logoUrl = resolveLogoUrl(definition);

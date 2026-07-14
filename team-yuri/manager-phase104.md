@@ -16,7 +16,7 @@ Deliver **production-grade Service Management UX** (**ניהול שירותים*
 
 **Service execution** (open site + autofill) remains **Digital Home only**.
 
-Phase 104 owns **management UX and selection orchestration** only. It does not own registry curation (Phase 107), Digital Home production polish (Phase 105), full icon lifecycle (Phase 111), or URL canonicalization (Phase 113).
+Phase 104 owns **management UX and selection orchestration** only. It does not own registry curation (Phase 107), Digital Home production polish (Phase 105), full icon lifecycle (Phase 111), or URL canonicalization (Phase 116).
 
 ## Source References
 - `team-Yuri/arch-phase104.md` (including Architecture Amendment 2026-07-07)
@@ -237,7 +237,7 @@ R1/R2 are **regression gate** — Manager rejects if either fails.
 - Admin platform / registry CRUD (Phase 107)
 - Lifecycle health UX for stale `loginUrl` (Phase 109)
 - Full icon asset pipeline / Supabase Storage (Phase 111)
-- URL canonicalization, duplicate registry prevention (Phase 113)
+- URL canonicalization, duplicate registry prevention (Phase 116)
 - Subscription / capability gating (Phase 150+)
 - **Open / execution from Service Management** (retired by amendment)
 - Changes to `executeServiceFromTile` orchestration or Digital Home execution path

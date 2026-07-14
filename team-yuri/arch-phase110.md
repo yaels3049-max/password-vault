@@ -39,7 +39,7 @@ Phase 110 owns **standard-form autofill coverage and conservative field matching
 | **D-110-10: Phase 112 compatibility** | AC-110-15 | Do not invent login-complexity classification, modal open/fill, OTP/CAPTCHA handling, or federated automation. Leave hooks/signals that 112 can consume (e.g. fill failed / not_standard). |
 | **D-110-11: Optional metadata proposal** | PLAN governance | If detect discovers stable field mapping, may **propose** registry enrichment — must not silently overwrite admin `loginFields` / `loginUrlSource=admin` without explicit approval. Prefer admin/user review path over silent write. |
 | **D-110-12: Host permissions / packaging** | AC-110-1; Phase 108 | Generic fill for arbitrary catalog URLs requires extension ability to inject on those origins. Document operator/store implication in `docs/MIGRATION_PHASE_110.md` (align with Phase 108 packaging). Do not invent a second Hub↔extension protocol; extend existing `POC_GENERIC_FILL` / detect messages if needed. |
-| **D-110-13: No Phase 113 work** | AC-110-12 | No URL identity/canonicalization changes. |
+| **D-110-13: No Phase 116 work** | AC-110-12 | No URL identity/canonicalization changes. |
 
 ### Normative fill path (generic)
 
@@ -82,7 +82,7 @@ executeServiceFromTile (Phase 103 — unchanged orchestration)
 - Bank/complex adapters beyond existing approved adapter architecture.
 - loginUrl discovery / rediscovery (Phase 108).
 - Account auth / hydrate / vault (Phase 109).
-- URL canonicalization / identity (Phase 113).
+- URL canonicalization / identity (Phase 116).
 - Icon pipeline (Phase 111).
 - Password rotation / credential lifecycle UX.
 

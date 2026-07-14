@@ -56,5 +56,5 @@ export async function allocateUniqueRegistryServiceId(
     }
   }
 
-  throw new Error('לא ניתן ליצור מזהה ייחודי לשירות זה.');
+  throw new Error('לא ניתן ליצור מזהה ייחודי לאתר זה.');
 }

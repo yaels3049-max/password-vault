@@ -1,0 +1,13 @@
+{
+  "id": "username-first",
+  "description": "Username field visible, no password — AC-112-4",
+  "signals": {
+    "hasVisibleUsername": true,
+    "hasVisiblePassword": false,
+    "hasContinueOrNext": true
+  },
+  "expect": {
+    "loginComplexity": "medium",
+    "loginFlowType": "username_first"
+  }
+}

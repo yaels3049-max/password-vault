@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <title>Phase 113 — shell BG visibility fixture</title>
+    <style>
+      :root {
+        --app-content-max: 880px;
+        --app-shell-radius: 24px;
+        --app-shell-bg-image: url('../../src/assets/backgrounds/digital-home-shell.jpg');
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #dce3ec;
+        color: #0f172a;
+      }
+      .wrap {
+        display: grid;
+        gap: 1.25rem;
+        padding: 1.25rem;
+      }
+      .dashboard,
+      .service-management {
+        max-width: var(--app-content-max);
+        margin: 0 auto;
+        padding: 2rem 1.25rem 3rem;
+        border-radius: var(--app-shell-radius);
+        overflow: hidden;
+        background-color: #e8eef6;
+        background-image: var(--app-shell-bg-image);
+        background-size: cover;
+        background-position: center bottom;
+        background-repeat: no-repeat;
+        box-shadow:
+          0 16px 40px rgba(120, 150, 185, 0.14),
+          0 1px 0 rgba(255, 255, 255, 0.7) inset;
+        min-height: 72vh;
+      }
+      .sm-section {
+        margin-top: 1.5rem;
+        padding: 1.25rem;
+        background: rgba(255, 255, 255, 0.22);
+        border: 1px solid rgba(226, 232, 240, 0.55);
+        border-radius: 12px;
+      }
+      .fake-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+      }
+      .fake-card {
+        height: 4.5rem;
+        border-radius: 12px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+      }
+      h1 {
+        margin: 0 0 0.75rem;
+        text-align: center;
+        font-size: 1.5rem;
+      }
+      p {
+        margin: 0;
+        text-align: center;
+        color: #334155;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="dashboard" id="home">
+        <h1>הבית הדיגיטלי (fixture)</h1>
+        <p>Wave/dot pattern should be clearly visible — no white wash.</p>
+      </section>
+      <section class="service-management" id="manage">
+        <h1>ניהול אתרים (fixture)</h1>
+        <p>Same shell BG treatment as Home.</p>
+        <div class="sm-section">
+          <p>גריד תחתון — רקע השל זורח בין כרטיסים (לא לבן אטום).</p>
+          <div class="fake-grid" aria-hidden="true">
+            <div class="fake-card"></div>
+            <div class="fake-card"></div>
+            <div class="fake-card"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

@@ -58,7 +58,8 @@ function main() {
       adminFiles.some((f) => f.endsWith('RegistryAdmin.tsx')) &&
       adminFiles.some((f) => f.endsWith('ApprovalQueue.tsx')) &&
       adminFiles.some((f) => f.endsWith('LoginUrlRefresh.tsx')) &&
-      adminFiles.some((f) => f.endsWith('IconMetadataEditor.tsx')) &&
+      (adminFiles.some((f) => f.endsWith('IconAssetEditor.tsx')) ||
+        adminFiles.some((f) => f.endsWith('IconMetadataEditor.tsx'))) &&
       adminFiles.some((f) => f.endsWith('IntegrationStatusPanel.tsx')) &&
       adminFiles.some((f) => f.endsWith('adminRegistryApi.ts')),
     'AdminGate + M2–M7 section modules + adminRegistryApi must exist',
@@ -123,11 +124,12 @@ function main() {
     'Phase 107 migration must add admin RLS policies',
   );
 
+  // Phase 111 superseded metadata-only icon panel with file upload (AC-111-16).
   assert(
-    read('src/admin/IconMetadataEditor.tsx').includes('faviconSiteUrl') &&
-      !read('src/admin/IconMetadataEditor.tsx').includes('storage') &&
-      !read('src/admin/IconMetadataEditor.tsx').toLowerCase().includes('upload'),
-    'AC-107-5: icon editor is metadata-only (no Storage upload UI)',
+    read('src/admin/IconAssetEditor.tsx').includes('type="file"') &&
+      read('src/admin/IconAssetEditor.tsx').toLowerCase().includes('upload') &&
+      read('src/admin/RegistryAdmin.tsx').includes('IconAssetEditor'),
+    'Phase 111: Admin icon UI must be file-upload IconAssetEditor (not metadata-only only)',
   );
 
   assert(
@@ -154,16 +156,81 @@ function main() {
     'Shared login discovery must persist Phase 108 metadata',
   );
 
+  // M9 — Admin Console UI/UX Modernization (AC-107-8…18)
+  const adminApp = read('src/admin/AdminApp.tsx');
+  assert(
+    adminApp.includes('אתרים מובנים') &&
+      adminApp.includes('אתרים בהוספה ע"י משתמשים') &&
+      !adminApp.includes('קטלוג גלובלי') &&
+      !adminApp.includes('תור אישורים'),
+    'AC-107-11: nav labels renamed to אתרים מובנים / אתרים בהוספה ע"י משתמשים',
+  );
+
+  const registry = read('src/admin/RegistryAdmin.tsx');
+  assert(
+    registry.includes('admin-site-card') &&
+      registry.includes('פרטים נוספים') &&
+      registry.includes('כתובת הבית') &&
+      registry.includes('admin-filters') &&
+      registry.includes('addedByLabel') &&
+      registry.includes('formatAdminDate'),
+    'AC-107-9/10/13/16: website cards, More Details, Home URL, filters',
+  );
+  assert(
+    registry.includes('ביטול') && registry.includes('admin-collapse'),
+    'AC-107-15: compact edit with Cancel + collapsible sections',
+  );
+
+  const approvals = read('src/admin/ApprovalQueue.tsx');
+  assert(
+    approvals.includes('admin-pending-card') &&
+      approvals.includes('תאריך הגשה') &&
+      approvals.includes('הוגש על ידי') &&
+      approvals.includes('promoteUserSubmissionWithDiscovery'),
+    'AC-107-12: pending queue cards; promote semantics preserved',
+  );
+
+  const categories = read('src/admin/CategoriesAdmin.tsx');
+  assert(
+    categories.includes('generateCategoryId') &&
+      !categories.includes('מזהה (slug)') &&
+      categories.includes('אייקון (אופציונלי)'),
+    'AC-107-14: category create name+optional icon; auto-generated code',
+  );
+
+  const presentation = read('src/admin/adminPresentation.ts');
+  assert(
+    presentation.includes('generateCategoryId') && presentation.includes('addedByLabel'),
+    'M9 presentation helpers exist',
+  );
+
+  const adminCss = read('src/admin/admin.css');
+  assert(
+    adminCss.includes('--admin-primary') &&
+      adminCss.includes('admin-card-grid') &&
+      adminCss.includes('admin-modal') &&
+      /max-width:\s*700px/.test(adminCss),
+    'AC-107-8/17: DH tokens + responsive card/modal styles',
+  );
+
+  // Re-affirm AC-107-7 / AC-107-18 — no credential access after M9
+  assert(
+    !/encrypted_credentials|decryptPayload|service_role|access_profiles/.test(adminBundle),
+    'AC-107-7/18: M9 UI must not introduce credential access',
+  );
+
   console.log('PASS: Phase 107 Admin Management Platform (static)');
   console.log('  admin modules: AdminGate + Categories + Registry + Approval + Login URL + Icon + Status');
   console.log('  AC-107-7: no encrypted_credentials / vault decrypt / service_role in src/admin/**');
+  console.log('  M9: cards, More Details, nav rename, filters, auto category id (AC-107-8…18)');
   console.log('  migration: is_admin + RLS + promote_user_submission + admin_update_login_url');
-  console.log('  AC-107-5: metadata-only icons (Phase 111 Storage deferred)');
+  console.log('  AC-107-5: icon panel superseded by Phase 111 IconAssetEditor (file upload)');
   console.log('');
   console.log('Manual UAT (operator):');
   console.log('  T1 non-admin denied at #/admin');
   console.log('  T2 admin gate pass after is_admin bootstrap SQL');
   console.log('  T8–T12 approval queue + login URL refresh + rediscovery');
+  console.log('  T23–T33 M9 visual / cards / filters / category auto-code');
 }
 
 try {

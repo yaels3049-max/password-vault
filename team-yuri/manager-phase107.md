@@ -4,23 +4,32 @@
 PHASE=107
 
 ## Status
-STATUS: READY_FOR_DEVELOPER
+STATUS: READY_FOR_DEVELOPER — **M9 Admin Console UI/UX Modernization**
+
+## Scheduling (critical)
+- Current `team-Yuri/PHASE.md` is **`PHASE=113`** — **do not change it**.
+- Run Admin **M9 as a parallel track** OR after Phase 113 Credential M7.
+- **Do not** fold Admin redesign into Phase 113 / Credential Details work.
+- Ownership remains Phase **107** (AC-107-8…18 / D-107-13…20).
 
 ## Phase Goal
-Deliver an **Admin Management Platform** — a separate operational console for **catalog curation** and **integration health review**: category management, global `service_registry` CRUD, user-submission approval, login URL refresh/rediscovery, interim icon metadata editing, and integration status visibility — while **never** accessing user credential plaintext (AC-107-7, ADR-002).
+Deliver an **Admin Management Platform** — a separate operational console for **catalog curation** and **integration health review**: category management, global `service_registry` CRUD, user-submission approval, login URL refresh/rediscovery, interim icon metadata editing, and integration status visibility — while **never** accessing user credential plaintext (AC-107-7 / AC-107-18, ADR-002).
+
+**UX bar (M9):** The console must feel like a **premium Digital Home management app**, not a legacy CRUD editor — same visual language as Digital Home (Heebo, colors, radius, spacing, cards, shadows, buttons).
 
 Phase 107 owns **admin surfaces, admin authorization, and registry/category write policies** for platform operators. It does not own end-user Digital Home (105), Service Management (104), full icon asset pipeline (111), browser packaging (108), or production account registration UX (190).
 
 ## Source References
-- `team-Yuri/arch-phase107.md` (READY_FOR_MANAGER)
+- `team-Yuri/arch-phase107.md` — READY_FOR_MANAGER; **Admin Console UI Modernization** (D-107-13…20); Handoff Notes
 - `team-Yuri/PLAN.md` §6 — Service Registry lifecycle and governance
 - `team-Yuri/PLAN.md` §12 — Product Governance / approval workflow
 - `team-Yuri/PLAN.md` §15 — Admin Architecture
-- `team-Yuri/PLAN.md` §18 — Phase 107 acceptance criteria (AC-107-1 … AC-107-7)
-- `team-Yuri/PHASE.md` — `PHASE=107`
+- `team-Yuri/PLAN.md` §18 — Phase 107 acceptance criteria (**AC-107-1 … AC-107-18**); changelog **5.33**
+- `team-Yuri/PHASE.md` — currently `PHASE=113` (parallel-track; do not rewrite to 107 for M9 alone)
 - `docs/DECISIONS.md` — ADR-002 Zero-Knowledge Architecture
 - `team-Yuri/arch-phase102.md` — `service_registry`, RLS, `persist_discovered_login_url` RPC
 - `team-Yuri/arch-phase104.md` — user custom services (`source_type=user`)
+- Primary M9 targets: `src/admin/**` (`AdminApp`, `RegistryAdmin`, `ApprovalQueue`, `CategoriesAdmin`, `IntegrationStatusPanel`, `admin.css`)
 - `supabase/migrations/20260702121500_phase101_schema.sql` — baseline schema
 - `supabase/migrations/20260703120200_phase102_rls_delta.sql` — registry visibility + user-owned CRUD
 
@@ -37,6 +46,16 @@ Phase 107 owns **admin surfaces, admin authorization, and registry/category writ
 - **Integration status (D-107-9, AC-107-6):** Read-only panel — `adapter_id`, `login_url_status`, discovery metadata; no new telemetry pipeline.
 - **No execution/administration blur (D-107-11):** Admin does not open services for autofill, manage `user_services`, or edit vault state.
 - **Registry cache invalidation (D-107-12):** After admin writes, clear/invalidate client catalog cache (`clearRegistryCatalogCache`).
+- **Digital Home visual parity (D-107-13, AC-107-8):** Heebo, type scale, BG/shell colors, primary/secondary, radius, spacing, button/card/shadow/icon styles; RTL Hebrew.
+- **Website cards (D-107-14, AC-107-9):** Icon, name, category, status, login URL when set, added date, added-by origin — not dense CRUD lists.
+- **More Details modal (D-107-15, AC-107-10):** Technical IDs/JSON/adapter/source_type/diagnostics behind «פרטים נוספים» only.
+- **Nav copy (D-107-16, AC-107-11):** «אתרים מובנים»; «אתרים בהוספה ע"י משתמשים»; אתר/אתרים glossary.
+- **Pending queue cards (D-107-17, AC-107-12):** Submitted date/by, preview icon, category, Approve, Reject.
+- **Home URL + optional Login URL (D-107-18, AC-107-13):** No jargon; empty login → Home URL for Digital Home.
+- **Compact edit (D-107-19, AC-107-15):** Collapsible sections; Save/Cancel.
+- **Search & filters (D-107-20, AC-107-16, AC-107-17):** Filters + search; responsive; no unnecessary horizontal scroll.
+- **Category auto-code (D-107-5 amended, AC-107-14):** Name (+ optional icon) only; system generates unique code/id.
+- **Presentation-only integrity (AC-107-18):** Do not change registry/approval/discovery business logic unless an AC requires it. Preserve AC-107-7 zero credential access.
 
 ### Canonical `service_status` values (Phase 107)
 
@@ -71,6 +90,19 @@ Extend check constraint if needed; promotion creates **new global row** when ids
 | AC-107-5 | Admin can manage service icons |
 | AC-107-6 | Admin can view integration status (generic vs adapter, last discovery outcome) |
 | AC-107-7 | Admin cannot view user credential plaintext |
+| AC-107-8 | Admin console visual design matches Digital Home (typography, colors, radius, spacing, cards, buttons, shadows, icons) |
+| AC-107-9 | Built-in websites are presented as modern cards showing icon, name, category, status, login URL when set, added date, and added-by origin |
+| AC-107-10 | Technical identifiers, raw metadata/JSON, adapter internals, and UUIDs are hidden by default and available only via an explicit «פרטים נוספים» / More Details modal |
+| AC-107-11 | Navigation labels use «אתרים מובנים» and «אתרים בהוספה ע"י משתמשים» (or equivalent Hebrew); admin UI uses אתר/אתרים glossary |
+| AC-107-12 | Pending user websites queue shows submitted date, submitted by, preview icon, category, approve, and reject in a card-friendly layout |
+| AC-107-13 | Admin can configure Home URL and optional Login URL for websites without exposure to implementation jargon; missing Login URL means Digital Home uses Home URL |
+| AC-107-14 | Category creation collects name (and optional icon) only; the system generates a unique category code/id |
+| AC-107-15 | Website edit uses compact sections / collapsible groups with clear Save and Cancel (not oversized full-page forms) |
+| AC-107-16 | Admin can filter by category, built-in, custom, user-submitted, active, inactive and search by website name, category, or login URL |
+| AC-107-17 | Admin screens are usable on desktop/tablet/laptop without unnecessary horizontal scrolling or oversized controls |
+| AC-107-18 | Existing approval, registry write policies, rediscovery, and zero-credential-access rules remain intact (presentation changes only unless an AC above requires behavior) |
+
+**Keep AC-107-1…7 intact.** M9 adds presentation + limited UX functional improvements (AC-107-8…18) without regressing platform gates.
 
 ### AC-107-5 interim interpretation (Phase 111 deferral)
 **PLAN §15** references full icon lifecycle (upload, Storage, Phase 111). For Phase 107, AC-107-5 is satisfied by **metadata-level** icon editing only:
@@ -102,6 +134,7 @@ Evidence must include explicit **AC-107-7 affirmation** plus static verify proof
 | M6 | Interim icon metadata editor | `IconMetadataEditor.tsx` — emoji/favicon metadata only | Icon fields editable without Storage | AC-107-5 |
 | M7 | Integration status panel | `IntegrationStatusPanel.tsx` — adapter, discovery, health metadata | Status visible per service | AC-107-6 |
 | M8 | Verify script + docs + manual matrix | `verifyPhase107Admin.mjs`; `docs/MIGRATION_PHASE_107.md`; build PASS; regression scripts | Static + manual gates PASS; AC-107-7 affirmed | AC-107-7, all ACs |
+| **M9** | **Admin Console UI/UX Modernization** | DH visual parity; website cards; More Details; nav rename; pending cards; Home/Login URL copy; auto category codes; compact edit; filters/search; evidence | Screenshots + AC-107-8…18; AC-107-7/18 still affirmed | AC-107-8…18 (preserve 1…7) |
 
 ## Detailed Development Plan
 
@@ -250,6 +283,114 @@ No live telemetry pipeline required in 107.
 
 **Regression:** Re-run `verifyPhase102Registry.mjs` (and Phase 103 execution static if touched); end-user catalog load unchanged for non-admin users.
 
+### M9 — Admin Console UI/UX Modernization (AC-107-8…18 / D-107-13…20)
+
+**Scheduling:** Parallel to Phase 113 **or** after 113 Credential M7. **Do not** implement under Phase 113. Do not change `PHASE.md`.
+
+**Primary rule:** UI/UX primary. Do **not** change registry/approval/discovery business logic unless an AC requires it. Preserve **zero admin credential access** (AC-107-7, AC-107-18). Prefer Phase 111 Storage icons on cards when present (same DH paint cascade).
+
+**Targets:** `src/admin/**` — `AdminApp`, `RegistryAdmin`, `ApprovalQueue`, `CategoriesAdmin`, `IntegrationStatusPanel`, `admin.css` (+ shared design tokens if already used by Digital Home).
+
+#### M9.1 — Visual parity with Digital Home (AC-107-8 / D-107-13)
+- Heebo font, type scale, BG/shell colors, primary/secondary, border-radius, spacing.
+- Cards, buttons, shadows, icons match Digital Home language.
+- RTL Hebrew throughout admin shell.
+- Premium management feel — not a separate “legacy admin skin”.
+
+#### M9.2 — Website cards (AC-107-9 / D-107-14)
+Primary card fields for built-in / global catalog:
+- Icon (DH cascade)
+- Name
+- Category
+- Status
+- Login URL (when set)
+- Added date
+- Added-by origin: **Built-in** / **Administrator** / **username** (Hebrew origin wording OK)
+- Compact cards — no full-width oversized fields dominating layout.
+
+#### M9.3 — «פרטים נוספים» / More Details modal (AC-107-10 / D-107-15)
+Hidden by default; modal only:
+- Global ID / UUIDs
+- Raw metadata / JSON
+- Adapter name / `adapter_id`
+- `source_type`
+- Internal status enums / flags
+- Validation/build / discovery diagnostics
+- Integration status fields (AC-107-6) surface primarily here after modernization
+
+#### M9.4 — Nav rename (AC-107-11 / D-107-16)
+- «קטלוג גלובלי» → **«אתרים מובנים»**
+- «תור אישורים» → **«אתרים בהוספה ע"י משתמשים»**
+- Use אתר/אתרים glossary in Hebrew admin UI
+
+#### M9.5 — Pending queue cards (AC-107-12 / D-107-17)
+Card-friendly (not dense CRUD table):
+- Submitted date
+- Submitted by
+- Preview icon
+- Category
+- Approve / Reject actions
+- **Do not** change promote/reject semantics (AC-107-3 / AC-107-18)
+
+#### M9.6 — Home URL + optional Login URL (AC-107-13 / D-107-18)
+- Every website: **Home URL** + optional **Login URL** (friendly labels — no `primary_url` / adapter jargon in primary UI)
+- Helper copy: if Login URL empty, Digital Home uses Home URL
+- Applies to custom/promoted websites as configured today
+
+#### M9.7 — Category create auto-code (AC-107-14 / D-107-5 amended)
+- Admin enters **name** (+ optional icon) only
+- System generates unique category code/`id` (slug + uniqueness; document in migration note if needed)
+- Admin never types technical identifiers for create
+
+#### M9.8 — Compact collapsible edit (AC-107-15 / D-107-19)
+- Edit website like credential modal: compact sections, collapsible groups
+- Clear **Save** / **Cancel**
+- Not huge vertical full-page forms
+
+#### M9.9 — Filters + search + responsive (AC-107-16, AC-107-17 / D-107-20)
+**Filters:** category, built-in, custom, user-submitted, active, inactive  
+**Search:** website name, category, login URL  
+**Responsive:** desktop / tablet / laptop usable; no unnecessary horizontal scroll; no oversized controls
+
+#### M9.10 — Evidence (AC-107-18 + AC-107-7)
+Screenshots required:
+1. Built-in website cards (all primary fields visible)
+2. Pending queue cards (date/by/icon/category/approve/reject)
+3. Category create (name + optional icon; **no** manual code field)
+4. Compact edit + Save/Cancel
+5. «פרטים נוספים» modal with technical fields
+6. Filters / search in use
+7. Nav labels showing new Hebrew names
+
+Plus:
+- Re-run `node scripts/verifyPhase107Admin.mjs` — still affirms **no credential access**
+- Explicit AC-107-7 / AC-107-18 affirmation in `dev-phase107.md` (M9 section)
+- `npm run build` PASS
+- Brief note in `docs/MIGRATION_PHASE_107.md` (or addendum) for M9 UX + category auto-id
+
+#### M9 AC mapping
+
+| Work item | AC | Decision |
+|---|---|---|
+| Visual parity | AC-107-8 | D-107-13 |
+| Website cards | AC-107-9 | D-107-14 |
+| More Details modal | AC-107-10 | D-107-15 |
+| Nav rename | AC-107-11 | D-107-16 |
+| Pending cards | AC-107-12 | D-107-17 |
+| Home + optional Login URL | AC-107-13 | D-107-18 |
+| Category auto-code | AC-107-14 | D-107-5 |
+| Compact edit | AC-107-15 | D-107-19 |
+| Filters + search | AC-107-16 | D-107-20 |
+| Responsive | AC-107-17 | D-107-20 |
+| Integrity / no credential access | AC-107-18 (+ AC-107-7) | D-107-10 |
+
+#### M9 out-of-scope reminders
+- Phase 113 Credential Details / Login Assistance work
+- Changing approval/promote/reject/rediscovery semantics
+- Credential / vault / decrypt UI
+- Full Phase 111 icon upload pipeline (prefer existing Storage assets when present)
+- End-user Digital Home redesign
+
 ## Admin RLS / RPC Plan (normative summary)
 
 ```text
@@ -302,6 +443,17 @@ Direct RLS preferred where sufficient; RPC for atomic promotion and admin login 
 | T20 | Built-in seeds stable | List built-in ids | `shufersal`, `clalit`, etc. unchanged unless admin edit | Constraint |
 | T21 | Build | `npm run build` | PASS | — |
 | T22 | Verify script | `node scripts/verifyPhase107Admin.mjs` | PASS | M8 |
+| T23 | DH visual parity | Open `/admin` next to Digital Home | Typography/colors/radius/spacing/cards/buttons match DH language | AC-107-8 |
+| T24 | Website cards | View «אתרים מובנים» | Cards show icon, name, category, status, login URL (if set), added date, added-by | AC-107-9 |
+| T25 | More Details | Open «פרטים נוספים» | IDs/JSON/adapter/source_type/diagnostics only in modal; not primary layout | AC-107-10 |
+| T26 | Nav rename | Inspect admin nav | «אתרים מובנים» + «אתרים בהוספה ע"י משתמשים» | AC-107-11 |
+| T27 | Pending cards | Open user-submission queue | Date, by, preview icon, category, Approve, Reject | AC-107-12 |
+| T28 | Home / Login URL | Edit website URLs | Friendly labels; empty Login → copy that Home is used | AC-107-13 |
+| T29 | Category auto-code | Create category with name only | Unique code generated; no manual code input required | AC-107-14 |
+| T30 | Compact edit | Edit website | Collapsible sections; Save/Cancel; not oversized form | AC-107-15 |
+| T31 | Filters + search | Apply filters; search name/category/login URL | Results match filters; search works | AC-107-16 |
+| T32 | Responsive | Desktop + tablet/laptop widths | Usable; no unnecessary horizontal scroll | AC-107-17 |
+| T33 | Integrity + no credentials | Approve/reject/rediscovery still work; verify script | Semantics intact; verify still PASS; no credential UI | AC-107-18, AC-107-7 |
 
 ## Required Developer Evidence
 `team-Yuri/dev-phase107.md` must include:
@@ -309,29 +461,34 @@ Direct RLS preferred where sufficient; RPC for atomic promotion and admin login 
 | Evidence area | Required content |
 |---|---|
 | Files changed | Full list including migrations, `src/admin/**`, `App.tsx` |
-| M1–M8 milestones | Completion table |
-| M8 static verify | `node scripts/verifyPhase107Admin.mjs` (**PASS**) |
+| M1–M8 milestones | Completion table (prior platform work) |
+| **M9 milestone** | Completion table for M9.1–M9.10 |
+| M8/M9 static verify | `node scripts/verifyPhase107Admin.mjs` (**PASS**) after M9 |
 | **AC-107-7 affirmation** | Explicit: no `encrypted_credentials` queries; no vault decrypt in admin; no `service_role` in client |
+| **AC-107-18 affirmation** | Approval/registry/rediscovery unchanged except AC-required presentation/UX; no credential access |
 | Bootstrap SQL | How dev admin user was granted `is_admin=true` |
-| Functional matrix | T1–T22 results (or N/A with reason) |
+| Functional matrix | T1–T33 results (or N/A with reason) |
 | Approval flow | Screenshot or log: promote + reject paths |
 | Login URL refresh | Manual edit + rediscovery observation |
-| Phase 111 deferral | Note: AC-107-5 metadata-only; Storage deferred |
-| Documentation | `docs/MIGRATION_PHASE_107.md` |
+| **M9 screenshots** | Built-in cards; pending cards; category create (no manual code); compact edit; More Details; filters; nav labels |
+| Phase 111 deferral | Prefer Storage icons when present; no new Storage pipeline under M9 |
+| Documentation | `docs/MIGRATION_PHASE_107.md` (+ M9 / category auto-id note) |
 | Build | `npm run build` (**PASS**) |
 | Regression | `verifyPhase102Registry.mjs` (and Phase 103 if applicable) |
+| Scheduling note | Affirm work not folded into Phase 113 |
 | Tests / lint | Result or NOT AVAILABLE with reason |
 
 ## Out of Scope (must not be implemented)
-- Full Phase 111 icon pipeline (Storage, normalization, versioning, auto-discovery)
+- Full Phase 111 icon pipeline (Storage, normalization, versioning, auto-discovery) — cards may **consume** existing 111 assets
 - Phase 108 browser store packaging
-- Phase 109 credential lifecycle UX
-- Phase 113 URL canonicalization engine
+- Phase 109 / **113** credential lifecycle / Credential Details / Login Assistance (do not merge Admin M9 into 113)
+- Phase 116 URL canonicalization engine
 - Phase 150+ subscription gating in admin
 - Phase 190 full registration/login product UX (`is_admin` flag only this phase)
 - Enterprise org admin, SSO, audit log product
 - Automated integration health scoring from live fill telemetry
-- End-user Digital Home or Service Management redesign
+- End-user Digital Home or Service Management redesign (Admin may **match** DH visual language only)
+- Changing approval/promote/reject/rediscovery **business logic** unless an AC requires it
 - Admin autofill / execution / vault editing
 - Querying or displaying `encrypted_credentials` ciphertext or decrypted values
 
@@ -342,10 +499,17 @@ Direct RLS preferred where sufficient; RPC for atomic promotion and admin login 
 - **Built-in seed stability** — discourage destructive deletes; prefer `disabled` / `deprecated`.
 - **Catalog cache staleness** — Hub may need reload after admin publish; auto-invalidate on admin save recommended.
 - **RLS policy interaction** — admin SELECT policy must not break existing `service_registry_select_visible` for regular users (additive policies).
+- **M9 scope creep into Phase 113** — keep Admin redesign under Phase 107 artifacts; leave `PHASE.md` at 113.
+- **Category auto-id collisions** — generation must enforce uniqueness (slug + disambiguator).
+- **Accidentally changing approve/reject under card UI** — presentation change only; smoke T33.
 
 ## Manager Review
 MANAGER_REVIEW_STATUS: NOT_REVIEWED
 
 ### Review Notes
+- PHASE.md remains **113**. M9 planned as **parallel track** (or after 113 Credential M7) — not merged into 113.
+- M9 covers D-107-13…20 / AC-107-8…18; AC-107-1…7 and AC-107-7 zero-credential access preserved.
+- STATUS: **READY_FOR_DEVELOPER** — hand off M9 to Sarah.
 
 ### Required Corrections
+_None at M9 planning._

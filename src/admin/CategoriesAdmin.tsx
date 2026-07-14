@@ -6,14 +6,15 @@ import {
   updateAdminCategory,
   type AdminCategory,
 } from './adminRegistryApi';
+import { generateCategoryId } from './adminPresentation';
 
 export default function CategoriesAdmin() {
   const [categories, setCategories] = useState<AdminCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [newId, setNewId] = useState('');
   const [newName, setNewName] = useState('');
+  const [newIcon, setNewIcon] = useState('');
   const [newSortOrder, setNewSortOrder] = useState(100);
 
   const reload = useCallback(async () => {
@@ -39,15 +40,25 @@ export default function CategoriesAdmin() {
     setError(null);
     setSuccess(null);
 
+    const trimmedName = newName.trim();
+    if (!trimmedName) return;
+
+    const id = generateCategoryId(
+      trimmedName,
+      categories.map((c) => c.id),
+    );
+    const icon = newIcon.trim();
+    const displayName = icon ? `${icon} ${trimmedName}` : trimmedName;
+
     try {
       await createAdminCategory({
-        id: newId,
-        display_name: newName,
+        id,
+        display_name: displayName,
         sort_order: newSortOrder,
       });
-      setNewId('');
       setNewName('');
-      setSuccess('הקטגוריה נוצרה.');
+      setNewIcon('');
+      setSuccess(`הקטגוריה נוצרה (קוד: ${id}).`);
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'יצירת קטגוריה נכשלה.');
@@ -63,7 +74,7 @@ export default function CategoriesAdmin() {
         display_name: displayName,
         sort_order: sortOrder,
       });
-      setSuccess(`הקטגוריה "${category.id}" עודכנה.`);
+      setSuccess('הקטגוריה עודכנה.');
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'עדכון קטגוריה נכשל.');
@@ -71,7 +82,7 @@ export default function CategoriesAdmin() {
   }
 
   async function handleDelete(categoryId: string) {
-    if (!window.confirm(`למחוק את הקטגוריה "${categoryId}"?`)) {
+    if (!window.confirm('למחוק את הקטגוריה?')) {
       return;
     }
 
@@ -90,8 +101,8 @@ export default function CategoriesAdmin() {
   return (
     <section className="admin-section">
       <header className="admin-section-header">
-        <h2>ניהול קטגוריות</h2>
-        <p>יצירה, עריכה וסידור קטגוריות לקטלוג השירותים.</p>
+        <h2>קטגוריות</h2>
+        <p>יצירה ועריכה של קטגוריות לאתרי הקטלוג. הקוד הטכני נוצר אוטומטית.</p>
       </header>
 
       {loading && <p className="admin-muted">טוען…</p>}
@@ -106,26 +117,43 @@ export default function CategoriesAdmin() {
         </p>
       )}
 
-      <form className="admin-form admin-form-inline" onSubmit={(event) => void handleCreate(event)}>
-        <label className="admin-field">
-          <span>מזהה (slug)</span>
-          <input value={newId} onChange={(e) => setNewId(e.target.value)} required />
-        </label>
-        <label className="admin-field">
-          <span>שם תצוגה</span>
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} required />
-        </label>
-        <label className="admin-field admin-field--narrow">
-          <span>סדר</span>
-          <input
-            type="number"
-            value={newSortOrder}
-            onChange={(e) => setNewSortOrder(Number(e.target.value))}
-          />
-        </label>
-        <button type="submit" className="admin-btn admin-btn-primary">
-          הוסף קטגוריה
-        </button>
+      <form className="admin-edit-shell" onSubmit={(event) => void handleCreate(event)}>
+        <h3>קטגוריה חדשה</h3>
+        <div className="admin-form-inline admin-form">
+          <label className="admin-field">
+            <span>שם</span>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              required
+              placeholder="לדוגמה: בנקים"
+            />
+          </label>
+          <label className="admin-field admin-field--narrow">
+            <span>אייקון (אופציונלי)</span>
+            <input
+              value={newIcon}
+              onChange={(e) => setNewIcon(e.target.value)}
+              placeholder="🏦"
+              maxLength={4}
+              aria-label="אייקון אופציונלי"
+            />
+          </label>
+          <label className="admin-field admin-field--narrow">
+            <span>סדר</span>
+            <input
+              type="number"
+              value={newSortOrder}
+              onChange={(e) => setNewSortOrder(Number(e.target.value))}
+            />
+          </label>
+          <button type="submit" className="admin-btn admin-btn-primary">
+            הוסף קטגוריה
+          </button>
+        </div>
+        <p className="admin-field-hint">
+          אין צורך להזין קוד/מזהה — המערכת מייצרת קוד ייחודי אוטומטית.
+        </p>
       </form>
 
       <ul className="admin-list">
@@ -168,13 +196,12 @@ function CategoryRow({
         void onSave(category, displayName, sortOrder);
       }}
     >
-      <span className="admin-chip">{category.id}</span>
       <label className="admin-field">
-        <span className="admin-sr-only">שם תצוגה</span>
+        <span>שם תצוגה</span>
         <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
       </label>
       <label className="admin-field admin-field--narrow">
-        <span className="admin-sr-only">סדר</span>
+        <span>סדר</span>
         <input
           type="number"
           value={sortOrder}
@@ -187,6 +214,12 @@ function CategoryRow({
       <button type="button" className="admin-btn admin-btn-danger" onClick={onDelete}>
         מחק
       </button>
+      <details className="admin-details">
+        <summary>פרטים נוספים</summary>
+        <p className="admin-muted">
+          קוד מערכת: <span className="admin-chip">{category.id}</span>
+        </p>
+      </details>
     </form>
   );
 }

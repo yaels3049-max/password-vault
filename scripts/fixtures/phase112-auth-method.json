@@ -1,0 +1,14 @@
+{
+  "id": "auth-method-selection",
+  "description": "Auth method chooser with federated options — AC-112-5/6",
+  "signals": {
+    "hasAuthMethodSelection": true,
+    "hasFederatedButtons": true,
+    "federatedProviders": ["google", "apple"]
+  },
+  "expect": {
+    "loginComplexity": "medium",
+    "loginFlowType": "auth_method_selection",
+    "noFederatedAutoClick": true
+  }
+}

@@ -26,7 +26,7 @@ it is a web-app Digital Home UX change only.
 - Tile open path unchanged: `openServiceWithProfile` → `executeServiceFromTile`.
 - Missing-credentials open still opens the site when a URL is available and shows Hebrew guidance.
 - Empty selection → CTA to Service Management; soft catalog loading shells; friendly offline/error copy.
-- Soft-deferred: Phase 111 icons (interim logos), Phase 113 URL canonicalization.
+- Soft-deferred: Phase 111 icons (interim logos), Phase 116 URL canonicalization.
 
 ## Verification
 
@@ -55,7 +55,7 @@ Service Management Open remains **retired** (Phase 104). Digital Home is the sol
 ## Soft-deferred (explicitly out of scope)
 
 - **Phase 111** — full icon asset pipeline / Supabase Storage (interim `useServiceLogos`).
-- **Phase 113** — URL canonicalization / duplicate-registry prevention.
+- **Phase 116** — URL canonicalization / duplicate-registry prevention.
 - Advanced notification engine; full Useful Services ranking algorithm.
 - Security/trust UX (Phase 106), registry CRUD (Phase 107), lifecycle health (Phase 109).
 

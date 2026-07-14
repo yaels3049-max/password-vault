@@ -97,7 +97,9 @@ function main() {
   );
   assert(
     profileModal.includes('onClick={() => void handleSaveCredentials()}') &&
-      /type="button"[\s\n\r]*className="modal-btn modal-btn-primary"/.test(profileModal),
+      /type="button"[\s\S]{0,120}(?:className="(?:cd-save|modal-btn modal-btn-primary)")/.test(
+        profileModal,
+      ),
     'Credential save must use type=button onClick (not form submit) to avoid PM save bubble',
   );
   assert(

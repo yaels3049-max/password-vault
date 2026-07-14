@@ -20,6 +20,13 @@ export interface Service {
   loginFields?: LoginField[];
   /** Optional adapter routing metadata (e.g. htzone). */
   adapterId?: string;
+  /**
+   * Phase 112 — Login Intelligence snapshot for execution soft-branch.
+   * Sourced from service_registry.metadata; never contains credentials.
+   */
+  loginIntelligence?: import('../loginIntelligence/types').LoginIntelligence | null;
+  /** Raw registry metadata subset when full LI parse is unavailable. */
+  metadata?: Record<string, unknown>;
 }
 
 export const DEFAULT_LOGIN_FIELDS: LoginField[] = [

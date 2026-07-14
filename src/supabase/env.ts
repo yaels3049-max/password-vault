@@ -1,5 +1,8 @@
 export interface SupabaseEnvConfig {
+  /** Client API base (may be Vite `/dev-supabase-proxy` in DEV). */
   url: string;
+  /** Always the real `https://<ref>.supabase.co` project URL. */
+  remoteUrl: string;
   anonKey: string;
 }
 
@@ -9,20 +12,21 @@ function normalizeSupabaseBaseUrl(rawUrl: string): string {
   return trimmed.replace(/\/rest\/v1\/?$/i, '');
 }
 
+function useDevSupabaseProxy(): boolean {
+  if (!import.meta.env.DEV) {
+    return false;
+  }
+  if (import.meta.env.VITE_SUPABASE_DEV_PROXY === 'false') {
+    return false;
+  }
+  return typeof window !== 'undefined';
+}
+
 /** In dev, route Supabase through Vite proxy (browser → localhost → Supabase). */
 function resolveSupabaseUrl(remoteUrl: string): string {
-  if (!import.meta.env.DEV) {
+  if (!useDevSupabaseProxy()) {
     return remoteUrl;
   }
-
-  if (import.meta.env.VITE_SUPABASE_DEV_PROXY === 'false') {
-    return remoteUrl;
-  }
-
-  if (typeof window === 'undefined') {
-    return remoteUrl;
-  }
-
   return `${window.location.origin}/dev-supabase-proxy`;
 }
 
@@ -40,7 +44,28 @@ export function getSupabaseConfig(): SupabaseEnvConfig | null {
     return null;
   }
 
-  return { url, anonKey: key };
+  return { url, remoteUrl, anonKey: key };
+}
+
+/** Canonical project URL — never the Vite proxy (for persisted Storage public URLs). */
+export function getSupabaseRemoteUrl(): string | null {
+  return getSupabaseConfig()?.remoteUrl ?? null;
+}
+
+/**
+ * Rewrites a persisted Storage public URL so the browser loads it via the DEV proxy
+ * when Netfree/safepage would block direct `*.supabase.co` image requests.
+ */
+export function toBrowserAccessibleStorageUrl(publicUrl: string): string {
+  const trimmed = publicUrl.trim();
+  if (!trimmed || !useDevSupabaseProxy()) {
+    return trimmed;
+  }
+  const remote = getSupabaseRemoteUrl();
+  if (!remote || !trimmed.startsWith(remote)) {
+    return trimmed;
+  }
+  return `${window.location.origin}/dev-supabase-proxy${trimmed.slice(remote.length)}`;
 }
 
 export function isSupabaseConfigured(): boolean {

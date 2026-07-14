@@ -277,7 +277,7 @@ function main() {
     'Developer evidence team-Yuri/dev-phase110.md required',
   );
 
-  // Phase 113 / identity must not be touched by Phase 110 generic path
+  // Phase 116 / identity must not be touched by Phase 110 generic path
   assert(
     !execution.includes('canonical') && !eligibility.includes('canonical'),
     'Phase 110 must not introduce URL canonicalization (AC-110-12)',

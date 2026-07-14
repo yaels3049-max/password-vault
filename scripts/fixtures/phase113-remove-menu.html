@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <title>Phase 113 — remove menu fixture</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: system-ui, sans-serif;
+        background: #e8eef6;
+        color: #0f172a;
+      }
+      .shell {
+        max-width: 880px;
+        margin: 2rem auto;
+        padding: 1.5rem;
+        border-radius: 24px;
+        overflow: hidden;
+        background: #fff;
+        box-shadow: 0 10px 36px rgba(15, 23, 42, 0.08);
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+      }
+      .sm-menu-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+      }
+      .sm-menu {
+        position: fixed;
+        top: 132px;
+        left: 48px;
+        z-index: 41;
+        min-width: 148px;
+        padding: 0.25rem;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+      }
+      .sm-menu-item {
+        display: block;
+        width: 100%;
+        padding: 0.45rem 0.6rem;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        font: inherit;
+        font-size: 0.875rem;
+        font-weight: 650;
+        text-align: start;
+        color: #2563eb;
+        cursor: pointer;
+      }
+      h1 {
+        text-align: center;
+      }
+      .note {
+        text-align: center;
+        color: #64748b;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <h1>האתרים שלי — תפריט הסרה</h1>
+      <div class="row">
+        <span>⋮</span>
+        <span>ניהול</span>
+        <strong style="margin-inline-start: auto">דוגמה</strong>
+      </div>
+      <p class="note">AC-113-36: full visible blue «הסר אתר», no trash, not clipped by shell.</p>
+    </div>
+    <div class="sm-menu-backdrop"></div>
+    <div class="sm-menu" role="menu">
+      <button type="button" class="sm-menu-item">הסר אתר</button>
+    </div>
+  </body>
+</html>

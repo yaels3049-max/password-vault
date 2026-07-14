@@ -203,7 +203,7 @@ Do **not** block Phase 105 on 111/113.
 - Changes to `executeServiceFromTile` orchestration
 - New execution adapters
 - Auto-submit login forms
-- Full Phase 111 icon Storage pipeline / Phase 113 canonicalization engine
+- Full Phase 111 icon Storage pipeline / Phase 116 canonicalization engine
 - Security/trust UX (Phase 106)
 
 ## Risks / Open Questions

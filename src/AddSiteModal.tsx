@@ -33,15 +33,18 @@ export default function AddSiteModal({
   );
   const [urlError, setUrlError] = useState<string | null>(null);
 
-  function validateUrlField(url: string): boolean {
+  function normalizeUrlField(url: string): string | null {
     const result = validateCustomPrimaryUrl(url);
     if (!result.valid) {
       setUrlError(result.message);
-      return false;
+      return null;
     }
 
     setUrlError(null);
-    return true;
+    if (result.normalizedUrl !== url.trim()) {
+      setPrimaryUrl(result.normalizedUrl);
+    }
+    return result.normalizedUrl;
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -51,14 +54,15 @@ export default function AddSiteModal({
     const trimmedName = displayName.trim();
     const trimmedUrl = primaryUrl.trim();
     if (!trimmedName || !trimmedUrl) return;
-    if (!validateUrlField(trimmedUrl)) return;
-    void onAdd(trimmedName, trimmedUrl, category);
+    const normalized = normalizeUrlField(trimmedUrl);
+    if (!normalized) return;
+    void onAdd(trimmedName, normalized, category);
   }
 
   return (
     <div className="modal-overlay" onClick={isDiscovering ? undefined : onCancel}>
       <div
-        className="modal-dialog"
+        className="modal-dialog modal-dialog--frost"
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -77,20 +81,22 @@ export default function AddSiteModal({
           <label className="modal-field">
             <span>כתובת ראשית (HTTPS)</span>
             <input
-              type="url"
+              type="text"
+              inputMode="url"
+              autoComplete="url"
               value={primaryUrl}
               onChange={(e) => {
                 setPrimaryUrl(e.target.value);
                 if (urlError) {
-                  validateUrlField(e.target.value);
+                  normalizeUrlField(e.target.value);
                 }
               }}
               onBlur={() => {
                 if (primaryUrl.trim()) {
-                  validateUrlField(primaryUrl);
+                  normalizeUrlField(primaryUrl);
                 }
               }}
-              placeholder="https://"
+              placeholder="example.co.il או https://www…"
               dir="ltr"
               disabled={isDiscovering}
             />
@@ -117,7 +123,7 @@ export default function AddSiteModal({
           {isDiscovering && (
             <p className="modal-discovery-progress" role="status" aria-live="polite">
               <span className="modal-loading-spinner" aria-hidden="true" />
-              מוסיף את השירות…
+              מוסיף את האתר…
             </p>
           )}
           {discoveryMessage && !isDiscovering && (

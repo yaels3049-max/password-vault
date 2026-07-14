@@ -179,7 +179,7 @@ export default function AuthEntryScreen({
 
           <label className="unlock-field">
             <span>{AUTH_COPY.password}</span>
-            <div className="auth-password-row">
+            <div className="auth-password-wrap">
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
@@ -190,11 +190,14 @@ export default function AuthEntryScreen({
               />
               <button
                 type="button"
-                className="auth-password-toggle"
+                className="auth-password-eye"
                 onClick={() => setShowPassword((v) => !v)}
                 disabled={loading}
+                aria-label={showPassword ? AUTH_COPY.hidePassword : AUTH_COPY.showPassword}
+                aria-pressed={showPassword}
+                title={showPassword ? AUTH_COPY.hidePassword : AUTH_COPY.showPassword}
               >
-                {showPassword ? AUTH_COPY.hidePassword : AUTH_COPY.showPassword}
+                <AuthEyeIcon open={showPassword} />
               </button>
             </div>
           </label>
@@ -203,14 +206,27 @@ export default function AuthEntryScreen({
             <>
               <label className="unlock-field">
                 <span>{AUTH_COPY.passwordConfirm}</span>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={passwordConfirm}
-                  onChange={(e) => setPasswordConfirm(e.target.value)}
-                  autoComplete="new-password"
-                  disabled={loading}
-                  required
-                />
+                <div className="auth-password-wrap">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={passwordConfirm}
+                    onChange={(e) => setPasswordConfirm(e.target.value)}
+                    autoComplete="new-password"
+                    disabled={loading}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="auth-password-eye"
+                    onClick={() => setShowPassword((v) => !v)}
+                    disabled={loading}
+                    aria-label={showPassword ? AUTH_COPY.hidePassword : AUTH_COPY.showPassword}
+                    aria-pressed={showPassword}
+                    title={showPassword ? AUTH_COPY.hidePassword : AUTH_COPY.showPassword}
+                  >
+                    <AuthEyeIcon open={showPassword} />
+                  </button>
+                </div>
               </label>
               <p className="auth-policy-hint">
                 {policy.isDevelopmentPolicy
@@ -236,5 +252,26 @@ export default function AuthEntryScreen({
         </form>
       </div>
     </div>
+  );
+}
+
+function AuthEyeIcon({ open }: { open: boolean }) {
+  if (open) {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path
+          fill="currentColor"
+          d="M12 5c-5.5 0-9.5 5.2-9.9 5.8a1 1 0 0 0 0 1.1C2.5 12.6 6.5 18 12 18s9.5-5.4 9.9-6.1a1 1 0 0 0 0-1.1C21.5 10.2 17.5 5 12 5zm0 11a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9zm0-2.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M3.3 2.3 2.2 3.4l3.1 3.1C3.5 8.1 2.2 10 1.9 10.6a1 1 0 0 0 0 1.1C2.5 12.6 6.5 18 12 18c1.7 0 3.2-.5 4.5-1.2l3.1 3.1 1.1-1.1L3.3 2.3zM12 16c-4.1 0-7.4-3.5-8.5-5 .7-1 2.1-2.6 4-3.6l1.6 1.6A4.5 4.5 0 0 0 12 15.5V16zm2.6-3.9-2.7-2.7a2 2 0 0 1 2.7 2.7zM12 6c.5 0 1 .1 1.5.2l1.5-1.5C14 4.3 13 4 12 4 6.5 4 2.5 9.2 2.1 9.9c.1.2.4.6.8 1.1L4.2 9.7C5.4 7.9 8.3 6 12 6zm9.9 4.5c-.3.5-1.6 2.4-3.8 3.9l-1.3-1.3c1.6-.9 2.8-2.2 3.4-3.1-.7-1-2.1-2.6-4-3.6l1.2-1.2C20.5 7.2 21.7 9.2 21.9 9.6a1 1 0 0 1 0 .9z"
+      />
+    </svg>
   );
 }

@@ -26,7 +26,7 @@ import { isDevBuild } from './dev/devMode';
 
 import { preloadServiceLogos } from './logoCache';
 
-import { HUB_PRACTICE_LOGIN_ID, setRuntimeBuiltinServices, setRuntimeCategoryCatalog } from './mockServices';
+import { setRuntimeBuiltinServices, setRuntimeCategoryCatalog } from './mockServices';
 
 import { clearRegistryCatalogCache } from './registry/registryLoader';
 import { loadRegistryCategories } from './registry/categoryCatalog';
@@ -94,7 +94,7 @@ const CUSTOM_SERVICE_CLOUD_FAIL_MESSAGE =
   'לא ניתן להוסיף את האתר כרגע. בדקו חיבור לרשת ונסו שוב.';
 
 const CUSTOM_SERVICE_DUPLICATE_MESSAGE =
-  'האתר כבר קיים ברשימת השירותים שלך.';
+  'האתר כבר קיים ברשימת האתרים שלך.';
 
 
 
@@ -289,6 +289,9 @@ function App() {
       dedupeServicesByPrimaryUrl(
         [...legacyBuiltinServices, ...legacyCustomServices],
         selectedIds,
+      ).filter(
+        (service) =>
+          service.id !== 'hub-practice-login' && service.category !== 'practice',
       ),
     [legacyBuiltinServices, legacyCustomServices, selectedIds],
   );
@@ -506,16 +509,6 @@ function App() {
       if (nextScreen === 'dashboard') {
         setManageIsFirstRun(false);
         setScreen('dashboard');
-      } else if (isDevBuild() && hydrated.selectedIds.length === 0) {
-        const initialIds = [HUB_PRACTICE_LOGIN_ID];
-        const nextState: VaultState = {
-          ...hydrated,
-          selectedIds: initialIds,
-        };
-        setVaultState(nextState);
-        setManageIsFirstRun(true);
-        setScreen('manage');
-        void saveVaultState(nextState);
       } else {
         setManageIsFirstRun(true);
         setScreen('manage');
@@ -662,7 +655,7 @@ function App() {
         discovery: null,
         outcome: {
           status: 'success',
-          message: 'השירות נוסף בהצלחה',
+          message: 'האתר נוסף בהצלחה',
         },
       };
     }
@@ -708,7 +701,7 @@ function App() {
         discovery: null,
         outcome: {
           status: 'failure',
-          message: 'השירות נוסף. ייתכן שנצטרך לפתוח אותו דרך דף הבית.',
+          message: 'האתר נוסף. ייתכן שנצטרך לפתוח אותו דרך דף הבית.',
         },
       };
     }
@@ -800,7 +793,7 @@ function App() {
   if (!catalogHydrated) {
     return (
       <div className="onboarding">
-        <p>טוען קטלוג שירותים…</p>
+        <p>טוען קטלוג אתרים…</p>
       </div>
     );
   }
@@ -835,7 +828,7 @@ function App() {
 
       <div className="onboarding">
 
-        <p>לא ניתן לטעון את קטלוג השירותים מהרשת.</p>
+        <p>לא ניתן לטעון את קטלוג האתרים מהרשת.</p>
 
         <p>{catalogError}</p>
 
@@ -867,12 +860,7 @@ function App() {
 
     return (
 
-      <AppVaultShell
-        vaultUnlocked={isUnlocked}
-        accountDisplayName={[accountProfile.firstName, accountProfile.lastName].filter(Boolean).join(' ')}
-        accountEmail={accountProfile.email}
-        onLockVault={handleLockVault}
-      >
+      <AppVaultShell>
 
         <ProfileResolution
 
@@ -892,7 +880,13 @@ function App() {
 
               credentialsByProfileId={vaultState.credentials}
 
+              accessProfiles={vaultState.accessProfiles}
+
               resolveProfile={resolveProfile}
+
+              userDisplayName={[accountProfile.firstName, accountProfile.lastName]
+                .filter(Boolean)
+                .join(' ')}
 
               showMagicMomentHint={showMagicMomentHint}
 
@@ -901,6 +895,10 @@ function App() {
               catalogLoading={catalogLoading}
 
               catalogError={catalogError}
+
+              vaultUnlocked={isUnlocked}
+
+              onLockVault={handleLockVault}
 
               onAddMore={() => {
 
@@ -926,12 +924,7 @@ function App() {
 
   return (
 
-    <AppVaultShell
-      vaultUnlocked={isUnlocked}
-      accountDisplayName={[accountProfile.firstName, accountProfile.lastName].filter(Boolean).join(' ')}
-      accountEmail={accountProfile.email}
-      onLockVault={handleLockVault}
-    >
+    <AppVaultShell>
 
       <ManageServices
         allServices={allServices}

@@ -16,11 +16,11 @@ export interface ServiceManagementContext {
 }
 
 /**
- * Derived (never stored) management state per D-104-7:
+ * Derived (never stored) management state per D-104-7 / AC-113-31:
  *   not_added → not in selectedIds
- *   multiple_profiles → selected with 2+ access profiles
- *   missing_credentials → selected, single profile, default credential incomplete
- *   added → selected, single profile, complete credential
+ *   missing_credentials → selected, default/primary credential incomplete
+ *   added → selected with complete credentials (single or multi-profile)
+ * Multi-profile alone is never an attention state (AC-113-31 / D-113-18).
  * Badges are informational only — they never block Open (execution handles missing creds).
  */
 export function deriveServiceManagementState(
@@ -32,10 +32,6 @@ export function deriveServiceManagementState(
   }
 
   const profiles = profilesForService(context.accessProfiles, service.id);
-  if (profiles.length > 1) {
-    return 'multiple_profiles';
-  }
-
   const defaultProfile =
     getDefaultProfile(context.accessProfiles, service.id) ?? profiles[0];
   const credential = defaultProfile
@@ -53,6 +49,7 @@ const BADGE_LABELS: Record<ServiceManagementState, string> = {
   not_added: 'לא נוסף',
   added: 'מוכן לשימוש',
   missing_credentials: 'חסרים פרטי כניסה',
+  /** Kept for type compat; no longer emitted as attention (AC-113-31). */
   multiple_profiles: 'מספר פרופילים',
 };
 

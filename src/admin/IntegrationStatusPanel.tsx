@@ -86,11 +86,11 @@ export default function IntegrationStatusPanel({ row }: IntegrationStatusPanelPr
           <dd>{metaString(metadata, 'loginUrlLastCheckedAt')}</dd>
         </div>
         <div>
-          <dt>מזהה שירות</dt>
+          <dt>מזהה אתר</dt>
           <dd>{row.id}</dd>
         </div>
         <div>
-          <dt>מקור / סטטוס שירות</dt>
+          <dt>מקור / סטטוס אתר</dt>
           <dd>
             {row.source_type} / {row.service_status}
           </dd>
@@ -124,8 +124,15 @@ export default function IntegrationStatusPanel({ row }: IntegrationStatusPanelPr
           </dd>
         </div>
         <div>
-          <dt>בריאות אינטגרציה</dt>
-          <dd>{formatJson(metadata.integrationHealth)}</dd>
+          <dt>בריאות אינטגרציה (integrationHealth)</dt>
+          <dd>{metaString(metadata, 'integrationHealth')}</dd>
+        </div>
+        <div>
+          <dt>loginComplexity / lastValidatedBy</dt>
+          <dd>
+            {metaString(metadata, 'loginComplexity')} /{' '}
+            {metaString(metadata, 'lastValidatedBy')}
+          </dd>
         </div>
         <div>
           <dt>עודכן לאחרונה</dt>

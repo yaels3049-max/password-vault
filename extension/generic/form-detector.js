@@ -350,9 +350,85 @@
     return buildDetection(document.body || document.documentElement, pageInputs);
   }
 
+  /**
+   * Phase 112 M9 / D-112-20 — identity-only step (email/username/id first).
+   * Accepts ≥1 visible non-password input. Does NOT require password on the same page.
+   * Must not use assessStandardLogin as a gate.
+   */
+  function detectVisibleIdentityStep() {
+    function partitionIdentity(visibleInputs) {
+      var textInputs = [];
+      var passwordInputs = [];
+      for (var j = 0; j < visibleInputs.length; j += 1) {
+        var input = visibleInputs[j];
+        var inputType = (input.type || 'text').toLowerCase();
+        if (inputType === 'password') {
+          passwordInputs.push(input);
+        } else {
+          textInputs.push(input);
+        }
+      }
+      return { textInputs: textInputs, passwordInputs: passwordInputs };
+    }
+
+    function buildIdentityDetection(scope, visibleInputs) {
+      var parts = partitionIdentity(visibleInputs);
+      if (parts.textInputs.length < 1) {
+        return null;
+      }
+      return {
+        form: scope,
+        textInputs: parts.textInputs,
+        passwordInputs: parts.passwordInputs,
+        allInputs: visibleInputs,
+        identityStep: true,
+      };
+    }
+
+    var forms = document.querySelectorAll('form');
+    var bestForm = null;
+    var bestScore = -1;
+    for (var i = 0; i < forms.length; i += 1) {
+      var form = forms[i];
+      var visible = getVisibleInputs(form);
+      var parts = partitionIdentity(visible);
+      if (parts.textInputs.length < 1) {
+        continue;
+      }
+      // Prefer forms that look like login/email step: score by identity signals + continue.
+      var score = parts.textInputs.length * 10;
+      var html = (form.innerHTML || '').toLowerCase();
+      if (/email|username|user|login|אימייל|משתמש/.test(html)) {
+        score += 40;
+      }
+      if (/continue|next|המשך|הבא/.test(html)) {
+        score += 20;
+      }
+      // Prefer identity-only pages slightly when no password present.
+      if (parts.passwordInputs.length === 0) {
+        score += 15;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestForm = form;
+      }
+    }
+
+    if (bestForm) {
+      var formDet = buildIdentityDetection(bestForm, getVisibleInputs(bestForm));
+      if (formDet) {
+        return formDet;
+      }
+    }
+
+    var pageInputs = getVisibleInputs(document);
+    return buildIdentityDetection(document.body || document.documentElement, pageInputs);
+  }
+
   root.GenericFormDetector = {
     isVisible: isVisible,
     detectVisibleLoginForm: detectVisibleLoginForm,
+    detectVisibleIdentityStep: detectVisibleIdentityStep,
     assessStandardLogin: assessStandardLogin,
     looksLikeBotInterstitial: looksLikeBotInterstitial,
   };

@@ -17,7 +17,7 @@ export const AUTH_COPY = {
   hidePassword: 'הסתר סיסמה',
   /** Single Digital Home password — one secret for Auth + local vault (AC-109-32). */
   accountPasswordHint:
-    'סיסמה אחת לבית הדיגיטלי: היא מחברת את החשבון ופותחת את הכספת במכשיר זה.',
+    'הזן את סיסמת הבית הדיגיטלי כדי לגשת בבטחה לכל האתרים ופרטי ההתחברות השמורים שלך.',
   logout: 'התנתקות',
   sessionBlocked: 'החשבון אינו פעיל. פנו לתמיכה אם זו טעות.',
   supabaseMissing: 'שירות החשבון אינו מוגדר בסביבה זו.',

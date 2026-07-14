@@ -20,7 +20,7 @@ export default function UsefulServicesSection({
   return (
     <section className="dh-panel dh-useful" aria-labelledby="dh-useful-title">
       <h2 id="dh-useful-title" className="dh-panel-title">
-        שירותים שימושיים
+        אתרים שימושיים
       </h2>
       <div className="dh-panel-body">{children}</div>
     </section>

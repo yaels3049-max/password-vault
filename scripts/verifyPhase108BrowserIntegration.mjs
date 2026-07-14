@@ -125,6 +125,40 @@ function main() {
     background.includes('LOGIN_ENTRY_DISCOVERY_OPERATION_TIMEOUT_MS = 30000'),
     'Extension discovery operation timeout must be 30s (Phase 108)',
   );
+  // D-108-32 revised: do not steal OS focus. Inactive tab in Hub window + Hub refocus.
+  assert(
+    /chrome\.tabs\.create\(\s*\{\s*url:\s*primaryUrl,\s*active:\s*false/.test(background),
+    'Discovery must tabs.create(active:false) in Hub window (D-108-32 revised)',
+  );
+  assert(
+    background.includes('function refocusReturnTab') &&
+      background.includes('refocusReturnTab(returnTabId)'),
+    'Discovery must refocus Hub tab after close',
+  );
+  assert(
+    !/chrome\.windows\.create\s*\(/.test(
+      background.slice(
+        background.indexOf('function openLoginEntryDiscoveryTab'),
+        background.indexOf('function runLoginEntryDiscoveryOnTab'),
+      ),
+    ),
+    'openLoginEntryDiscoveryTab must not use windows.create (focus-steal regression)',
+  );
+  const loginDiscoveryFn = background.slice(
+    background.indexOf('function openLoginEntryDiscoveryTab'),
+    background.indexOf('function runLoginEntryDiscoveryOnTab'),
+  );
+  assert(
+    loginDiscoveryFn.length > 100,
+    'openLoginEntryDiscoveryTab must be present',
+  );
+  // Refocus Hub is allowed; discovery tab itself must never be activated mid-session.
+  assert(
+    !/tabs\.update\s*\(\s*tabId\s*,\s*\{\s*active:\s*true/.test(loginDiscoveryFn) &&
+      !/tabs\.update\s*\(\s*resolvedTabId\s*,\s*\{\s*active:\s*true/.test(loginDiscoveryFn) &&
+      !/tabs\.update\s*\(\s*discoveryTabId\s*,\s*\{\s*active:\s*true/.test(loginDiscoveryFn),
+    'Must never tabs.update(active:true) on the discovery tab itself',
+  );
 
   const dashboard = read('src/Dashboard.tsx');
   assert(
@@ -135,7 +169,7 @@ function main() {
   console.log('PASS: Phase 108 browser integration abstraction (static)');
   console.log('  browserIntegration: chromeHostAdapter + probe + async messaging');
   console.log('  extensionBridge: thin delegate shim');
-  console.log('  discovery: HUB_LOGIN_ENTRY_DISCOVERY + 30s timeout + tab close');
+  console.log('  discovery: HUB_LOGIN_ENTRY_DISCOVERY + inactive Hub tab + 30s timeout');
   console.log('');
   console.log('Manual UAT required: Chrome + Edge U1–U6, U16–U18');
 }

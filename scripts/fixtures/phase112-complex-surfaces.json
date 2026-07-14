@@ -1,0 +1,26 @@
+{
+  "id": "federated-otp-captcha-iframe",
+  "description": "Complex surfaces — AC-112-6/7 detect only",
+  "cases": [
+    {
+      "signals": { "federatedOnly": true, "hasFederatedButtons": true, "federatedProviders": ["google"] },
+      "expect": { "loginComplexity": "complex", "loginFlowType": "federated_only", "adapterRecommended": true }
+    },
+    {
+      "signals": { "hasCaptcha": true },
+      "expect": { "loginComplexity": "complex", "loginFlowType": "captcha_required", "adapterRecommended": true }
+    },
+    {
+      "signals": { "hasOtpHint": true },
+      "expect": { "loginComplexity": "complex", "loginFlowType": "otp_required", "adapterRecommended": true }
+    },
+    {
+      "signals": { "usesIframe": true },
+      "expect": { "loginComplexity": "complex", "loginFlowType": "iframe_login", "adapterRecommended": true }
+    },
+    {
+      "signals": { "usesModal": true, "loginEntryType": "modal", "phase112Deferred": true, "loginIntelligenceHint": "modal_on_primary" },
+      "expect": { "loginComplexity": "medium", "loginFlowType": "modal_login" }
+    }
+  ]
+}

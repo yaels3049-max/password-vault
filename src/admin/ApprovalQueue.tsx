@@ -1,14 +1,41 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  fetchAdminCategories,
   fetchPendingSubmissions,
   promoteUserSubmissionWithDiscovery,
   rejectUserSubmission,
+  type AdminCategory,
   type AdminRegistryRow,
 } from './adminRegistryApi';
+import { formatAdminDate, statusLabelHe } from './adminPresentation';
 import IntegrationStatusPanel from './IntegrationStatusPanel';
+import { resolveManagedIconUrl } from '../serviceAssets';
+
+function PreviewIcon({ row }: { row: AdminRegistryRow }) {
+  const managed = resolveManagedIconUrl({
+    serviceId: row.id,
+    metadata: row.metadata,
+  });
+  if (managed) {
+    return <img className="admin-site-card-icon" src={managed} alt="" width={40} height={40} />;
+  }
+  if (row.icon) {
+    return (
+      <span className="admin-site-card-icon admin-site-card-icon--letter" aria-hidden>
+        {row.icon}
+      </span>
+    );
+  }
+  return (
+    <span className="admin-site-card-icon admin-site-card-icon--letter" aria-hidden>
+      {row.display_name.slice(0, 1)}
+    </span>
+  );
+}
 
 export default function ApprovalQueue() {
   const [rows, setRows] = useState<AdminRegistryRow[]>([]);
+  const [categories, setCategories] = useState<AdminCategory[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,16 +43,21 @@ export default function ApprovalQueue() {
   const [globalIdOverride, setGlobalIdOverride] = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [discovering, setDiscovering] = useState(false);
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const pending = await fetchPendingSubmissions();
+      const [pending, cats] = await Promise.all([
+        fetchPendingSubmissions(),
+        fetchAdminCategories(),
+      ]);
       setRows(pending);
+      setCategories(cats);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'טעינת תור אישורים נכשלה.');
+      setError(err instanceof Error ? err.message : 'טעינת תור ההגשות נכשלה.');
     } finally {
       setLoading(false);
     }
@@ -37,6 +69,16 @@ export default function ApprovalQueue() {
 
   const selected = rows.find((row) => row.id === selectedId) ?? null;
 
+  function categoryLabel(categoryId: string | null | undefined): string {
+    if (!categoryId) return 'ללא קטגוריה';
+    return categories.find((c) => c.id === categoryId)?.display_name ?? categoryId;
+  }
+
+  function submittedByLabel(row: AdminRegistryRow): string {
+    if (row.owner_user_id) return `משתמש ${row.owner_user_id.slice(0, 8)}…`;
+    return 'משתמש';
+  }
+
   async function handleApprove() {
     if (!selected) {
       return;
@@ -47,7 +89,7 @@ export default function ApprovalQueue() {
 
     try {
       setDiscovering(true);
-      setSuccess('מאשר שירות ומחפש דף כניסה…');
+      setSuccess('מאשר אתר ומחפש דף כניסה…');
 
       const result = await promoteUserSubmissionWithDiscovery(
         selected.id,
@@ -56,16 +98,17 @@ export default function ApprovalQueue() {
 
       if (result.discoverySucceeded && result.loginUrl) {
         setSuccess(
-          `אושר כשירות מובנה (${result.globalId}). דף כניסה: ${result.loginUrl}`,
+          `אושר כאתר מובנה (${result.globalId}). דף כניסה: ${result.loginUrl}`,
         );
       } else {
         setSuccess(
-          `אושר כשירות מובנה (${result.globalId}). ${result.discoveryMessage}`,
+          `אושר כאתר מובנה (${result.globalId}). ${result.discoveryMessage}`,
         );
       }
 
       setSelectedId(null);
       setGlobalIdOverride('');
+      setShowMoreDetails(false);
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'אישור נכשל.');
@@ -87,6 +130,7 @@ export default function ApprovalQueue() {
       setSuccess('ההגשה נדחתה.');
       setSelectedId(null);
       setRejectReason('');
+      setShowMoreDetails(false);
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'דחייה נכשלה.');
@@ -96,10 +140,10 @@ export default function ApprovalQueue() {
   return (
     <section className="admin-section">
       <header className="admin-section-header">
-        <h2>תור אישורים</h2>
+        <h2>אתרים בהוספה ע&quot;י משתמשים</h2>
         <p>
-          סקירת שירותים שהוגשו על ידי משתמשים. אישור הופך את השירות לשירות מובנה
-          (built_in) בקטלוג הגלובלי — זמין לכל המשתמשים.
+          סקירת אתרים שהוגשו על ידי משתמשים. אישור הופך את האתר לאתר מובנה
+          בקטלוג — זמין לכל המשתמשים.
         </p>
       </header>
 
@@ -120,95 +164,155 @@ export default function ApprovalQueue() {
         </p>
       )}
 
-      <div className="admin-split">
-        <ul className="admin-list admin-list--compact admin-split-main">
-          {rows.length === 0 && !loading && (
-            <li className="admin-muted">אין הגשות ממתינות כרגע.</li>
-          )}
-          {rows.map((row) => (
-            <li key={row.id}>
+      <ul className="admin-pending-grid">
+        {rows.length === 0 && !loading && (
+          <li className="admin-muted">אין הגשות ממתינות כרגע.</li>
+        )}
+        {rows.map((row) => {
+          const isSelected = selectedId === row.id;
+          return (
+            <li
+              key={row.id}
+              className={`admin-pending-card${isSelected ? ' is-active' : ''}`}
+            >
               <button
                 type="button"
-                className={`admin-list-button ${selectedId === row.id ? 'is-active' : ''}`}
-                onClick={() => setSelectedId(row.id)}
+                className="admin-site-card-head"
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  padding: 0,
+                  cursor: 'pointer',
+                  font: 'inherit',
+                  color: 'inherit',
+                  textAlign: 'start',
+                }}
+                onClick={() => {
+                  setSelectedId(row.id);
+                  setShowMoreDetails(false);
+                }}
               >
-                <span className="admin-list-button-title">{row.display_name}</span>
-                <span className="admin-list-button-meta">
-                  {row.id} · {row.service_status} · משתמש {row.owner_user_id?.slice(0, 8)}…
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-
-        <div className="admin-split-detail">
-          {selected ? (
-            <>
-              <section className="admin-panel">
-                <h3 className="admin-panel-title">פרטי הגשה</h3>
-                <dl className="admin-status-grid">
-                  <div>
-                    <dt>מזהה</dt>
-                    <dd>{selected.id}</dd>
+                <PreviewIcon row={row} />
+                <div>
+                  <div className="admin-site-card-name">{row.display_name}</div>
+                  <div className="admin-site-card-meta">
+                    <span className="admin-badge">{categoryLabel(row.category_id)}</span>
+                    <span className="admin-badge admin-badge--warn">
+                      {statusLabelHe(row.service_status)}
+                    </span>
                   </div>
-                  <div>
-                    <dt>שם</dt>
-                    <dd>{selected.display_name}</dd>
-                  </div>
-                  <div>
-                    <dt>כתובת</dt>
-                    <dd>{selected.primary_url}</dd>
-                  </div>
-                  <div>
-                    <dt>סטטוס</dt>
-                    <dd>{selected.service_status}</dd>
-                  </div>
-                </dl>
-
-                <label className="admin-field">
-                  <span>מזהה גלובלי (אופציונלי — ברירת מחדל: מזהה ההגשה)</span>
-                  <input
-                    value={globalIdOverride}
-                    onChange={(e) => setGlobalIdOverride(e.target.value)}
-                    placeholder={selected.id}
-                  />
-                </label>
-
-                <label className="admin-field">
-                  <span>סיבת דחייה (אופציונלי)</span>
-                  <input
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                    placeholder="סיבה קצרה למשתמש הפנימי"
-                  />
-                </label>
-
-                <div className="admin-actions-row">
-                  <button
-                    type="button"
-                    className="admin-btn admin-btn-primary"
-                    disabled={discovering}
-                    onClick={() => void handleApprove()}
-                  >
-                    אשר כשירות מובנה
-                  </button>
-                  <button
-                    type="button"
-                    className="admin-btn admin-btn-danger"
-                    onClick={() => void handleReject()}
-                  >
-                    דחה
-                  </button>
                 </div>
-              </section>
+              </button>
 
-              <IntegrationStatusPanel row={selected} />
-            </>
-          ) : (
-            <p className="admin-muted">בחרו הגשה לסקירה.</p>
-          )}
+              <p className="admin-site-card-line">
+                <strong>תאריך הגשה:</strong>{' '}
+                {formatAdminDate(row.created_at ?? row.updated_at)}
+              </p>
+              <p className="admin-site-card-line">
+                <strong>הוגש על ידי:</strong> {submittedByLabel(row)}
+              </p>
+              {row.primary_url ? (
+                <p className="admin-site-card-line">
+                  <strong>כתובת הבית:</strong> {row.primary_url}
+                </p>
+              ) : null}
+
+              {isSelected && (
+                <>
+                  <label className="admin-field">
+                    <span>מזהה גלובלי (אופציונלי)</span>
+                    <input
+                      value={globalIdOverride}
+                      onChange={(e) => setGlobalIdOverride(e.target.value)}
+                      placeholder={row.id}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>סיבת דחייה (אופציונלי)</span>
+                    <input
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      placeholder="סיבה קצרה"
+                    />
+                  </label>
+                  <div className="admin-actions-row">
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn-primary"
+                      disabled={discovering}
+                      onClick={() => void handleApprove()}
+                    >
+                      אשר
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn-danger"
+                      onClick={() => void handleReject()}
+                    >
+                      דחה
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn-secondary"
+                      onClick={() => setShowMoreDetails(true)}
+                    >
+                      פרטים נוספים
+                    </button>
+                  </div>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      {showMoreDetails && selected && (
+        <div
+          className="admin-modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowMoreDetails(false);
+          }}
+        >
+          <div
+            className="admin-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-pending-details-title"
+            dir="rtl"
+          >
+            <div className="admin-modal-header">
+              <h3 id="admin-pending-details-title">פרטים נוספים</h3>
+              <button
+                type="button"
+                className="admin-modal-close"
+                aria-label="סגירה"
+                onClick={() => setShowMoreDetails(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <dl className="admin-status-grid">
+              <div>
+                <dt>מזהה</dt>
+                <dd>{selected.id}</dd>
+              </div>
+              <div>
+                <dt>source_type</dt>
+                <dd>{selected.source_type}</dd>
+              </div>
+              <div>
+                <dt>owner_user_id</dt>
+                <dd>{selected.owner_user_id ?? '—'}</dd>
+              </div>
+            </dl>
+            <details className="admin-details" style={{ marginTop: '0.75rem' }}>
+              <summary>מטא-דאטה (JSON)</summary>
+              <pre className="admin-pre">{JSON.stringify(selected.metadata ?? {}, null, 2)}</pre>
+            </details>
+            <IntegrationStatusPanel row={selected} />
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }

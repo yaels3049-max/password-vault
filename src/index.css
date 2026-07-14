@@ -2,10 +2,25 @@
   box-sizing: border-box;
 }
 
+/* Phase 113 — Assistant site-wide (Hebrew + Latin). */
+:root {
+  --app-font-family: 'Assistant', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--app-font-family);
+}
+
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  background: #f5f5f5;
+  font-family: var(--app-font-family);
+  /* Soft page surround — matches shell ambient (no hard gray/black gaps). */
+  background: #e8eef6;
   color: #1a1a1a;
   direction: rtl;
+}
+
+code,
+pre,
+.mono,
+kbd,
+samp {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }

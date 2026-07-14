@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phase 107 M9 — Admin Console fixture</title>
+    <style>
+      :root {
+        --admin-primary: #2563eb;
+        --admin-ink: #0f172a;
+        --admin-muted: #64748b;
+        --admin-border: #e2e8f0;
+        --admin-radius: 14px;
+        --admin-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+        font-family: 'Assistant', system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #e8eef6;
+        color: var(--admin-ink);
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 1.25rem;
+      }
+      h1 {
+        color: #1e3a8a;
+        margin: 0;
+      }
+      .nav {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin: 0.85rem 0 1rem;
+      }
+      .nav button {
+        border: 1px solid var(--admin-border);
+        background: #fff;
+        border-radius: 999px;
+        padding: 0.45rem 0.95rem;
+        font-weight: 600;
+      }
+      .nav button.active {
+        background: var(--admin-primary);
+        border-color: var(--admin-primary);
+        color: #fff;
+      }
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border: 1px solid var(--admin-border);
+        border-radius: var(--admin-radius);
+        background: #fff;
+        box-shadow: var(--admin-shadow);
+        margin-bottom: 1rem;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 0.85rem;
+      }
+      .card {
+        border: 1px solid var(--admin-border);
+        border-radius: var(--admin-radius);
+        background: #fff;
+        box-shadow: var(--admin-shadow);
+        padding: 0.85rem;
+      }
+      .head {
+        display: flex;
+        gap: 0.65rem;
+        align-items: center;
+      }
+      .icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: #dbeafe;
+        color: #1d4ed8;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+      }
+      .badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 0.75rem;
+        font-weight: 650;
+      }
+      .line {
+        font-size: 0.8125rem;
+        color: var(--admin-muted);
+        margin: 0.35rem 0 0;
+      }
+      .sections {
+        display: grid;
+        gap: 1.25rem;
+        margin-top: 1.5rem;
+      }
+      .panel {
+        border: 1px solid var(--admin-border);
+        border-radius: var(--admin-radius);
+        background: #fff;
+        padding: 0.9rem;
+        box-shadow: var(--admin-shadow);
+      }
+      .btn {
+        border: none;
+        border-radius: 12px;
+        padding: 0.5rem 0.95rem;
+        font-weight: 700;
+        background: var(--admin-primary);
+        color: #fff;
+      }
+      .btn.secondary {
+        background: #fff;
+        border: 1px solid var(--admin-border);
+        color: #334155;
+      }
+      .modal {
+        border: 1px solid rgba(37, 99, 235, 0.28);
+        border-radius: 18px;
+        padding: 1rem;
+        margin-top: 0.75rem;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>ניהול פלטפורמה</h1>
+      <p style="color:#64748b">M9 fixture — nav, cards, filters, pending, category, More Details</p>
+      <div class="nav" aria-label="ניווט ניהול">
+        <button type="button">קטגוריות</button>
+        <button type="button" class="active">אתרים מובנים</button>
+        <button type="button">אתרים בהוספה ע"י משתמשים</button>
+      </div>
+      <div class="filters">
+        <input type="search" placeholder="חיפוש לפי שם, קטגוריה או כתובת כניסה" value="פועלים" />
+        <select><option>כל הקטגוריות</option><option selected>בנקים</option></select>
+        <select><option selected>כל המקורות</option></select>
+        <select><option selected>פעיל</option></select>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="head">
+            <div class="icon">ב</div>
+            <div>
+              <strong>בנק הפועלים</strong><br />
+              <span class="badge">בנקים</span>
+              <span class="badge">פעיל</span>
+            </div>
+          </div>
+          <p class="line"><strong>כתובת כניסה:</strong> https://login.bankhapoalim.co.il</p>
+          <p class="line"><strong>נוסף:</strong> 12 ביולי 2026 · <strong>על ידי:</strong> מובנה</p>
+        </div>
+        <div class="card">
+          <div class="head">
+            <div class="icon">ש</div>
+            <div>
+              <strong>שופרסל</strong><br />
+              <span class="badge">קניות</span>
+              <span class="badge">פעיל</span>
+            </div>
+          </div>
+          <p class="line"><strong>נוסף:</strong> 1 בינו׳ 2026 · <strong>על ידי:</strong> מנהל מערכת</p>
+        </div>
+      </div>
+
+      <div class="sections">
+        <div class="panel">
+          <h3>עריכת אתר (קומפקטי)</h3>
+          <label>כתובת הבית (Home URL)<br /><input style="width:100%" value="https://www.bankhapoalim.co.il" /></label>
+          <p class="line">אם כתובת הכניסה ריקה, הבית הדיגיטלי יפתח את כתובת הבית.</p>
+          <details open>
+            <summary>אייקון</summary>
+            <p class="line">קבוצה מתקפלת</p>
+          </details>
+          <button class="btn" type="button">שמור</button>
+          <button class="btn secondary" type="button">ביטול</button>
+          <button class="btn secondary" type="button">פרטים נוספים</button>
+        </div>
+
+        <div class="panel">
+          <h3>אתרים בהוספה ע"י משתמשים</h3>
+          <div class="card">
+            <div class="head">
+              <div class="icon">מ</div>
+              <div><strong>אתר לדוגמה</strong><br /><span class="badge">אחר</span></div>
+            </div>
+            <p class="line"><strong>תאריך הגשה:</strong> 14 ביולי 2026</p>
+            <p class="line"><strong>הוגש על ידי:</strong> משתמש a1b2c3d4…</p>
+            <button class="btn" type="button">אשר</button>
+            <button class="btn secondary" type="button">דחה</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>קטגוריה חדשה</h3>
+          <p>שם + אייקון אופציונלי — ללא שדה מזהה/slug ידני</p>
+          <input placeholder="שם" value="ביטוח" />
+          <input placeholder="🏦" style="width:4rem" />
+          <p class="line">המערכת מייצרת קוד ייחודי אוטומטית</p>
+        </div>
+
+        <div class="modal">
+          <h3>פרטים נוספים</h3>
+          <p class="line">מזהה גלובלי · source_type · adapter · JSON · סטטוס אינטגרציה</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

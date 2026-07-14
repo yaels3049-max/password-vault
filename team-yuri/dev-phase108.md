@@ -4,9 +4,10 @@
 PHASE=108
 
 ## Status
-STATUS: **CLOSED** — **APPROVED_WITH_DEFERRED_U27** (D-108-31 / Amendment 8).
+STATUS: **CLOSED** — **APPROVED_WITH_DEFERRED_U27** (D-108-31 / Amendment 8); **D-108-32 silent discovery window amended 2026-07-14**.
 
 **M15 closed** with **U27 PayPal auto-discovery deferred → M16 backlog** (Phase 108 — **not** Phase 112). **M16 is not open.**
+**D-108-32 / AC-108-26:** `HUB_LOGIN_ENTRY_DISCOVERY` uses unfocused off-screen `chrome.windows.create` popup (extension **1.4.23**); never `tabs.create({ active: false })` in the Hub window. Operator must **reload extension** and UAT custom-site add once (no tab-strip flash).
 
 ### Operator live green — REGRESSION LOCK (do not regress)
 | Gate | Live result | Lock |
@@ -545,18 +546,29 @@ Operator live green accepted for **Zap NULL + KSP + Zoom**. PayPal auto not requ
 ### Optional seed (not claimed as U27)
 If/when needed for Hub UX: set `login_url=https://www.paypal.com/login` via admin or catalog seed with `loginUrlSource=admin|catalog_seed`. That does **not** close U27.
 
+## D-108-32 — Silent discovery session (AC-108-26) — 2026-07-14
+
+| Field | Value |
+|---|---|
+| Change | `HUB_LOGIN_ENTRY_DISCOVERY` opens `chrome.windows.create({ type: 'popup', focused: false, off-screen })` then `windows.remove` on settle |
+| Scoring / audience | Unchanged (D-108-31 freeze honored) |
+| Manifest | **1.4.24** (minimized + re-minimize; off-screen coords abandoned — Windows clamps) |
+| Commands | `node scripts/verifyPhase108BrowserIntegration.mjs` → PASS; `npm run build:extension-discovery`; `npm run build` → PASS |
+| Operator | Reload extension → Manage → «הוסף אתר» → confirm **no** Hub tab-strip flash; session still closes |
+
 ## Scope Compliance
 - M15 closed per Amendment 8 / D-108-31
 - Dual-gate rules (D-108-28…30) remain code baseline; freeze means no further churn
 - Seeded PayPal ≠ auto-discovery Pass
 - M16 backlog only — not started
+- D-108-32 is **tab isolation UX only** — no heuristic changes
 
 ## Developer Declaration
 
-**M15 CLOSED** as **APPROVED_WITH_DEFERRED_U27**. Live lock: **Zap NULL + KSP + Zoom**. **U27 deferred to M16**. Discovery-heuristic freeze in effect. No further PayPal discovery work. Program may advance.
+**M15 CLOSED** as **APPROVED_WITH_DEFERRED_U27**. Live lock: **Zap NULL + KSP + Zoom**. **U27 deferred to M16**. Discovery-heuristic freeze in effect. **D-108-32 silent popup shipped (1.4.23)** — operator reload + one live Add-Site UAT required for AC-108-26 visual pass.
 
 ```text
 Detected phase: 108
 Selected state: IMPLEMENT
-Status: CLOSED (M15 APPROVED_WITH_DEFERRED_U27; U27→M16 backlog; freeze Zap/KSP/Zoom lock)
+Status: COMPLETE
 ```

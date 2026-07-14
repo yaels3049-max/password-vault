@@ -20,25 +20,52 @@ export type CustomPrimaryUrlValidationResult =
   | { valid: true; normalizedUrl: string }
   | { valid: false; message: string };
 
+/** Apex hosts like example.com / example.co.il — safe to prefix www. */
+function isLikelyApexHostname(hostname: string): boolean {
+  const labels = hostname.toLowerCase().split('.').filter(Boolean);
+  if (labels.length === 2) return true;
+  if (
+    labels.length === 3 &&
+    ['co', 'ac', 'org', 'gov', 'com', 'net', 'idf'].includes(labels[1] ?? '')
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Custom services require a valid HTTPS primary URL (Iteration 3.3a).
+ * Completes bare hosts: `example.co.il` → `https://www.example.co.il`.
  */
 export function validateCustomPrimaryUrl(url: string): CustomPrimaryUrlValidationResult {
-  const trimmed = url.trim();
+  const trimmed = url.trim().replace(/\s+/g, '');
   if (!trimmed) {
     return { valid: false, message: 'יש להזין כתובת אתר' };
   }
 
   try {
-    const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-    const parsed = new URL(withScheme);
+    let candidate = trimmed;
+    if (!/^https?:\/\//i.test(candidate)) {
+      candidate = `https://${candidate}`;
+    } else if (/^http:\/\//i.test(candidate)) {
+      candidate = `https://${candidate.slice('http://'.length)}`;
+    }
+
+    const parsed = new URL(candidate);
 
     if (parsed.protocol !== 'https:') {
       return { valid: false, message: 'כתובת האתר חייבת להיות HTTPS' };
     }
 
-    if (!parsed.hostname) {
+    if (!parsed.hostname || !parsed.hostname.includes('.')) {
       return { valid: false, message: 'כתובת האתר אינה תקינה' };
+    }
+
+    if (
+      !parsed.hostname.toLowerCase().startsWith('www.') &&
+      isLikelyApexHostname(parsed.hostname)
+    ) {
+      parsed.hostname = `www.${parsed.hostname}`;
     }
 
     return { valid: true, normalizedUrl: parsed.href };

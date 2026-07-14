@@ -48,7 +48,7 @@ Phase **108 M11** (live discovery) and Phase **109** (auth / hydrate) may still 
 | **D-110-10** | Leave hooks/signals for Phase 112 (`fill_failed` / `not_standard`); do not invent 112 classification. |
 | **D-110-11** | Optional metadata **proposal** only — never silent overwrite of admin `loginFields` / `loginUrlSource=admin`. |
 | **D-110-12** | Document extension host permissions / packaging in `docs/MIGRATION_PHASE_110.md`. |
-| **D-110-13** | No Phase 113 URL identity / canonicalization work. |
+| **D-110-13** | No Phase 116 URL identity / canonicalization work. |
 
 ### Normative fill path (generic)
 
@@ -110,7 +110,7 @@ executeServiceFromTile (Phase 103 — unchanged orchestration)
 | AC-110-9 | M5 | Health/friendly signal codes non-sensitive | Failure shows non-blocking indication / health |
 | AC-110-10 | M8 | `verifyPhase103Execution.mjs` PASS | **Shufersal + Clalit UAT PASS** |
 | AC-110-11 | M1, M8 | **Hard gate:** no service-id/host branches in generic engine | Adapters only for approved site-specific paths |
-| AC-110-12 | M8 | No Phase 113 / canonicalization edits in verify scope | Affirmation — no identity rule changes |
+| AC-110-12 | M8 | No Phase 116 / canonicalization edits in verify scope | Affirmation — no identity rule changes |
 | AC-110-13 | M8 | `npm run build` PASS | — |
 | AC-110-14 | M2, M8 | **Hard gate:** no AI/ML/probabilistic APIs; deterministic rules only | Ambiguous page → no unsafe fill |
 | AC-110-15 | M5, M6, M8 | Signals compatible (`fill_failed` / `not_standard`); no 112 classifiers invented | Non-standard page opens without unsafe fill |
@@ -230,7 +230,7 @@ Must include at minimum:
 | T8 | Shufersal tile open | Validated autofill preserved | AC-110-10 |
 | T9 | Clalit tile open | Validated autofill preserved | AC-110-10 |
 | T10 | Generic path has no service-id special cases | Static verify PASS | AC-110-11, AC-110-14 |
-| T11 | No Phase 113 / identity edits | Affirmation | AC-110-12 |
+| T11 | No Phase 116 / identity edits | Affirmation | AC-110-12 |
 | T12 | `verifyPhase110StandardAutofill.mjs` | PASS | — |
 | T13 | `verifyPhase103Execution.mjs` | PASS | AC-110-10, AC-110-11 |
 | T14 | `npm run build` | PASS | AC-110-13 |
@@ -264,7 +264,7 @@ Must include at minimum:
 - Federated login automation — Phase 112
 - `loginUrl` discovery / rediscovery (**Phase 108**)
 - Account auth / vault / hydrate (**Phase 109**)
-- URL canonicalization / service identity (**Phase 113**)
+- URL canonicalization / service identity (**Phase 116**)
 - Icon pipeline (Phase 111)
 - Password rotation / credential lifecycle UX
 - Redesigning `executeServiceFromTile` orchestration (Phase 103)

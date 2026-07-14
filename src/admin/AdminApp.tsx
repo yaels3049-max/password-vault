@@ -10,8 +10,8 @@ type AdminTab = 'categories' | 'registry' | 'approvals';
 
 const TABS: { id: AdminTab; label: string }[] = [
   { id: 'categories', label: 'קטגוריות' },
-  { id: 'registry', label: 'קטלוג גלובלי' },
-  { id: 'approvals', label: 'תור אישורים' },
+  { id: 'registry', label: 'אתרים מובנים' },
+  { id: 'approvals', label: 'אתרים בהוספה ע"י משתמשים' },
 ];
 
 export default function AdminApp() {
@@ -26,7 +26,7 @@ export default function AdminApp() {
             <TrustIndicator />
           </div>
           <p className="admin-app-subtitle">
-            קטלוג שירותים, אישורים ואינטגרציה — ללא גישה לפרטי כניסה של משתמשים.
+            ניהול אתרים, הגשות משתמשים ואינטגרציה — ללא גישה לפרטי כניסה של משתמשים.
           </p>
           <nav className="admin-nav" aria-label="ניווט ניהול">
             {TABS.map((item) => (

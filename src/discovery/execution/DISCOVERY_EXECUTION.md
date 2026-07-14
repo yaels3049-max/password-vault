@@ -36,28 +36,20 @@ Outcomes: `success` (with `DiscoveryResult`), `unavailable` (executor cannot run
 Used for **shared Login Discovery** (user custom service add and admin catalog create/rediscovery). Dashboard tile open does not call `discoverLogin`.
 
 1. Hub sends `HUB_LOGIN_ENTRY_DISCOVERY` to the extension
-2. Extension opens a **background** temporary tab at `primaryUrl` (`active: false`)
-3. After load, injects the bundled discovery engine and runs it on the live DOM
-4. Returns `DiscoveryResult` to the Hub, closes the tab, refocuses the Hub tab
-
-### Phase 102 stabilization vs Phase 103
-
-| Area | Phase 102 | Phase 103 |
-|---|---|---|
-| Tile open | Adapter registry (`generic`, `htzone`, `practice`) or open-only | **Unified** `executeServiceFromTile` — open first, metadata-driven generic autofill |
-| Autofill | `adapterId: generic` for Shufersal/Clalit (interim) | Registry `loginFields` + `loginUrl`; no `generic` adapter |
-| Extension policy | `GENERIC_REAL_SITE_ALLOWED_HOSTS` (POC hosts only) | `isAllowedGenericAutofillUrl` — https for internet; http localhost only |
-| `login_fields` seed shape | Must not branch tile execution | Same pipeline with or without seeded fields |
-| Tile-click discovery | Not on Dashboard (custom add only) | Unchanged — no discovery on tile click (D-103-11) |
+2. Extension opens a **minimized, unfocused popup window** at `primaryUrl` (`chrome.windows.create`, `focused: false`, `state: 'minimized'`) — **not** a background tab in the Hub window and **not** an off-screen window (Windows clamps those back on-screen) (D-108-32 / AC-108-26)
+3. After create, forces `windows.update({ state: 'minimized', focused: false })` again (Windows may briefly raise)
+4. After load, injects the bundled discovery engine and runs it on the live DOM
+5. Returns `DiscoveryResult` to the Hub and **closes the discovery window** (no Hub tab `active:true` flash)
+6. Never activates the discovery tab
 
 ### Temporary background tabs
 
-Visible temporary tabs are a **temporary implementation**. They work with today's extension permissions and scripting APIs without extra user setup.
+Earlier builds used `tabs.create({ active: false })` in the user's window — that still flashes in the tab strip and is **not** acceptable for Manage «הוסף אתר». Production now uses the silent popup window above.
 
-**Production goal:** non-intrusive discovery (background browser, hidden/offscreen document, or future browser APIs) whenever capabilities allow — **without** changing:
+**Still without** changing:
 
 - `discoverLogin(primaryUrl)` Hub API
-- Discovery engine logic
+- Discovery engine logic / audience gates (D-108-31 freeze)
 - `ServiceDefinition` / persistence rules
 - Dashboard or Manage Services flows
 

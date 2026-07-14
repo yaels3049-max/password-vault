@@ -14,9 +14,16 @@ import {
 } from './autofillEligibility';
 import { executeGenericAutofill } from './genericAutofill';
 import { openUrlInNewTab } from './extensionBridge';
+import {
+  complexityForExecution,
+  executeMediumAssist,
+  hebrewMessageForComplexity,
+  resolveLoginIntelligenceForExecution,
+} from '../loginIntelligence';
+import { AC112_26_HEBREW } from '../loginIntelligence/mediumStatus';
 
 const MISSING_CREDENTIALS_MESSAGE =
-  'הגדירו פרטי כניסה במסך «ניהול השירותים» — לחצו «הוסף שירותים נוספים».';
+  'הגדירו פרטי כניסה במסך «ניהול האתרים» — לחצו «הוסף אתרים נוספים».';
 
 const FILL_UNAVAILABLE_MESSAGE =
   'האתר נפתח. מילוי אוטומטי לא זמין כרגע — ניתן למלא את השדות ידנית.';
@@ -26,6 +33,11 @@ export type ServiceExecutionStatus =
   | 'credentials_missing'
   | 'open_only';
 
+export interface ServiceExecutionOptions {
+  /** BD-112-4 — active Digital Home profile id for medium attempts */
+  activeProfileId?: string | null;
+}
+
 export interface ServiceExecutionResult {
   status: ServiceExecutionStatus;
   extensionUsed: boolean;
@@ -33,20 +45,24 @@ export interface ServiceExecutionResult {
   userMessage?: string;
   /** Non-sensitive signal for UX / Phase 112 (D-110-10). Never blocks open. */
   metadataHealth?: AutofillHealthCode;
+  /** Medium attempt outcome — success shows BD-112-3 activity */
+  mediumSuccess?: boolean;
 }
 
 /**
- * Phase 103 unified tile execution (D-103-8) — orchestration unchanged in Phase 110:
+ * Phase 103 unified tile execution (async) — orchestration shell unchanged:
  * 1. openUrl = loginUrl ?? primaryUrl
  * 2. Site-specific adapters (htzone, practice) only
- * 3. Default: open tab (extension or window.open), then generic autofill when eligible
- * 4. No service-id branching; origin-independent orchestration
+ * 3. Soft-read Login Intelligence (Phase 112): basic→110, medium→112 async identity-first,
+ *    complex→open(+guidance). Medium never silent (AC-112-26).
+ * 4. Failure never blocks navigation; no auto-submit
  */
-export function executeServiceFromTile(
+export async function executeServiceFromTile(
   service: Service,
   credential: Credential | undefined,
   loginFields: LoginField[] = getLoginFields(service),
-): ServiceExecutionResult {
+  options: ServiceExecutionOptions = {},
+): Promise<ServiceExecutionResult> {
   const openUrl = getServiceOpenUrl(service);
   const adapterId = service.adapterId?.trim();
 
@@ -85,22 +101,56 @@ export function executeServiceFromTile(
     };
   }
 
+  const li =
+    service.loginIntelligence ??
+    resolveLoginIntelligenceForExecution(service.metadata);
+  const complexity = complexityForExecution(li);
+
+  if (complexity === 'complex') {
+    openUrlInNewTab(openUrl);
+    return {
+      status: 'open_only',
+      extensionUsed: false,
+      autofillAttempted: false,
+      // Distinguish complex/unsupported from generic open (AC-112-26 category 4 spirit)
+      userMessage: AC112_26_HEBREW.website_not_supported,
+      metadataHealth: 'not_standard_login',
+    };
+  }
+
+  if (complexity === 'medium') {
+    const medium = await executeMediumAssist(openUrl, credential, loginFields, {
+      activeProfileId: options.activeProfileId,
+      serviceId: service.id,
+    });
+    return {
+      status: medium.success ? 'ok' : 'open_only',
+      extensionUsed: medium.extensionUsed,
+      autofillAttempted: medium.autofillAttempted,
+      userMessage: medium.userMessage,
+      metadataHealth: medium.success ? undefined : 'fill_failed',
+      mediumSuccess: medium.success,
+    };
+  }
+
   if (shouldAttemptGenericAutofill(service, credential, loginFields)) {
-    const fillResult = executeGenericAutofill(openUrl, credential, loginFields);
-    if (fillResult.ok && !fillResult.extensionUsed) {
+    if (complexity === 'unknown' || complexity === 'basic') {
+      const fillResult = executeGenericAutofill(openUrl, credential, loginFields);
+      if (fillResult.ok && !fillResult.extensionUsed) {
+        return {
+          status: 'ok',
+          extensionUsed: false,
+          autofillAttempted: true,
+          metadataHealth: 'fill_failed',
+          userMessage: FILL_UNAVAILABLE_MESSAGE,
+        };
+      }
       return {
         status: 'ok',
-        extensionUsed: false,
+        extensionUsed: fillResult.ok && fillResult.extensionUsed,
         autofillAttempted: true,
-        metadataHealth: 'fill_failed',
-        userMessage: FILL_UNAVAILABLE_MESSAGE,
       };
     }
-    return {
-      status: 'ok',
-      extensionUsed: fillResult.ok && fillResult.extensionUsed,
-      autofillAttempted: true,
-    };
   }
 
   openUrlInNewTab(openUrl);
@@ -121,5 +171,7 @@ export function executeServiceFromTile(
     status: 'open_only',
     extensionUsed: false,
     autofillAttempted: false,
+    userMessage:
+      complexity === 'unknown' ? hebrewMessageForComplexity('unknown') : undefined,
   };
 }

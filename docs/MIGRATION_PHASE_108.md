@@ -131,7 +131,7 @@ For production, add your deployed Hub origin (e.g. `https://vault.example.com/*`
 
 ## Extension version alignment
 
-Phase 108 bumps extension manifest to **1.4.0** (Hub discovery timeout 30s, reliable tab close). Keep Hub + extension versions documented together in release notes.
+Phase 108 bumps extension manifest to **1.4.0** (Hub discovery timeout 30s, reliable tab close). **1.4.23** opens discovery in an unfocused off-screen popup window (D-108-32 / AC-108-26) so Manage «הוסף אתר» does not flash a temporary tab in the Hub strip. Keep Hub + extension versions documented together in release notes. **Reload the side-loaded extension after upgrading.**
 
 ## Discovery contract
 

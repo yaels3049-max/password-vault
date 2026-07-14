@@ -177,7 +177,7 @@ export async function deleteAdminCategory(id: string): Promise<void> {
   }
 
   if ((count ?? 0) > 0) {
-    throw new Error('לא ניתן למחוק קטגוריה שמשויכים אליה שירותים.');
+    throw new Error('לא ניתן למחוק קטגוריה שמשויכים אליה אתרים.');
   }
 
   const { error } = await supabase.from('categories').delete().eq('id', id);
@@ -199,7 +199,7 @@ export async function fetchGlobalRegistryRows(): Promise<AdminRegistryRow[]> {
     .order('display_name', { ascending: true });
 
   if (error) {
-    throw mapRegistryError(error, 'לא ניתן לטעון שירותים גלובליים.');
+    throw mapRegistryError(error, 'לא ניתן לטעון אתרים גלובליים.');
   }
 
   return (data ?? []) as AdminRegistryRow[];
@@ -235,7 +235,7 @@ export async function fetchRegistryRowForAdmin(serviceId: string): Promise<Admin
     .maybeSingle();
 
   if (error) {
-    throw mapRegistryError(error, 'לא ניתן לטעון שירות.');
+    throw mapRegistryError(error, 'לא ניתן לטעון אתר.');
   }
 
   return (data as AdminRegistryRow | null) ?? null;
@@ -282,7 +282,7 @@ export async function createGlobalRegistryRow(input: GlobalRegistryInput): Promi
   });
 
   if (error) {
-    throw mapRegistryError(error, 'לא ניתן ליצור שירות גלובלי.');
+    throw mapRegistryError(error, 'לא ניתן ליצור אתר גלובלי.');
   }
 
   invalidateCatalogCache();
@@ -360,7 +360,7 @@ export async function createGlobalRegistryRowWithDiscovery(
     serviceId,
     input.primary_url,
     'auto',
-    'השירות נוצר.',
+    'האתר נוצר.',
   );
 
   return { serviceId, ...discovery };
@@ -396,7 +396,7 @@ export async function updateGlobalRegistryRow(
     .is('owner_user_id', null);
 
   if (error) {
-    throw mapRegistryError(error, 'לא ניתן לעדכן שירות גלובלי.');
+    throw mapRegistryError(error, 'לא ניתן לעדכן אתר גלובלי.');
   }
 
   invalidateCatalogCache();
@@ -448,7 +448,7 @@ export async function promoteUserSubmissionWithDiscovery(
     globalId,
     row?.primary_url ?? '',
     'admin',
-    'השירות אושר כמובנה.',
+    'האתר אושר כמובנה.',
   );
 
   return { globalId, ...discovery };
@@ -561,7 +561,7 @@ export async function markGlobalLoginUrlInvalid(serviceId: string): Promise<void
 
   const row = await fetchRegistryRowForAdmin(serviceId);
   if (!row || row.owner_user_id !== null) {
-    throw new Error('ניתן לסמן כלא תקין רק שירות גלובלי.');
+    throw new Error('ניתן לסמן כלא תקין רק אתר גלובלי.');
   }
 
   const { error } = await supabase
@@ -595,7 +595,7 @@ export async function updateIconMetadata(
 ): Promise<void> {
   const row = await fetchRegistryRowForAdmin(serviceId);
   if (!row || row.owner_user_id !== null) {
-    throw new Error('ניתן לערוך אייקון רק לשירות גלובלי.');
+    throw new Error('ניתן לערוך אייקון רק לאתר גלובלי.');
   }
 
   const metadata = {
@@ -616,10 +616,49 @@ export async function updateIconMetadata(
   });
 }
 
+/**
+ * Phase 111 — Admin uploads an image file as the active managed icon (AC-111-16).
+ */
+export async function uploadAdminIconFile(serviceId: string, file: File): Promise<void> {
+  await ensureSession();
+  const row = await fetchRegistryRowForAdmin(serviceId);
+  if (!row || row.owner_user_id !== null) {
+    throw new Error('ניתן להעלות אייקון רק לאתר גלובלי.');
+  }
+
+  const { uploadAdminServiceIcon } = await import('../serviceAssets/adminUpload');
+  await uploadAdminServiceIcon(serviceId, file);
+  invalidateCatalogCache();
+  const { invalidateServiceLogoCache } = await import('../logoCache');
+  invalidateServiceLogoCache(serviceId);
+}
+
+/**
+ * Phase 111 — refresh icon asset. Never overwrites admin without force.
+ */
+export async function adminRefreshServiceIcon(
+  serviceId: string,
+  options?: { force?: boolean },
+): Promise<{ message: string }> {
+  await ensureSession();
+  const row = await fetchRegistryRowForAdmin(serviceId);
+  if (!row || row.owner_user_id !== null) {
+    throw new Error('ניתן לרענון אייקון רק לאתר גלובלי.');
+  }
+
+  const { refreshServiceAssets } = await import('../serviceAssets/refresh');
+  const report = await refreshServiceAssets(
+    [{ id: row.id, primaryUrl: row.primary_url, metadata: row.metadata }],
+    { force: options?.force === true },
+  );
+  const item = report.items[0];
+  return { message: item?.message || 'רענון הסתיים.' };
+}
+
 export async function updateAdminNotes(serviceId: string, adminNotes: string): Promise<void> {
   const row = await fetchRegistryRowForAdmin(serviceId);
   if (!row || row.owner_user_id !== null) {
-    throw new Error('ניתן לערוך הערות רק לשירות גלובלי.');
+    throw new Error('ניתן לערוך הערות רק לאתר גלובלי.');
   }
 
   await updateGlobalRegistryRow(serviceId, {
@@ -642,7 +681,7 @@ export async function adminTriggerLoginRediscovery(
 ): Promise<AdminRediscoveryResult> {
   const row = await fetchRegistryRowForAdmin(serviceId);
   if (!row || row.owner_user_id !== null) {
-    throw new Error('ניתן לגילוי מחדש רק שירות גלובלי.');
+    throw new Error('ניתן לגילוי מחדש רק אתר גלובלי.');
   }
 
   try {
@@ -729,3 +768,69 @@ export function parseLoginFieldsJson(raw: string): LoginField[] {
     return entry as LoginField;
   });
 }
+
+/**
+ * Phase 112 — reclassify Login Intelligence from discovery metadata (+ optional page signals).
+ * Admin override is never silently replaced (AC-112-19/20).
+ */
+export async function adminRefreshLoginIntelligence(
+  serviceId: string,
+  options?: { forceReplaceAdmin?: boolean; pageSignals?: import('../loginIntelligence').LoginPageSignals },
+): Promise<{ applied: boolean; message: string }> {
+  await ensureSession();
+  const row = await fetchRegistryRowForAdmin(serviceId);
+  if (!row || row.owner_user_id !== null) {
+    throw new Error('ניתן לרענון Login Intelligence רק לאתר גלובלי.');
+  }
+
+  const { applyLoginIntelligenceClassification } = await import('../loginIntelligence');
+  const result = applyLoginIntelligenceClassification(row.metadata, options?.pageSignals ?? {}, {
+    forceReplaceAdmin: options?.forceReplaceAdmin === true,
+    lastValidatedBy: options?.forceReplaceAdmin ? 'admin' : 'auto',
+    markAdminOverride: options?.forceReplaceAdmin === true,
+  });
+
+  const metadata = {
+    ...(row.metadata ?? {}),
+    ...result.metadataPatch,
+  };
+
+  await updateGlobalRegistryRow(serviceId, { metadata });
+
+  if (!result.applied) {
+    return {
+      applied: false,
+      message:
+        result.reason === 'admin_override_protected'
+          ? 'דילוג — Login Intelligence מוגן ע״י עריכת מנהל. השתמשו ב«דריסה» לאישור החלפה.'
+          : 'סיווג נשמר לבדיקה ולא דרס מטא-דאטה מאומתת.',
+    };
+  }
+
+  return {
+    applied: true,
+    message: `Login Intelligence עודכן (${result.intelligence?.loginComplexity ?? 'unknown'}).`,
+  };
+}
+
+/** Phase 112 — manual LI override (always lastValidatedBy=admin). */
+export async function adminOverrideLoginIntelligence(
+  serviceId: string,
+  patch: Partial<import('../loginIntelligence').LoginIntelligence>,
+): Promise<void> {
+  await ensureSession();
+  const row = await fetchRegistryRowForAdmin(serviceId);
+  if (!row || row.owner_user_id !== null) {
+    throw new Error('ניתן לדריסת Login Intelligence רק לאתר גלובלי.');
+  }
+
+  const { buildManualLoginIntelligenceOverride } = await import('../loginIntelligence');
+  const liPatch = buildManualLoginIntelligenceOverride(row.metadata, patch);
+  await updateGlobalRegistryRow(serviceId, {
+    metadata: {
+      ...(row.metadata ?? {}),
+      ...liPatch,
+    },
+  });
+}
+

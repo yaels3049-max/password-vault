@@ -4,12 +4,12 @@
 PHASE=107
 
 ## Status
-STATUS: COMPLETE (static + build PASS; **T1–T20 manual UAT PENDING operator confirmation**)
+STATUS: COMPLETE — includes **M9 Admin Console UI/UX Modernization** (AC-107-8…18; verify + build PASS). T1–T22 / T23–T33 live operator UAT still recommended. PHASE.md remains **113** (parallel track).
 
 ## Source References
-- `team-Yuri/arch-phase107.md`
-- `team-Yuri/manager-phase107.md`
-- `team-Yuri/PLAN.md` §18 — Phase 107 (AC-107-1 … AC-107-7)
+- `team-Yuri/arch-phase107.md` — D-107-13…20
+- `team-Yuri/manager-phase107.md` — M9.1–M9.10
+- `team-Yuri/PLAN.md` §18 — Phase 107 (AC-107-1 … AC-107-18)
 - `docs/MIGRATION_PHASE_107.md`
 
 ## Implementation Summary
@@ -31,8 +31,9 @@ Delivered **Admin Management Platform** — separate `#/admin` console for catal
 | M6 Interim icon metadata editor | Yes | `IconMetadataEditor.tsx` — no Storage |
 | M7 Integration status panel | Yes | `IntegrationStatusPanel.tsx` |
 | M8 Verify + docs + build | Yes* | `verifyPhase107Admin.mjs`; `MIGRATION_PHASE_107.md`; build PASS |
+| **M9 Admin Console UI/UX** | Yes | DH parity; website cards; More Details; nav rename; pending cards; Home/Login labels; auto category code; compact edit; filters/search; evidence |
 
-\* Manual matrix T1–T20 awaits operator with migrated DB + `is_admin` bootstrap.
+\* Manual matrix T1–T22 / T23–T33 awaits operator with migrated DB + `is_admin` bootstrap.
 
 ## AC-107-7 Affirmation (explicit)
 
@@ -136,6 +137,74 @@ PASS: Phase 107 Admin Management Platform (static)
 | `npm run build` (includes `tsc -b`) | PASS |
 | Dedicated lint script | NOT AVAILABLE in package.json |
 
-## Phase 111 Deferral Note
+## M9 — Admin Console UI/UX Modernization (complete)
 
-AC-107-5 satisfied by emoji/favicon metadata fields only. Full icon pipeline (Storage upload, normalization, versioning) is Phase 111.
+### Completed checklist (M9.1–M9.10)
+
+| Item | Status | Notes |
+|---|:---:|---|
+| M9.1 Visual parity | Yes | `admin.css` DH tokens; Assistant (live app typeface); blue primary; cards/shadows |
+| M9.2 Website cards | Yes | Icon (Phase 111 Storage cascade), name, category, status, login URL, date, added-by |
+| M9.3 More Details modal | Yes | IDs, source_type, adapter, JSON, IntegrationStatus, LI |
+| M9.4 Nav rename | Yes | «אתרים מובנים»; «אתרים בהוספה ע"י משתמשים» |
+| M9.5 Pending cards | Yes | Date/by/icon/category/approve/reject; promote semantics unchanged |
+| M9.6 Home + Login URL | Yes | Friendly labels + empty-login helper copy |
+| M9.7 Category auto-code | Yes | `generateCategoryId`; no manual slug on create |
+| M9.8 Compact edit | Yes | Collapsible sections; Save/Cancel |
+| M9.9 Filters + responsive | Yes | Category/source/status + search; stacks &lt;700/900px |
+| M9.10 Evidence | Yes | Fixture screenshot + verify + build |
+
+### Files (M9)
+
+| File | Change |
+|---|---|
+| `src/admin/admin.css` | DH visual system |
+| `src/admin/AdminApp.tsx` | Nav rename |
+| `src/admin/RegistryAdmin.tsx` | Cards, filters, compact edit, More Details |
+| `src/admin/ApprovalQueue.tsx` | Pending cards |
+| `src/admin/CategoriesAdmin.tsx` | Auto category id; optional icon |
+| `src/admin/adminPresentation.ts` | Labels, dates, `generateCategoryId` |
+| `src/admin/LoginUrlRefresh.tsx` | Home URL helper copy |
+| `scripts/verifyPhase107Admin.mjs` | AC-107-8…18 static asserts |
+| `scripts/fixtures/phase107-admin-m9.html` | Visual fixture |
+| `docs/evidence/phase107-admin-m9-console.png` | Screenshot |
+| `docs/MIGRATION_PHASE_107.md` | M9 + auto-id note |
+
+### M9 verification
+
+```text
+> node scripts/verifyPhase107Admin.mjs
+PASS: … M9: cards, More Details, nav rename, filters, auto category id (AC-107-8…18)
+  AC-107-7: no encrypted_credentials / vault decrypt / service_role in src/admin/**
+
+> npm run build
+PASS
+```
+
+### AC-107-7 / AC-107-18 affirmation (M9)
+
+| Rule | Status |
+|---|---|
+| No `encrypted_credentials` / vault decrypt / `service_role` / `access_profiles` in admin | **PASS** (verify) |
+| Promote/reject/rediscovery business logic unchanged | **Honored** — UI presentation only |
+| No new Phase 111 Storage pipeline in M9 | **Honored** — uses existing managed icon URLs when present |
+
+### Manual matrix (T23–T33) — operator
+
+| # | Test | Result |
+|---:|---|---|
+| T23 | DH visual parity | Fixture PASS; live `#/admin` recommended |
+| T24 | Website cards fields | Fixture + code PASS |
+| T25 | More Details modal | Code PASS |
+| T26 | Nav rename | Code + verify PASS |
+| T27 | Pending cards | Code PASS |
+| T28 | Home / Login URL labels | Code PASS |
+| T29 | Category auto-code | Code + verify PASS |
+| T30 | Compact edit Save/Cancel | Code PASS |
+| T31 | Filters + search | Code PASS |
+| T32 | Responsive | CSS breakpoints PASS |
+| T33 | Integrity + no credentials | verify PASS |
+
+## Phase 111 note
+
+Admin icons prefer Phase 111 Storage (`resolveManagedIconUrl`) on cards when present. M9 did **not** add a new Storage pipeline. Legacy AC-107-5 metadata emoji remains fallback.

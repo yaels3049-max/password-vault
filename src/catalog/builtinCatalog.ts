@@ -13,6 +13,7 @@ function faviconSite(url: string): ServiceDefinition['metadata'] {
  * Authoritative source for predefined services; runtime legacy shape is derived from this.
  */
 export const BUILTIN_CATALOG_DEFINITIONS: ServiceDefinition[] = [
+  // Kept for PoC adapters only — excluded from user-facing catalog (AC-113-30).
   {
     schemaVersion: SERVICE_SCHEMA_VERSION,
     id: 'hub-practice-login',
@@ -46,7 +47,11 @@ export const BUILTIN_CATALOG_DEFINITIONS: ServiceDefinition[] = [
     icon: '🏦',
     category: 'banking',
     source: 'built-in-catalog',
-    metadata: faviconSite('https://www.leumi.co.il'),
+    // Phase 113 AC-113-17/19 — Manual Login Only fixture (home URL open + copy; no auto).
+    metadata: {
+      ...faviconSite('https://www.leumi.co.il'),
+      loginAssistanceLevel: 'manual_only',
+    },
   },
   {
     schemaVersion: SERVICE_SCHEMA_VERSION,

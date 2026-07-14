@@ -133,6 +133,6 @@ npm run build
 - Phase 112 complex / OTP / iframe / modal login automation
 - Phase 108 loginUrl discovery
 - Phase 109 auth / hydrate
-- Phase 113 URL canonicalization
+- Phase 116 URL canonicalization
 - Redesign of `executeServiceFromTile`
 - AI / ML / probabilistic field detection

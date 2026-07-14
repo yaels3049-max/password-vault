@@ -37,7 +37,9 @@ export async function openServiceWithProfile(
 
   const loginFields = getLoginFields(service);
   const credential = deps.credentialsByProfileId[resolution];
-  const result = executeServiceFromTile(service, credential, loginFields);
+  const result = await executeServiceFromTile(service, credential, loginFields, {
+    activeProfileId: resolution,
+  });
 
   if (result.status === 'credentials_missing') {
     // Site may already be open (AC-105-7); surface guidance without blocking.

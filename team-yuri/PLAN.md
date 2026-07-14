@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | 5.12 |
+| **Version** | 5.19 |
 | **Status** | Production Ready |
 | **Last updated** | 2026-07-14 |
 
@@ -972,7 +972,7 @@ Updating stale `loginUrl` values belongs to Service Registry / Admin metadata fl
 - Category filtering in discovery
 - Modern service card UX for browse and select
 - Profile and credential management from selected service context
-- Dependencies: **Phase 102** (Service Registry metadata), **Phase 103** (execution entry points), **Phase 111** (service icons), **Phase 113** (canonical identity and duplicate prevention)
+- Dependencies: **Phase 102** (Service Registry metadata), **Phase 103** (execution entry points), **Phase 111** (service icons), **Phase 116** (canonical identity and duplicate prevention)
 - Idempotent add/remove service operations
 - Duplicate-click prevention during pending operations
 - No partial UI success on failed persistence
@@ -1039,7 +1039,7 @@ Updating stale `loginUrl` values belongs to Service Registry / Admin metadata fl
 - No credential/profile management controls on tiles
 - Responsive RTL layout
 - Regression protection for Phase 103 execution
-- Dependency on Phase 102, Phase 103, Phase 104, Phase 111 and Phase 113
+- Dependency on Phase 102, Phase 103, Phase 104, Phase 111 and Phase 116
 
 **Layout architecture:**
 
@@ -1351,6 +1351,17 @@ It defines only the user experience around security.
 | AC-107-5 | Admin can manage service icons |
 | AC-107-6 | Admin can view integration status (generic vs adapter, last discovery outcome) |
 | AC-107-7 | Admin cannot view user credential plaintext |
+| AC-107-8 | Admin console visual design matches Digital Home (typography, colors, radius, spacing, cards, buttons, shadows, icons) |
+| AC-107-9 | Built-in websites are presented as modern cards showing icon, name, category, status, login URL when set, added date, and added-by origin |
+| AC-107-10 | Technical identifiers, raw metadata/JSON, adapter internals, and UUIDs are hidden by default and available only via an explicit «פרטים נוספים» / More Details modal |
+| AC-107-11 | Navigation labels use «אתרים מובנים» and «אתרים בהוספה ע"י משתמשים» (or equivalent Hebrew); admin UI uses אתר/אתרים glossary |
+| AC-107-12 | Pending user websites queue shows submitted date, submitted by, preview icon, category, approve, and reject in a card-friendly layout |
+| AC-107-13 | Admin can configure Home URL and optional Login URL for websites without exposure to implementation jargon; missing Login URL means Digital Home uses Home URL |
+| AC-107-14 | Category creation collects name (and optional icon) only; the system generates a unique category code/id |
+| AC-107-15 | Website edit uses compact sections / collapsible groups with clear Save and Cancel (not oversized full-page forms) |
+| AC-107-16 | Admin can filter by category, built-in, custom, user-submitted, active, inactive and search by website name, category, or login URL |
+| AC-107-17 | Admin screens are usable on desktop/tablet/laptop without unnecessary horizontal scrolling or oversized controls |
+| AC-107-18 | Existing approval, registry write policies, rediscovery, and zero-credential-access rules remain intact (presentation changes only unless an AC above requires behavior) |
 
 ---
 
@@ -1407,7 +1418,7 @@ Exact column names may follow existing schema conventions.
 
 When a user adds a custom service:
 
-- normalize/validate the provided URL according to Phase 113 rules where available
+- normalize/validate the provided URL according to Phase 116 rules where available
 - create or reuse `service_registry` entry
 - attempt login discovery
 - save `loginUrl` if found
@@ -1455,7 +1466,7 @@ Bulk `loginUrl` refresh must:
 - Phase 108 owns browser integration and `loginUrl` discovery.
 - Phase 110 uses discovered `loginUrl` for standard autofill.
 - Phase 112 classifies and supports medium/complex login experiences once a valid login entry point is available, whether through a discovered `loginUrl`, an admin-managed `loginUrl`, or approved Service Registry metadata.
-- Phase 113 owns service identity and URL canonicalization.
+- Phase 116 owns service identity and URL canonicalization.
 - Phase 107 owns admin registry management UI.
 
 **Discovery boundary**
@@ -1591,6 +1602,7 @@ Phase 112 classifies login complexity and extends execution for modal / multi-st
 | AC-108-23 | Trusted-auth host probe **and** validated common-path persist: (1) when DOM/link discovery yields no high-confidence consumer `loginUrl`, probe same-brand trusted auth hosts (`auth.` / `login.` / equivalents), validate login-page evidence, and persist (KSP-class: `auth.ksp.co.il/login`, not dead `ksp.co.il/login`); (2) when same-origin `/login` (e.g. `https://github.com/login`) is validated as a consumer login page, persist it — do **not** leave `needs_review` solely because `method=common-path` or initial `confidence=low`. Probed candidates that appear in `topCandidates` must not leave `login_url` empty. Zap-class REJECT remains required; no cross-brand invent-probing |
 | AC-108-24 | Federated / parent IdP: when discovery finds a trusted IdP host on a different registrable domain (`id.` / `login.` / `auth.` / `accounts.` / equivalents) **and** brand-return evidence ties the login to the primary site (`continue` / `callback` / `redirect_*` / `application` containing primary brand, etc.), persist that IdP `loginUrl`. Trello → `id.atlassian.com/login` ACCEPT; do not reject solely for `signup` in query when brand-return is present; arbitrary cross-domain without brand-return remains REJECT; Zap-class REJECT unchanged |
 | AC-108-25 | Live candidate validation **and** sibling-TLD brand **with Zap dual-gate hard:** (1) open/inspect top candidates — reachable + ≥1 identity field (no fill/submit) — PayPal `https://www.paypal.com/login` is the normative auto target; (2) sibling-TLD same SLD — Zoom `https://zoom.us/signin` ACCEPT; (3) identity fields must not override alternate-audience reject — Zap stays NULL; (4) **Operator closeout 2026-07-14:** live Zoom + Zap + KSP accepted; **PayPal auto-discovery (U27) explicitly deferred** to a later Phase 108 milestone (M16) with interim catalog/admin seed — dual-gate stability preferred over further heuristic churn (D-108-31) |
+| AC-108-26 | When the user adds a custom site (or admin triggers rediscovery), loginUrl discovery must keep the Hub as the focused experience: do not steal OS focus with a separate discovery window; an inactive same-window discovery tab that closes and returns focus to the Hub is acceptable; the discovery tab must never be activated |
 
 ---
 
@@ -2363,7 +2375,7 @@ It must never:
 - Prefer explicit `loginFields` from Service Registry.
 - If safe field detection succeeds, discovered metadata may be proposed for registry enrichment.
 - Metadata enrichment must follow governance rules and must not bypass admin review where required.
-- Phase 110 must not redefine canonical service identity; URL normalization remains Phase 113.
+- Phase 110 must not redefine canonical service identity; URL normalization remains Phase 116.
 
 **Out of scope:**
 
@@ -2378,7 +2390,7 @@ It must never:
 - canonical URL normalization
 - duplicate service detection
 
-These belong to Phase 112 or Phase 113.
+These belong to Phase 112 or Phase 116.
 
 **Relationship to Phase 112:**
 
@@ -2406,7 +2418,7 @@ Phase 110 must not:
 - change the unified execution pipeline defined in Phase 103
 - change Service Registry ownership
 - introduce service-specific branching outside approved adapters
-- modify URL canonicalization rules (Phase 113)
+- modify URL canonicalization rules (Phase 116)
 - introduce advanced login intelligence reserved for Phase 112
 
 | Acceptance criteria | |
@@ -2431,15 +2443,13 @@ Phase 110 must not:
 
 ### Phase 111 — Service Assets and Icon Management
 
-**Goal:**
+#### Goal
 
 Provide a centralized, secure, cacheable and maintainable Service Asset Management architecture for Digital Home.
 
 Phase 111 establishes the infrastructure for managing service visual assets, beginning with service icons, while remaining extensible for future asset types without redesigning the architecture.
 
----
-
-## Architectural purpose
+#### Architectural purpose
 
 Most services already have icons.
 
@@ -2454,9 +2464,7 @@ The purpose of Phase 111 is not merely to discover icons, but to ensure that ser
 
 Visual assets must never become a dependency for service execution.
 
----
-
-## Architectural principles
+#### Architectural principles
 
 - Service execution must never depend on visual assets.
 - Assets are metadata, not business logic.
@@ -2467,9 +2475,7 @@ Visual assets must never become a dependency for service execution.
 - User-owned assets and global assets must remain isolated.
 - Admin-approved assets take precedence over automatically discovered assets.
 
----
-
-## Scope
+#### Scope
 
 Phase 111 includes:
 
@@ -2488,9 +2494,7 @@ Phase 111 includes:
 - Bulk asset refresh
 - Consistent rendering across all application surfaces
 
----
-
-## Supported asset types
+#### Supported asset types
 
 Initial implementation:
 
@@ -2508,9 +2512,7 @@ Future-compatible architecture:
 
 The architecture must support future asset types without redesign.
 
----
-
-## Asset discovery
+#### Asset discovery
 
 When a service is created or refreshed, the system may attempt asset discovery.
 
@@ -2527,9 +2529,7 @@ Discovery must be deterministic.
 
 Discovery failure must never prevent service creation.
 
----
-
-## Asset validation
+#### Asset validation
 
 Downloaded assets must be validated before storage.
 
@@ -2548,9 +2548,7 @@ Validation includes:
 
 Unsupported or invalid assets must be rejected.
 
----
-
-## Supported formats
+#### Supported formats
 
 Supported formats may include:
 
@@ -2563,9 +2561,7 @@ SVG support requires explicit sanitization before use.
 
 Unsupported formats must not be stored.
 
----
-
-## Asset normalization
+#### Asset normalization
 
 Approved assets should be normalized into a consistent presentation.
 
@@ -2588,9 +2584,7 @@ Suggested sizes:
 
 Normalization must preserve visual quality.
 
----
-
-## Storage architecture
+#### Storage architecture
 
 Image binaries must never be stored directly inside `service_registry`.
 
@@ -2611,9 +2605,7 @@ Suggested metadata:
 
 Exact schema may follow existing conventions.
 
----
-
-## Asset ownership
+#### Asset ownership
 
 Global catalog services use shared global assets.
 
@@ -2623,9 +2615,7 @@ Private assets must never automatically become global assets.
 
 Admin approval is required before promoting an asset to global use.
 
----
-
-## Asset lifecycle
+#### Asset lifecycle
 
 Suggested lifecycle:
 
@@ -2639,9 +2629,7 @@ Suggested lifecycle:
 
 Only active assets should be rendered.
 
----
-
-## Asset sources
+#### Asset sources
 
 Possible values:
 
@@ -2653,9 +2641,7 @@ Possible values:
 
 Admin assets have highest priority.
 
----
-
-## Asset refresh
+#### Asset refresh
 
 The system should support:
 
@@ -2671,9 +2657,7 @@ Refresh must:
 - update metadata
 - invalidate cache safely
 
----
-
-## Duplicate prevention
+#### Duplicate prevention
 
 Identical assets should not be stored repeatedly.
 
@@ -2681,9 +2665,7 @@ The implementation should reuse existing managed assets where possible.
 
 Duplicate uploads should be avoided using deterministic asset identity or checksum.
 
----
-
-## Rendering rules
+#### Rendering rules
 
 Digital Home
 
@@ -2703,9 +2685,7 @@ Rendering must:
 - preserve layout stability
 - provide accessible alternative text where appropriate
 
----
-
-## Fallback rules
+#### Fallback rules
 
 If no approved asset exists:
 
@@ -2719,14 +2699,13 @@ Fallback may include:
 
 Fallback selection must remain consistent.
 
----
-
-## Administrator management
+#### Administrator management
 
 Administrator capabilities include:
 
-- preview current asset
-- upload replacement asset
+- **upload an image file** as the service icon via a file picker (required UX) — validate → Storage → normalize → set **active** managed asset with `assetSource=admin`
+- preview the **current managed icon image** (not only emoji / URL text)
+- replace the icon by uploading a new file
 - approve discovered asset
 - reject asset
 - refresh discovery
@@ -2736,9 +2715,9 @@ Administrator capabilities include:
 - view validation status
 - view refresh history
 
----
+Editing emoji or `faviconSiteUrl` alone is **not** sufficient Admin icon management for Phase 111. The current “אייקון (מטא-דאטה בלבד)” panel must be replaced.
 
-## Operational visibility
+#### Operational visibility
 
 The system should expose operational metrics such as:
 
@@ -2750,9 +2729,7 @@ The system should expose operational metrics such as:
 
 No user credentials or private information may appear.
 
----
-
-## Security rules
+#### Security rules
 
 Phase 111 must:
 
@@ -2764,9 +2741,7 @@ Phase 111 must:
 - isolate private user assets
 - never expose Storage internals to clients unnecessarily
 
----
-
-## Relationship to Other Phases
+#### Relationship to Other Phases
 
 - Phase 102 owns Service Registry persistence.
 - Phase 108 discovers login entry points.
@@ -2774,9 +2749,7 @@ Phase 111 must:
 - Phase 110 and Phase 112 consume service metadata but never depend on asset availability.
 - Phase 107 exposes administrator asset management.
 
----
-
-## Regression protection
+#### Regression protection
 
 Phase 111 must not modify:
 
@@ -2791,9 +2764,7 @@ Phase 111 must not modify:
 
 Visual assets remain independent metadata.
 
----
-
-## Non-goals
+#### Non-goals
 
 Phase 111 does not include:
 
@@ -2805,9 +2776,7 @@ Phase 111 does not include:
 - user profile images
 - subscription branding
 
----
-
-## Required engineering deliverables
+#### Required engineering deliverables
 
 The development team must provide:
 
@@ -2821,16 +2790,18 @@ The development team must provide:
 - Cache strategy
 - Regression report
 
+#### Acceptance criteria
+
 | Acceptance criteria | |
 |---------------------|---|
 | AC-111-1 | Every service supports managed visual asset metadata |
 | AC-111-2 | Image binaries are stored in managed object storage rather than service_registry |
 | AC-111-3 | The system can discover candidate icons deterministically |
 | AC-111-4 | Approved assets are normalized before use |
-| AC-111-5 | Local managed assets are used during normal application rendering |
-| AC-111-6 | Missing assets render deterministic fallback icons |
+| AC-111-5 | When an **active managed** asset exists, it is used for application rendering; when it does **not**, the pre-111 presentation path (`faviconSiteUrl` / existing favicon helpers) **must** still render the site icon — blank catalog icons after Phase 111 are a regression |
+| AC-111-6 | Missing assets (no managed **and** no legacy path) render deterministic fallback icons |
 | AC-111-7 | Asset discovery failure never blocks service creation |
-| AC-111-8 | Admin can upload, approve, replace, refresh and restore assets |
+| AC-111-8 | Admin can upload, approve, replace, refresh and restore assets — **upload means choosing an image file** stored in object storage, not only editing emoji/`faviconSiteUrl` text fields |
 | AC-111-9 | Duplicate asset storage is prevented |
 | AC-111-10 | Asset refresh preserves approved admin assets |
 | AC-111-11 | Global and private assets remain isolated |
@@ -2838,6 +2809,8 @@ The development team must provide:
 | AC-111-13 | Asset version and validation metadata are maintained |
 | AC-111-14 | Visual assets never affect login, execution or credential handling |
 | AC-111-15 | Build passes |
+| AC-111-16 | Admin Icon UI provides a **file picker** to upload a service icon image; after upload the managed icon is shown on Digital Home / Service Management / Admin; usable when automatic favicon discovery / site icon failed. Shipping metadata-only emoji/`faviconSiteUrl` editors without file upload fails this criterion |
+| AC-111-17 | **No icon regression:** services that displayed working site icons before Phase 111 must continue to display them after Phase 111 without requiring mass admin re-upload; hard cutover to empty managed Storage-only paint is forbidden |
 
 ---
 
@@ -2991,7 +2964,7 @@ Phase ownership remains:
 - Phase 108 discovers and validates **consumer** login entry points (`loginUrl`), preferring `NULL` over false positives, and may write **discovery deferral signals** (`rejectedLoginUrl`, `loginEntryType`, `usesModal`, `phase112Deferred`, `loginIntelligenceHint`) for Phase 112.
 - Phase 110 consumes Login Intelligence for standard autofill when a validated navigable `loginUrl` exists.
 - Phase 112 owns authoritative Login Intelligence classification and metadata lifecycle, including modal-on-primary and complex surfaces deferred by Phase 108.
-- Phase 113 owns Service Identity and URL canonicalization.
+- Phase 116 owns Service Identity and URL canonicalization.
 
 **Login Reclassification:**
 
@@ -3196,7 +3169,7 @@ Admin Management should display:
 - Phase 108 finds and maintains the login entry point.
 - Phase 110 handles basic standard forms.
 - Phase 112 classifies and supports medium/complex login experiences.
-- Phase 113 owns canonical service identity and duplicate prevention.
+- Phase 116 owns canonical service identity and duplicate prevention.
 - Phase 107 exposes admin metadata management.
 - Phase 103 remains the execution pipeline.
 
@@ -3226,47 +3199,340 @@ Admin Management should display:
 | AC-112-22 | Integration health uses explicit states (healthy, degraded, needs_review, adapter_required, unsupported) visible in admin tooling |
 | AC-112-23 | Transient detection failures may retry per policy; permanent failures wait for admin/scheduled/manual refresh without duplicating metadata |
 | AC-112-24 | Registry metadata includes `loginDetectionEngineVersion` and `lastValidatedBy` (`auto` \| `admin` \| `adapter`) |
+| AC-112-25 | For services classified as medium with an email-first, username-first, or id-first flow, when the extension is available and identity credentials are present, the visible identity field(s) on the first login step must be filled with the stored vault value without requiring a password field on the same page, without auto-submit, and without auto-clicking Continue/Next |
+| AC-112-26 | When automatic completion for a medium or two-step attempt cannot be performed, the user must receive exactly one explicit understandable status distinguishing at least: login form not detected; first login field not detected; no credentials for the selected profile; website not supported; blocked by the website; or system error. Silent open-only without such status is forbidden. Credentials and raw technical errors must not appear in user-facing copy |
 
 ---
 
-### Phase 113 — Service Identity and URL Canonicalization
+### Phase 113 — Login Access, Credential Experience & Best-Effort Login Assistance
 
-**Goal:** Establish a canonical identity for every service by normalizing user-provided URLs before creating or reusing Service Registry entries. Prevent duplicate services while preserving correct execution behavior.
+#### Goal
 
-**Scope:**
+Transform Digital Home into a secure and user-friendly hub for accessing digital services and managing login credentials.
 
-- Canonical service identity
-- URL normalization
-- Canonical `primaryUrl` resolution
-- Existing Service Registry lookup
-- Duplicate prevention
-- HTTP/HTTPS normalization
-- WWW / non-WWW normalization
-- Trailing slash normalization
-- URL case normalization
-- Deep-link normalization
-- Query-string removal for identity comparison
-- Fragment (`#`) removal for identity comparison
-- Canonical domain extraction
-- Safe handling of subdomains (do not automatically collapse all subdomains into the root domain)
-- Linking `user_services` to existing registry entries when appropriate
-- Preserve private vs global ownership rules
-- Canonical identity is used only for service identification, never for execution target selection
+This phase shifts the primary focus from universal automatic login to providing a reliable, consistent and user-controlled login experience.
 
-**Execution boundary:** Canonicalization must never determine which page is opened. Execution continues to use `loginUrl` when available, otherwise `primaryUrl` (Phase 103).
+Automatic credential completion remains available as an assistance feature whenever supported, while manual credential access and copying become the primary and guaranteed workflow.
+
+#### Existing functionality to preserve
+
+The following capabilities already exist and **must remain unchanged**:
+
+- Multiple profiles may be associated with a single service.
+- Each profile maintains its own credentials.
+- Existing service names remain unchanged.
+- Existing service icons remain unchanged.
+- Existing service categories remain unchanged.
+- Existing credential storage remains unchanged.
+- Existing service creation and editing functionality remains unchanged.
+
+No migration or redesign of the current data model shall be performed during this phase.
+
+#### Opening a service
+
+Each service shall provide a single action for opening the external website.
+
+**URL selection rules**
+
+When the user opens a service, the application shall follow the following order:
+
+1. If a Login URL exists, open the Login URL.
+2. Otherwise, open the Home URL.
+3. If neither URL exists, display a clear user-friendly message indicating that no website address has been configured.
+
+**Opening behaviour**
+
+- The website shall open in a new browser tab.
+- Digital Home shall remain open.
+- The selected profile shall remain active.
+- No automatic login submission shall occur.
+- No automatic button clicks shall occur.
+- The application shall never interrupt the user's workflow.
+
+#### Profile selection
+
+Services may contain multiple profiles.
+
+The application shall allow the user to explicitly choose the profile before using the credentials.
+
+Requirements:
+
+- The selected profile shall always be visually highlighted.
+- Switching profiles shall immediately refresh all displayed credentials.
+- Credentials from different profiles shall never be displayed together.
+- Copy operations shall always use the currently selected profile.
+- If only one profile exists, it may be selected automatically.
+
+#### Credential panel
+
+The selected profile shall display its existing login credentials.
+
+The panel may include any credential fields already supported by the current system, including for example:
+
+- Email
+- Username
+- Customer Number
+- Password
+
+No new credential types shall be introduced during this phase.
+
+#### Credential copy experience
+
+Every available credential shall provide its own dedicated Copy action.
+
+**Required behaviour**
+
+When the user copies a credential:
+
+- Only that credential shall be copied.
+- Copying shall require explicit user interaction.
+- Immediate visual confirmation shall be displayed.
+- Confirmation shall never expose sensitive information.
+- Confirmation shall disappear automatically.
+- Copying shall never refresh the page.
+
+Example confirmation messages:
+
+- Email copied
+- Username copied
+- Customer Number copied
+- Password copied
+
+Passwords shall never appear inside confirmation messages.
+
+**User experience**
+
+The copy experience shall:
+
+- Be accessible directly from the credential panel.
+- Use clear icons.
+- Provide visual feedback.
+- Avoid browser alert dialogs.
+- Avoid page reloads.
+- Work consistently across supported screen sizes.
+
+#### Password protection
+
+Passwords shall remain hidden by default.
+
+Users shall be able to:
+
+- Reveal the password.
+- Hide the password again.
+- Copy the password without revealing it.
+
+Switching profiles shall automatically hide any visible password.
+
+#### Automatic login assistance (best effort)
+
+Automatic credential completion remains available as an optional convenience feature.
+
+The application shall attempt to populate login credentials whenever the target website supports the existing completion mechanism.
+
+Automatic completion is considered a best-effort capability.
+
+Successful completion is not guaranteed.
+
+**Supported behaviour**
+
+When automatic completion succeeds:
+
+- Populate supported login fields using the selected profile.
+- Never submit the login form automatically.
+- Never click Next, Continue or Sign In automatically.
+- Allow the user to review the populated values.
+
+**Fallback behaviour**
+
+If automatic completion cannot be completed, the application shall:
+
+- Keep the selected profile active.
+- Continue displaying the credential panel.
+- Allow manual copying of every available credential.
+- Continue operating normally.
+
+Failure of automatic completion shall never prevent manual login.
+
+**Possible reasons**
+
+Automatic completion may not succeed because:
+
+- Unsupported website structure.
+- Website layout has changed.
+- Login page is displayed inside a modal dialog.
+- Multi-step authentication flow.
+- External authentication provider (Google, Apple, Facebook, etc.).
+- Website security restrictions.
+- Browser security restrictions.
+
+These situations shall not be treated as application failures.
+
+**User feedback**
+
+Every automatic completion attempt shall produce one visible status.
+
+Examples:
+
+- Credentials completed successfully.
+- Automatic completion is not supported for this website.
+- Automatic completion could not be completed.
+- Manual credential copy is available.
+
+The application shall never fail silently.
+
+#### Service support level
+
+Each service shall expose its current login assistance capability.
+
+Supported values are:
+
+**Automatic Login Supported**
+
+Automatic credential completion has been validated and is expected to work reliably.
+
+**Automatic Login (Best Effort)**
+
+The application will attempt automatic completion.
+
+Success depends on the current website implementation and cannot be guaranteed.
+
+**Manual Login Only**
+
+Automatic completion is not attempted.
+
+The application provides:
+
+- Opening the configured Login URL or Home URL.
+- Profile selection.
+- Secure credential display.
+- Individual credential copy actions.
+
+The support level shall be visible before opening the service.
+
+Support levels may change in future versions without affecting stored credentials.
+
+#### Recommended user flow
+
+1. User selects a service.
+2. User selects the desired profile.
+3. Digital Home displays the credentials.
+4. User opens the service.
+5. The application opens the Login URL if available; otherwise the Home URL.
+6. The application attempts automatic credential completion when supported.
+7. If successful, the user reviews the populated values and continues manually.
+8. If unsuccessful, the user copies the required credentials from Digital Home.
+9. The user pastes the credentials into the website and completes the login manually.
+
+#### Out of scope
+
+The following features are explicitly excluded from this phase:
+
+- Universal login page detection.
+- Universal field detection.
+- Automatic login form submission.
+- Automatic clicking of Next, Continue or Sign In buttons.
+- Automatic handling of modal login windows.
+- Automation of multi-step authentication flows.
+- Automation of Google, Apple or Facebook login.
+- Changes to the profile model.
+- Changes to service names.
+- Changes to service icons.
+- Changes to service categories.
+- Browser password manager integration.
+- Credit card auto-fill.
+- Any AI-based website analysis.
+
+#### Required validation evidence
+
+The development team shall provide:
+
+- Demonstration of opening Login URLs.
+- Demonstration of fallback to Home URLs.
+- Demonstration of multiple profiles.
+- Demonstration of credential copying.
+- Demonstration of password protection.
+- Demonstration of graceful fallback when automatic completion is unavailable or fails (manual copy remains usable).
+- Demonstration of Manual Login Only behaviour.
+- Confirmation that existing services, profiles and credentials remain fully functional.
+
+Successful automatic credential completion is **not** required validation evidence for Phase 113 acceptance.
+
+#### Architectural decision
+
+Digital Home is a centralized digital identity hub.
+
+Its primary responsibilities are:
+
+- Organize digital services.
+- Manage multiple profiles.
+- Securely manage credentials.
+- Open the correct login page.
+- Assist users with login.
+
+Automatic credential completion is a secondary convenience feature.
+
+Whenever automatic completion is unavailable, the application shall always provide a complete and reliable manual login experience through profile selection and secure credential copying.
+
+Phase 113 is a **User Experience** and **Login Assistance** phase. It does not expand or modify the website automation engine, and it has **no dependency** on Phase 112.
+
+#### Relationship to other phases
+
+- Phase 103 owns unified service execution and open-target selection (`loginUrl` then `primaryUrl`).
+- Phase 105 owns Digital Home presentation surfaces that host the credential panel and open actions.
+- Phase 106 owns Trust UX constraints for passwords and sensitive feedback.
+- Any automatic completion already present in the product may be invoked as Best Effort only; Phase 113 does not depend on Phase 112 and does not introduce Login Intelligence, website detection, or field detection.
+- Phase 113 does not redesign Login Intelligence ownership or Service Registry metadata models.
+- Phase 116 owns Service Identity and URL Canonicalization (formerly numbered Phase 113 before renumber).
+
+#### Acceptance criteria
 
 | Acceptance criteria | |
 |---------------------|---|
-| AC-113-1 | Adding an existing service URL does not create a duplicate registry row |
-| AC-113-2 | Adding www/non-www/http/https variants resolves to the same canonical service when appropriate |
-| AC-113-3 | Adding a deep link attempts to resolve the service homepage before registry insert |
-| AC-113-4 | User receives clear feedback when an existing service is reused |
-| AC-113-5 | Custom private services remain private unless approved by admin |
-| AC-113-6 | Canonicalization must never change the execution target. It is used only for service identity, matching and duplicate detection |
-| AC-113-7 | Equivalent URL variants (HTTP/HTTPS, WWW/non-WWW, trailing slash, letter case, query parameters and fragments) resolve to the same canonical service identity when appropriate |
-| AC-113-8 | Subdomains must not automatically be merged into the root domain. Canonical identity must preserve service boundaries unless explicitly defined by Service Registry metadata |
-| AC-113-9 | When an existing Service Registry entry matches the canonical identity, no duplicate registry row is created. The user's `user_services` record references the existing registry entry |
-| AC-113-10 | Canonical Service Identity is stable. It may be recomputed only through the approved normalization process. User edits or execution behavior must never implicitly change canonical identity |
+| AC-113-1 | When a Login URL is configured, opening a service opens that Login URL in a new browser tab |
+| AC-113-2 | When no Login URL is configured, opening a service opens the Home URL in a new browser tab |
+| AC-113-3 | When neither Login URL nor Home URL is configured, the user receives a clear friendly message and no tab is opened silently without explanation |
+| AC-113-4 | Digital Home remains open while the external website opens; the selected profile remains active |
+| AC-113-5 | Opening a service never auto-submits a login form and never auto-clicks Next, Continue or Sign In |
+| AC-113-6 | Multiple Access Profiles per service continue to work; exactly one profile is active at a time and is visually highlighted |
+| AC-113-7 | Switching profiles immediately refreshes displayed credentials; credentials from different profiles are never shown together |
+| AC-113-8 | Copy operations always use the currently selected profile; a single profile may be auto-selected when only one exists |
+| AC-113-9 | The credential panel displays existing supported credential fields for the selected profile without introducing new credential types |
+| AC-113-10 | Every available credential field provides its own dedicated Copy action requiring explicit user interaction |
+| AC-113-11 | Copy confirmation is immediate, non-blocking, auto-dismissing, never uses browser alert dialogs, never reloads the page, and never reveals password values |
+| AC-113-12 | Passwords remain hidden by default; users can reveal, hide again, and copy while hidden; switching profiles re-hides any revealed password |
+| AC-113-13 | When an existing automatic credential completion implementation is available at runtime and the service support level allows an attempt, the application may invoke it as Best Effort: if it succeeds, fields are populated without submit or Continue/Sign-In clicks; success of this attempt is not required for Phase 113 acceptance |
+| AC-113-14 | When automatic completion is unavailable or cannot complete, the selected profile and credential panel remain available for manual copy; failure never blocks manual login |
+| AC-113-15 | Every automatic completion attempt that is made produces exactly one visible user status; silent failure is forbidden |
+| AC-113-16 | Each service exposes a visible support level before open: Automatic Login Supported, Automatic Login (Best Effort), or Manual Login Only |
+| AC-113-17 | Manual Login Only services open URL and provide profile/credential/copy flows without attempting automatic completion |
+| AC-113-18 | Existing service names, icons, categories, profiles, credential storage, and create/edit flows remain unchanged; no data-model migration is required |
+| AC-113-19 | Validation evidence includes opening Login/Home URLs, multiple profiles, credential copy, password protection, graceful fallback when automatic completion is unavailable or fails, and at least one Manual Login Only service; successful automatic completion is not an acceptance criterion |
+| AC-113-20 | Build passes |
+| AC-113-21 | Phase 113 has no dependency on Phase 112; it does not fix or replace Phase 112; it does not introduce new Login Intelligence, website detection, or field detection |
+| AC-113-22 | All user-visible Login Assistance strings are Hebrew only; English jargon such as Manual Only or Best Effort must not appear in user-facing banners or labels |
+| AC-113-23 | When no Login URL is configured and the Home URL will open, the user receives a friendly Hebrew explanation that a login page was not found and the home page will open |
+| AC-113-24 | When a service has no stored credentials for use, Digital Home does not open the floating Login Assistance panel; the user receives a friendly Hebrew prompt to enter credentials in service management |
+| AC-113-25 | Digital Home content shell max-width matches Discover/Manage service screens; service icon grid shows at most five tiles per row with side padding |
+| AC-113-26 | Digital Home title is «הבית הדיגיטלי של {user full name}»; marketing subtitle under the title is removed; PoC/test fill buttons are removed from Home |
+| AC-113-27 | «ניהול שירותים» on Digital Home is centered and styled consistently with Discover’s primary navigation CTA («לבית הדיגיטלי») |
+| AC-113-28 | Manage Services removes the marketing subtitle under the title; «לבית הדיגיטלי» appears in the top chrome consistent with Home’s manage CTA placement |
+| AC-113-29 | «השירותים שלי» is organized by expandable category sections (only categories with user services) and includes a search field consistent with Discover search that filters the list |
+| AC-113-30 | Practice login service («תרגול התחברות») is removed from the user-facing catalog and selection flows |
+| AC-113-31 | Multi-profile alone does not show status «דורש תשומת לב» on Manage Services cards |
+| AC-113-32 | User-visible Hebrew UI uses אתר/אתרים instead of שירות/שירותים for catalog websites (buttons, titles, messages); code identifiers unchanged |
+| AC-113-33 | Digital Home and Manage Sites share the approved soft background treatment and clearly rounded content-shell corners; the wave/dot pattern must be visually perceptible to the operator (not a flat washed card) |
+| AC-113-34 | Application user-facing UI uses the Heebo typeface as the primary font family |
+| AC-113-35 | On Digital Home and Manage/Add Sites, lock/access controls appear inside the rounded content shell; the persistent name+email identity chip is not shown on those screens |
+| AC-113-36 | In «האתרים שלי», the remove action menu is fully visible (not clipped), uses blue text without a trash icon |
+| AC-113-37 | Credential Details is a compact modal with sticky header, title «פרטי כניסה», accessible X close (top-left in RTL), and no large bottom Close button |
+| AC-113-38 | Unsaved credential edits require confirmation before close or profile switch; no silent discard |
+| AC-113-39 | Profile selector is compact (chips/tabs); multi-profile switch loads only that profile’s credentials and re-hides passwords |
+| AC-113-40 | Each credential field has a compact copy control; password has separate reveal and copy; copy confirmations never expose secrets; no browser alerts |
+| AC-113-41 | Primary action «שמירת שינויים» is disabled when clean; shows loading/success/failure; failed save retains entered values |
+| AC-113-42 | Delete is secondary (overflow or compact); confirmation dialog required; existing delete semantics unchanged; not visually equal to Save |
+| AC-113-43 | «+ הוספת פרופיל נוסף» appears below credentials, collapsed by default, secondary styling; reuses existing create logic |
+| AC-113-44 | If open/auto actions exist on the screen, they are compact Hebrew icon+text (`פתח כניסה` / `נסה מילוי`); auto uses existing runtime only and always shows visible feedback |
+| AC-113-45 | Credential Details redesign is UI-only: no schema, encryption, autofill-engine, or Phase 112 changes; RTL/a11y/responsive evidence provided |
 
 ---
 
@@ -3727,6 +3993,48 @@ Only credential-change intelligence is introduced.
 | AC-115-18 | Administrator operational visibility exposes only anonymized detection statistics and never user credentials |
 
 ---
+
+### Phase 116 — Service Identity and URL Canonicalization
+
+**Goal:** Establish a canonical identity for every service by normalizing user-provided URLs before creating or reusing Service Registry entries. Prevent duplicate services while preserving correct execution behavior.
+
+**Scope:**
+
+- Canonical service identity
+- URL normalization
+- Canonical `primaryUrl` resolution
+- Existing Service Registry lookup
+- Duplicate prevention
+- HTTP/HTTPS normalization
+- WWW / non-WWW normalization
+- Trailing slash normalization
+- URL case normalization
+- Deep-link normalization
+- Query-string removal for identity comparison
+- Fragment (`#`) removal for identity comparison
+- Canonical domain extraction
+- Safe handling of subdomains (do not automatically collapse all subdomains into the root domain)
+- Linking `user_services` to existing registry entries when appropriate
+- Preserve private vs global ownership rules
+- Canonical identity is used only for service identification, never for execution target selection
+
+**Execution boundary:** Canonicalization must never determine which page is opened. Execution continues to use `loginUrl` when available, otherwise `primaryUrl` (Phase 103).
+
+| Acceptance criteria | |
+|---------------------|---|
+| AC-116-1 | Adding an existing service URL does not create a duplicate registry row |
+| AC-116-2 | Adding www/non-www/http/https variants resolves to the same canonical service when appropriate |
+| AC-116-3 | Adding a deep link attempts to resolve the service homepage before registry insert |
+| AC-116-4 | User receives clear feedback when an existing service is reused |
+| AC-116-5 | Custom private services remain private unless approved by admin |
+| AC-116-6 | Canonicalization must never change the execution target. It is used only for service identity, matching and duplicate detection |
+| AC-116-7 | Equivalent URL variants (HTTP/HTTPS, WWW/non-WWW, trailing slash, letter case, query parameters and fragments) resolve to the same canonical service identity when appropriate |
+| AC-116-8 | Subdomains must not automatically be merged into the root domain. Canonical identity must preserve service boundaries unless explicitly defined by Service Registry metadata |
+| AC-116-9 | When an existing Service Registry entry matches the canonical identity, no duplicate registry row is created. The user's `user_services` record references the existing registry entry |
+| AC-116-10 | Canonical Service Identity is stable. It may be recomputed only through the approved normalization process. User edits or execution behavior must never implicitly change canonical identity |
+
+---
+
 
 ### Phase 122 — Useful Services Intelligence
 
@@ -4726,7 +5034,8 @@ flowchart LR
   P110[Phase 110 Standard Login Autofill]
   P111[Phase 111 Service Assets and Icons]
   P112[Phase 112 Login Intelligence]
-  P113[Phase 113 Service Identity]
+  P113[Phase 113 Login Access Creds]
+  P116[Phase 116 Service Identity]
   P114[Phase 114 Application Shell]
   P115[Phase 115 Credential Change Detection]
   P122[Phase 122 Useful Services]
@@ -4753,11 +5062,15 @@ flowchart LR
   P108 --> P109
   P101 --> P109
   P110 --> P112
+  P103 --> P113
+  P105 --> P113
+  P106 --> P113
+  P112 --> P113
   P103 --> P112
   P102 --> P112
   P108 --> P112
-  P102 --> P113
-  P104 --> P113
+  P102 --> P116
+  P104 --> P116
   P103 --> P114
   P114 --> P104
   P114 --> P105
@@ -4797,9 +5110,9 @@ flowchart LR
 | **1.4** | 2026-07-06 | **Phase 103 acceptance criteria refined.** AC-103-7 updated; AC-103-9 and AC-103-10 added for deterministic outcomes and origin-independent execution. |
 | **1.5** | 2026-07-06 | **Phase 103 execution pipeline.** Unified pipeline diagram, loginUrl discovery boundary, stale-metadata health signals, and Phase 102/107/109 ownership split documented. |
 | **1.6** | 2026-07-06 | **Phase 112 — Login Intelligence & Advanced Autofill.** Advanced login detection, registry metadata enrichment, integration health signals, and adapter recommendation — without changing Phase 103 execution contract. |
-| **1.7** | 2026-07-07 | **Phase 113 — Service URL Normalization and Duplicate Prevention.** Canonical URL resolution, duplicate detection, deep-link homepage resolution, and reuse feedback for custom service creation. |
-| **1.8** | 2026-07-07 | **Phase 113 refined — Service Identity and URL Canonicalization.** Canonical identity scope, execution boundary, subdomain rules, and AC-113-6 through AC-113-9. |
-| **1.9** | 2026-07-07 | **Phase 113 — AC-113-10.** Canonical Service Identity stability; recomputation only via approved normalization process. |
+| **1.7** | 2026-07-07 | **Phase 116 — Service URL Normalization and Duplicate Prevention.** Canonical URL resolution, duplicate detection, deep-link homepage resolution, and reuse feedback for custom service creation. |
+| **1.8** | 2026-07-07 | **Phase 116 refined — Service Identity and URL Canonicalization.** Canonical identity scope, execution boundary, subdomain rules, and AC-116-6 through AC-116-9. |
+| **1.9** | 2026-07-07 | **Phase 116 — AC-116-10.** Canonical Service Identity stability; recomputation only via approved normalization process. |
 | **2.0** | 2026-07-07 | **Phase 104 refined — Service Management Experience.** Architectural principles, extended scope, management state, and AC-104-8 through AC-104-11. |
 | **2.1** | 2026-07-07 | **Phase 104 bug-prevention.** Idempotent operations, pending-state guards, persistence failure handling, and AC-104-12 through AC-104-16. |
 | **2.2** | 2026-07-07 | **Phase 104 — AC-104-10 refined.** Usability when discovery/search unavailable; selected services remain manageable. |
@@ -4845,5 +5158,26 @@ flowchart LR
 | **5.11** | 2026-07-14 | **Phase 108 — live candidate validation + sibling-TLD (M15).** Open/inspect candidates: reachable + ≥1 identity field (PayPal); same-SLD across TLDs (Zoom); **fields must not accept Zap portal**; dual gate PayPal/Zoom PASS + Zap NULL required. AC-108-25 / D-108-30. |
 | **5.12** | 2026-07-14 | **Phase 111 rewritten — Service Assets and Icon Management.** Centralized, versioned, cacheable assets; Storage-backed binaries; discovery/validation/normalization/lifecycle; admin management; AC-111-1 through AC-111-15. |
 | **5.13** | 2026-07-14 | **Phase 108 — M15 closeout with PayPal deferred.** Operator: Zap NULL + KSP + Zoom live green; PayPal auto-discovery deferred (U27→M16); interim seed/admin; freeze discovery churn (D-108-31). |
+| **5.14** | 2026-07-14 | **Phase 111 — Admin file-upload icon UX.** Replace metadata-only icon editor with real image file upload to Storage as active managed icon (AC-111-16 / D-111-16). |
+| **5.15** | 2026-07-14 | **Phase 111 — icon regression fix.** Paint cascade: managed if present else pre-111 favicon path; forbid Storage-only hard cutover that blanks catalog icons (AC-111-17 / D-111-17). |
+| **5.16** | 2026-07-14 | **Phase 112 — medium step-1 fill.** Dedicated identity-first path required; must not reuse Phase 110 same-page standard gate for email-first. AC-112-25. |
+| **5.17** | 2026-07-14 | **Phase 112 — formal Rejected governance.** Observable acceptance bar; no silent failure; mandatory user statuses; evidence package; dependent phases blocked. AC-112-26 / BD-112-1…6. |
+
+| **5.18** | 2026-07-14 | **Renumber:** Service Identity and URL Canonicalization **Phase 113 → Phase 116**. Acceptance criteria **AC-113-* → AC-116-***. Phase 113 reserved for future work. |
+| **5.19** | 2026-07-14 | **Phase 113 — Login Access, Credential Experience & Best-Effort Login Assistance.** Manual credential copy is the guaranteed workflow; automatic completion is best-effort with explicit status and support levels. AC-113-1 through AC-113-20. |
+| **5.20** | 2026-07-14 | **Phase 113 finalized — no Phase 112 dependency.** UX/Login Assistance only; no new LI/detection; auto success not an acceptance criterion; AC-113-13/19 amended; AC-113-21 added. |
+| **5.21** | 2026-07-14 | **Phase 113 — Hebrew-only UX + credentials gate.** No English jargon in assistance UI; friendly login→home message; no floating panel without credentials. AC-113-22…24 / D-113-16. |
+| **5.22** | 2026-07-14 | **Phase 113 — Digital Home chrome.** Shared shell width with Discover; max 5 tiles/row; title with user name; remove test buttons/subtitle; centered Manage CTA. AC-113-25…27 / D-113-17. |
+| **5.23** | 2026-07-14 | **Phase 113 — Manage Services findability.** Category accordion + search for «השירותים שלי»; top Home CTA; remove practice + false attention status. AC-113-28…31 / D-113-18. |
+| **5.24** | 2026-07-14 | **Phase 113 — Glossary אתר/אתרים.** User-facing Hebrew replaces שירות/שירותים for catalog sites. AC-113-32 / D-113-19. |
+| **5.25** | 2026-07-14 | **Phase 113 — Shared Home/Manage background + rounded shells.** AC-113-33 / D-113-20. |
+| **5.26** | 2026-07-14 | **Phase 113 — Heebo typeface site-wide.** AC-113-34 / D-113-21. |
+| **5.27** | 2026-07-14 | **Phase 113 — Background must be visible.** Soft pattern perceptible; wash/scrim fixed. AC-113-33 clarified / D-113-22. |
+| **5.28** | 2026-07-14 | **Phase 113 — Lock inside shell; remove name/email chip.** AC-113-35 / D-113-23. |
+| **5.29** | 2026-07-14 | **Phase 108 — Silent discovery session.** Custom-site add must not flash visible temp tabs; AC-108-26 / D-108-32. |
+| **5.30** | 2026-07-14 | **Phase 113 — Remove-site menu UX.** Not clipped; blue text; no trash icon. AC-113-36 / D-113-24. |
+| **5.31** | 2026-07-14 | **Phase 108 — D-108-32 revised.** Revert focus-stealing discovery popup; inactive same-window tab + Hub refocus. AC-108-26 clarified. |
+| **5.32** | 2026-07-14 | **Phase 113 — Credential Details modal redesign.** Compact modern UI; D-113-25; AC-113-37…45. |
+| **5.33** | 2026-07-14 | **Phase 107 — Admin Console UI/UX modernization.** DH visual parity; website cards; More Details modal; nav rename; auto category codes; filters. AC-107-8…18 / D-107-13…20. |
 
 Implementation plans for individual production phases may be authored separately; they must align with this document and must not duplicate it as a second architecture source.

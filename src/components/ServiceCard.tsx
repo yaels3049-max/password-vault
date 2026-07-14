@@ -47,7 +47,8 @@ const ROW_STATUS_CHIP: Record<
   not_added: { label: 'לא נוסף', tone: 'neutral' },
   added: { label: 'מוכן', tone: 'ready' },
   missing_credentials: { label: 'חסרים פרטי כניסה', tone: 'warn' },
-  multiple_profiles: { label: 'דורש תשומת לב', tone: 'attention' },
+  /** Legacy mapping only — derive no longer emits this as attention (AC-113-31). */
+  multiple_profiles: { label: 'מספר פרופילים', tone: 'ready' },
 };
 
 function ServiceCardLogo({

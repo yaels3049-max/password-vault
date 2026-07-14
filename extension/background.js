@@ -632,6 +632,13 @@ const GENERIC_REAL_SITE_SCRIPT_FILES = {
     'generic/field-mapper.js',
     'generic/fill-executor.js',
     'generic/generic-autofill.js',
+    'generic/identity-first-autofill.js',
+  ],
+  identityFirst: [
+    'generic/form-detector.js',
+    'generic/field-mapper.js',
+    'generic/fill-executor.js',
+    'generic/identity-first-autofill.js',
   ],
 };
 
@@ -1155,6 +1162,14 @@ function closeDiscoveryTabSafely(tabId, onClosed) {
   });
 }
 
+/**
+ * Discovery session for HUB_LOGIN_ENTRY_DISCOVERY (AC-108-16).
+ *
+ * Operator 2026-07-14: a dedicated minimized/unfocused popup window stole OS focus
+ * (Hub went behind other apps). Prefer the prior approach: inactive tab in the
+ * **same** Hub window (`active: false`), then refocus the Hub tab on finish.
+ * Brief tab-strip flash is acceptable; losing the browser window is not.
+ */
 function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
   if (!isAllowedLoginEntryDiscoveryUrl(primaryUrl)) {
     sendResponse({ ok: false, reason: 'url_not_allowed' });
@@ -1165,8 +1180,8 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
   var settled = false;
   var readyWorkStarted = false;
   var operationTimeout = null;
-  var returnTabId = null;
   var discoveryTabId = null;
+  var returnTabId = null;
 
   function clearOperationTimeout() {
     if (operationTimeout) {
@@ -1183,19 +1198,13 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
     clearTimeout(tabLoadTimeout);
     clearOperationTimeout();
 
-    function done() {
+    var tabToClose = discoveryTabId;
+    discoveryTabId = null;
+
+    closeDiscoveryTabSafely(tabToClose, function () {
       refocusReturnTab(returnTabId);
       respond(result);
-    }
-
-    if (discoveryTabId) {
-      var tabToClose = discoveryTabId;
-      discoveryTabId = null;
-      closeDiscoveryTabSafely(tabToClose, done);
-      return;
-    }
-
-    done();
+    });
   }
 
   function armOperationTimeout() {
@@ -1233,69 +1242,69 @@ function openLoginEntryDiscoveryTab(primaryUrl, sendResponse, onTabReady) {
       var tabId = tab.id;
       discoveryTabId = tabId;
 
-    function startReadyWork() {
-      if (readyWorkStarted || settled) {
-        return;
-      }
-      readyWorkStarted = true;
-      clearTimeout(tabLoadTimeout);
-      armOperationTimeout();
-
-      setTimeout(function () {
-        if (settled) {
+      function startReadyWork() {
+        if (readyWorkStarted || settled) {
           return;
         }
-        onTabReady(tabId, finishSession);
-      }, LOGIN_ENTRY_DISCOVERY_INITIAL_DELAY_MS);
-    }
+        readyWorkStarted = true;
+        clearTimeout(tabLoadTimeout);
+        armOperationTimeout();
 
-    function onTabUpdated(updatedTabId, changeInfo) {
-      if (updatedTabId !== tabId) {
-        return;
+        setTimeout(function () {
+          if (settled) {
+            return;
+          }
+          onTabReady(tabId, finishSession);
+        }, LOGIN_ENTRY_DISCOVERY_INITIAL_DELAY_MS);
       }
 
-      if (
-        changeInfo.status === 'loading' &&
-        changeInfo.url === 'chrome-error://chromewebdata/'
-      ) {
-        chrome.tabs.onUpdated.removeListener(onTabUpdated);
-        finishSession({ ok: false, reason: 'tab_load_error' });
-        return;
-      }
-
-      if (changeInfo.status !== 'complete') {
-        return;
-      }
-
-      chrome.tabs.get(updatedTabId, function (loadedTab) {
-        if (chrome.runtime.lastError || !loadedTab) {
+      function onTabUpdated(updatedTabId, changeInfo) {
+        if (updatedTabId !== tabId) {
           return;
         }
 
-        if (!tabUrlMatchesDiscoveryPrimary(loadedTab.url, primaryUrl)) {
+        if (
+          changeInfo.status === 'loading' &&
+          changeInfo.url === 'chrome-error://chromewebdata/'
+        ) {
+          chrome.tabs.onUpdated.removeListener(onTabUpdated);
+          finishSession({ ok: false, reason: 'tab_load_error' });
           return;
         }
 
-        chrome.tabs.onUpdated.removeListener(onTabUpdated);
-        startReadyWork();
+        if (changeInfo.status !== 'complete') {
+          return;
+        }
+
+        chrome.tabs.get(updatedTabId, function (loadedTab) {
+          if (chrome.runtime.lastError || !loadedTab) {
+            return;
+          }
+
+          if (!tabUrlMatchesDiscoveryPrimary(loadedTab.url, primaryUrl)) {
+            return;
+          }
+
+          chrome.tabs.onUpdated.removeListener(onTabUpdated);
+          startReadyWork();
+        });
+      }
+
+      chrome.tabs.onUpdated.addListener(onTabUpdated);
+
+      chrome.tabs.get(tabId, function (currentTab) {
+        if (chrome.runtime.lastError || !currentTab) {
+          return;
+        }
+
+        if (
+          currentTab.status === 'complete' &&
+          tabUrlMatchesDiscoveryPrimary(currentTab.url, primaryUrl)
+        ) {
+          chrome.tabs.onUpdated.removeListener(onTabUpdated);
+          startReadyWork();
+        }
       });
-    }
-
-    chrome.tabs.onUpdated.addListener(onTabUpdated);
-
-    chrome.tabs.get(tabId, function (currentTab) {
-      if (chrome.runtime.lastError || !currentTab) {
-        return;
-      }
-
-      if (
-        currentTab.status === 'complete' &&
-        tabUrlMatchesDiscoveryPrimary(currentTab.url, primaryUrl)
-      ) {
-        chrome.tabs.onUpdated.removeListener(onTabUpdated);
-        startReadyWork();
-      }
-    });
     });
   });
 
@@ -1394,6 +1403,117 @@ function openPageAndDiscoverLoginEntry(primaryUrl, sendResponse) {
       });
     });
   });
+}
+
+function runIdentityFirstAutofillOnTab(tabId, loginFields, credentials, attempt, onDone) {
+  chrome.scripting.executeScript(
+    {
+      target: { tabId: tabId, allFrames: true },
+      world: 'MAIN',
+      files: GENERIC_REAL_SITE_SCRIPT_FILES.identityFirst,
+    },
+    function () {
+      if (chrome.runtime.lastError) {
+        if (attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+          setTimeout(function () {
+            runIdentityFirstAutofillOnTab(
+              tabId,
+              loginFields,
+              credentials,
+              attempt + 1,
+              onDone,
+            );
+          }, GENERIC_REAL_SITE_RETRY_DELAY_MS);
+          return;
+        }
+        onDone({
+          ok: false,
+          reason: chrome.runtime.lastError.message || 'script_injection_failed',
+          filled: 0,
+        });
+        return;
+      }
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tabId, allFrames: true },
+          world: 'MAIN',
+          func: function (fields, creds) {
+            if (typeof runIdentityFirstAutofill !== 'function') {
+              return { ok: false, reason: 'identity_first_function_missing', filled: 0 };
+            }
+            return runIdentityFirstAutofill({
+              loginFields: fields,
+              credentials: creds,
+            });
+          },
+          args: [loginFields, credentials],
+        },
+        function (results) {
+          if (chrome.runtime.lastError) {
+            if (attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+              setTimeout(function () {
+                runIdentityFirstAutofillOnTab(
+                  tabId,
+                  loginFields,
+                  credentials,
+                  attempt + 1,
+                  onDone,
+                );
+              }, GENERIC_REAL_SITE_RETRY_DELAY_MS);
+              return;
+            }
+            onDone({
+              ok: false,
+              reason: chrome.runtime.lastError.message || 'identity_first_run_failed',
+              filled: 0,
+            });
+            return;
+          }
+
+          var result = pickBestGenericFrameResult(results, 'no_result');
+
+          if ((!result || !result.ok) && attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+            setTimeout(function () {
+              runIdentityFirstAutofillOnTab(
+                tabId,
+                loginFields,
+                credentials,
+                attempt + 1,
+                onDone,
+              );
+            }, genericRetryDelayMs(result));
+            return;
+          }
+
+          onDone(
+            Object.assign({ via: 'identity-first-autofill' }, result || { ok: false, filled: 0 }),
+          );
+        },
+      );
+    },
+  );
+}
+
+function openPageAndIdentityFirstAutofill(urlString, loginFields, credentials, sendResponse) {
+  if (
+    !credentials ||
+    typeof credentials !== 'object' ||
+    !loginFields ||
+    !Array.isArray(loginFields)
+  ) {
+    sendResponse({ ok: false, reason: 'missing_vault_payload', filled: 0 });
+    return false;
+  }
+
+  return openGenericRealSiteTab(
+    urlString,
+    sendResponse,
+    'identity-first-autofill',
+    function (tabId, finishSession) {
+      runIdentityFirstAutofillOnTab(tabId, loginFields, credentials, 0, finishSession);
+    },
+  );
 }
 
 function openPageAndGenericAutofill(urlString, loginFields, credentials, sendResponse) {
@@ -1560,6 +1680,16 @@ chrome.runtime.onMessageExternal.addListener(function (
 
   if (message.type === 'POC_GENERIC_FILL') {
     openPageAndGenericAutofill(
+      message.url,
+      message.loginFields,
+      message.credentials,
+      sendResponse,
+    );
+    return true;
+  }
+
+  if (message.type === 'POC_IDENTITY_FIRST_FILL') {
+    openPageAndIdentityFirstAutofill(
       message.url,
       message.loginFields,
       message.credentials,

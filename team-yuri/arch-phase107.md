@@ -6,8 +6,12 @@ PHASE=107
 ## Status
 STATUS: READY_FOR_MANAGER
 
+AMENDED: 2026-07-14 — **Admin Console UI/UX Modernization.** Operator specification: restyle entire Admin console to Digital Home visual identity; website cards; hide technical fields behind «פרטים נוספים»; rename nav; auto category codes; compact edit; filters/search. UI/UX primary; limited functional improvements listed below. Existing registry/approval/discovery business logic preserved unless explicitly changed. Adds **D-107-13 … D-107-20**, **AC-107-8 … AC-107-18**, milestone **M9**. Ownership remains Phase **107** (not 113 Credential Details). Current `PHASE.md` may stay 113 — Manager may run Admin UX as a parallel track or schedule after 113 gate; do not merge Admin redesign into Phase 113 Credential M7.
+
 ## Phase Goal
-Deliver an **Admin Management Platform** — a separate operational console for **catalog curation** and **integration health review**: category management, global `service_registry` CRUD, user-submission approval, login URL refresh/rediscovery, interim icon metadata editing, and integration status visibility — while **never** accessing user credential plaintext (AC-107-7, ADR-002).
+Deliver an **Admin Management Platform** — a separate operational console for **catalog curation** and **integration health review**: category management, global `service_registry` CRUD, user-submission approval, login URL refresh/rediscovery, icon management (interim + Phase 111 assets when present), and integration status visibility — while **never** accessing user credential plaintext (AC-107-7, ADR-002).
+
+**UX bar (2026-07-14):** The console must feel like a **premium Digital Home management app**, not a legacy CRUD / database editor — same typography (Heebo), colors, radius, spacing, cards, shadows, and buttons as Digital Home.
 
 Phase 107 owns **admin surfaces, admin authorization, and registry/category write policies** for platform operators. It does not own end-user Digital Home (105), Service Management (104), full icon asset pipeline (111), browser packaging (108), or production account registration UX (190).
 
@@ -31,14 +35,50 @@ Phase 107 owns **admin surfaces, admin authorization, and registry/category writ
 | **D-107-2: Admin authorization (interim)** | AC-107-7; Phase 190 deferred | Introduce **`users.is_admin boolean not null default false`** (migration). Helper `public.is_admin()` (SECURITY DEFINER, stable) returns true when `auth.uid()` has `is_admin`. **No `service_role` key in browser.** Phase 107 uses existing Supabase Auth session + admin flag — not full Phase 190 account product UX. Dev/bootstrap: seed one admin user via migration/SQL doc; production assignment is operational (out of band). |
 | **D-107-3: Admin RLS for platform tables** | AC-107-1, AC-107-2, AC-107-3 | Add RLS policies gated by `is_admin()` for: **`categories`** INSERT/UPDATE/DELETE; **`service_registry`** SELECT all rows (for review queue); global row (`owner_user_id IS NULL`) INSERT/UPDATE/DELETE; controlled UPDATE on user rows for **approval promotion** fields only. Regular authenticated users retain Phase 102 policies unchanged. |
 | **D-107-4: Global registry CRUD** | AC-107-2 | Admins maintain **global** catalog entries (`owner_user_id IS NULL`) with `source_type` in (`built_in`, `admin`, `approved_global`). CRUD covers: `id`, `display_name`, `primary_url`, `login_url`, `login_fields`, `category_id`, `adapter_id`, `icon`, `metadata`, `service_status`. Stable `id` required — breaking id changes need explicit migration strategy (discourage in UI). |
-| **D-107-5: Category management** | AC-107-1 | Admins CRUD `categories` (`id`, `display_name`, `sort_order`). `id` is stable key referenced by `service_registry.category_id`. Hebrew `display_name` supported. Reorder via `sort_order`. |
+| **D-107-5: Category management** | AC-107-1, AC-107-14 | Admins manage `categories`. **Amended:** admin enters **display name** (+ icon if applicable) only; system **auto-generates** unique technical `id` / code — admin never types identifiers. Reorder via `sort_order`. Hebrew `display_name` supported. |
 | **D-107-6: User submission approval** | AC-107-3, PLAN lifecycle | **Approval queue** lists user-owned registry rows (`owner_user_id IS NOT NULL`, `source_type = user`) optionally filtered by `service_status = pending_review` when that status is used. **Approve** promotes to **global** catalog: create or update global row (`owner_user_id = NULL`, `source_type = approved_global`, `service_status = active`) with curated metadata; record provenance in `metadata` (e.g. `promotedFromUserId`, `promotedFromServiceId`, `promotedAt`). **Reject** sets user row `service_status = disabled` or admin-visible rejection flag — user private row may remain in vault but hidden from global discover. User keeps private definition; global gains curated entry (PLAN governance). |
 | **D-107-7: Login URL refresh** | AC-107-4 | Admin actions on global (and promotable) services: **manual edit** `login_url` + `login_fields`; **mark invalid** (`login_url_status = invalid`) to allow rediscovery; **trigger rediscovery** reusing existing `discoverLogin` + persist path (`discoverAndPersistLoginUrl` / admin-wrapped RPC where global writes require elevated path). Extend or add **admin SECURITY DEFINER RPC** for global `login_url` updates beyond `persist_discovered_login_url` narrow cache contract if needed. Discovery runs with extension available (document operator prerequisite). |
-| **D-107-8: Icon management (interim)** | AC-107-5, Phase 111 boundary | Phase 107 allows **metadata-level** icon editing only: `icon` (emoji/text), `metadata.faviconSiteUrl`, optional `metadata.iconSource` — **no** Supabase Storage upload pipeline, normalization, or versioning (Phase 111). Execution and tiles must tolerate missing/broken icons (existing fallbacks). |
-| **D-107-9: Integration status view** | AC-107-6 | Read-only admin panel per service showing: `adapter_id` (generic vs site-specific), `login_url_status`, `login_url` presence, `metadata.discoveryMethod`, `metadata.integrationHealth` (if present), `updated_at`, last discovery outcome from `metadata` (structure documented in Manager plan). No new telemetry pipeline required in 107 — display registry truth + manual admin notes field in `metadata` if useful. |
+| **D-107-8: Icon management** | AC-107-5, Phase 111 | Prefer Phase **111** managed Storage icons on cards when present (same paint cascade as Digital Home). Metadata-level emoji/favicon remains available where 111 asset missing. |
+| **D-107-9: Integration status view** | AC-107-6 | Read-only admin panel per service showing: `adapter_id` (generic vs site-specific), `login_url_status`, `login_url` presence, `metadata.discoveryMethod`, `metadata.integrationHealth` (if present), `updated_at`, last discovery outcome from `metadata` (structure documented in Manager plan). No new telemetry pipeline required in 107 — display registry truth + manual admin notes field in `metadata` if useful. Surfaced primarily via **More Details** after modernization (D-107-15). |
 | **D-107-10: Zero credential access** | AC-107-7, ADR-002 | Admin platform **must not** query `encrypted_credentials`, decrypt vault blobs, or display credential field values. No admin UI for `access_profiles` secrets. Admin code paths statically verifiable — no imports from `vault/crypto` decrypt paths for display. |
 | **D-107-11: No execution/administration blur** | P5, Phase 104/105 | Admin console does not open services for end-user autofill, does not manage user `user_services` selections, does not edit user vault state. Registry/catalog metadata only. |
 | **D-107-12: Registry cache invalidation** | Phase 102 runtime | After admin writes, clear/invalidate client registry catalog cache (`clearRegistryCatalogCache`) so Hub reload reflects changes — document operator refresh; optional auto-invalidate on admin save success. |
+| **D-107-13: Digital Home visual parity** | Operator Admin UX Task | Admin shell/screens use the **same design language** as Digital Home: Heebo, type scale, BG/shell colors, primary/secondary, border-radius, spacing, button/card/shadow/icon styles. RTL Hebrew. Not a separate “legacy admin skin”. |
+| **D-107-14: Website cards, not long lists** | Operator | Built-in catalog uses **modern website cards** (icon, name, category, status, login URL when set, added date, added-by origin). Feel similar to Digital Home tiles/cards. Compact — no full-width oversized fields dominating layout. |
+| **D-107-15: Technical details on demand** | Operator AC-107-11 | Hide by default: Global ID, UUIDs, raw metadata/JSON, adapter name, source_type, internal status enums, diagnostics. Primary UI shows operator-friendly “פרטים נוספים” / “More Details” → **modal** with technical fields. |
+| **D-107-16: Nav copy (אתרים)** | Glossary + operator | Rename «קטלוג גלובלי» → **«אתרים מובנים»**. Rename «תור אישורים» → **«אתרים בהוספה ע"י משתמשים»**. Use אתר/אתרים in Hebrew admin UI (align D-113-19 glossary). |
+| **D-107-17: Pending submissions card** | AC-107-3 | Queue shows submitted date, submitted by, preview icon, category, Approve, Reject — card-friendly, not dense CRUD table. |
+| **D-107-18: Home URL + optional Login URL** | Operator | Every website supports **Home URL** + optional **Login URL** (including custom/promoted). Admin configures without implementation jargon. If Login URL empty, Digital Home uses Home URL (existing execution rule — surface clearly in admin copy). |
+| **D-107-19: Compact edit experience** | Operator | Edit website like credential modal: compact sections, collapsible groups, clear Save/Cancel — not huge vertical forms. |
+| **D-107-20: Search & filters** | Operator | Filter: category, built-in, custom, user-submitted, active, inactive. Search: name, category, login URL. Responsive desktop/tablet/laptop; no unnecessary horizontal scroll. |
+
+## Admin Console UI Modernization (normative — D-107-13…20)
+
+Primary targets: `src/admin/**` (`AdminApp`, `RegistryAdmin`, `ApprovalQueue`, `CategoriesAdmin`, `IntegrationStatusPanel`, `admin.css`).
+
+### Visual
+Match Digital Home (typography, fonts/sizes, colors, radius, spacing, buttons, cards, shadows, icons). Premium management feel.
+
+### Forms → cards
+Replace long oversized forms with compact cards; group logically; progressive disclosure for secondary fields.
+
+### Website card fields (primary)
+Icon (DH cascade) · Name · Category · Status · Login URL (if set) · Added date · Added by (`Built-in` / `Administrator` / username who submitted). Same for “origin” wording in Hebrew.
+
+### More Details modal
+Button opens modal with metadata, IDs, UUID, adapter, source type, flags, validation/build info — not in main layout.
+
+### Categories
+Admin enters name (+ icon optional); system generates unique code/id.
+
+### Editing
+Compact sections, collapsible groups, Save + Cancel; avoid huge vertical forms.
+
+### Functional constraints
+Do not change approval/promote/reject semantics, RLS/auth, credential access rules, or discovery scoring unless a listed amendment requires it. Login URL rediscovery remains available; presentation simplifies.
+
+### Evidence
+Screenshots: Built-in cards, Pending queue, Category create (no manual code), Edit compact, More Details modal, filters; confirm AC-107-7 still holds.
 
 ### Normative approval flow
 
@@ -75,7 +115,7 @@ Admin selects global service
 - Full Phase 111 icon pipeline (Storage, normalization, versioning, auto-discovery).
 - Phase 108 browser store packaging.
 - Phase 109 credential lifecycle UX.
-- Phase 113 URL canonicalization engine.
+- Phase 116 URL canonicalization engine.
 - Phase 150+ subscription gating in admin.
 - Phase 190 full registration/login product UX (interim `is_admin` flag only).
 - Enterprise org admin, SSO, audit log product (future).
@@ -166,19 +206,18 @@ Admin selects global service
 
 ## Handoff Notes for Manager
 
-1. Publish AC-107-1 … AC-107-7 verbatim with milestone mapping.
-2. Suggested milestones: (M1) `is_admin` migration + RLS + AdminGate → (M2) categories CRUD → (M3) global registry CRUD → (M4) approval queue promote/reject → (M5) login URL refresh/rediscovery → (M6) interim icon metadata editor → (M7) integration status panel → (M8) verify script + `docs/MIGRATION_PHASE_107.md` + manual matrix.
-3. **Bootstrap:** Document how to set `is_admin=true` for operator account in dev (SQL snippet in migration doc).
-4. **RPC scope:** Manager must specify whether global registry writes use direct admin RLS or SECURITY DEFINER RPCs — prefer RLS where sufficient; RPC for promotion atomicity if needed.
-5. **Phase 111 deferral:** AC-107-5 satisfied by emoji/favicon metadata only — document Storage upload as Phase 111.
-6. **Regression:** Re-run `verifyPhase102Registry.mjs` / catalog load scripts if present; Phase 103 execution static unchanged.
-7. Developer evidence: `dev-phase107.md` with build, verify script, manual matrix, explicit AC-107-7 affirmation (no credential queries).
+1. Publish AC-107-1 … AC-107-18 with milestone mapping.
+2. Prior M1–M8 (platform) as before; add **M9 — Admin UI/UX modernization** (D-107-13…20 / AC-107-8…18): Digital Home visual parity, website cards, «פרטים נוספים» modal, nav rename, auto category codes, compact edit, search/filters — preserve AC-107-7 and approval/rediscovery semantics.
+3. **Scheduling:** `PHASE.md` may remain **113**. Run Admin M9 as a **parallel track** or after Phase 113 Credential M7 — **do not** implement under Phase 113.
+4. **Bootstrap:** Document how to set `is_admin=true` for operator account in dev.
+5. **Category auto-id:** Document generation (slug + uniqueness). Prefer Phase 111 icons on cards when present.
+6. Developer evidence: modernized Admin screenshots + verify script still affirms no credential access.
 
 ## Architect Review
 ARCHITECT_REVIEW_STATUS: NOT_REVIEWED
 
 ### Review Notes
-_Pending Manager plan, Developer implementation, and evidence._
+Admin Console UI/UX Modernization incorporated (D-107-13…20, AC-107-8…18). Ready for Manager handoff on M9.
 
 ### Required Corrections
-_None at architecture authoring._
+None yet (await M9 implementation / UAT).

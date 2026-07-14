@@ -83,8 +83,15 @@ export default function LoginUrlRefresh({
         }}
       >
         <label className="admin-field">
-          <span>כתובת כניסה</span>
+          <span>כתובת כניסה (Login URL)</span>
           <input name="loginUrl" type="url" defaultValue={row.login_url ?? ''} required />
+          <p className="admin-field-hint">
+            כתובת הבית:{' '}
+            {row.primary_url || '—'}
+            {!row.login_url
+              ? ' · כשכתובת הכניסה ריקה, הבית הדיגיטלי משתמש בכתובת הבית.'
+              : ''}
+          </p>
         </label>
         <details className="admin-details">
           <summary>שדות כניסה מתקדמים (JSON)</summary>

@@ -18,7 +18,7 @@ Deliver **production-grade Service Management UX** (**ניהול שירותים*
 
 **Service execution** (open site + autofill) remains **Digital Home only** (Phase 103 `executeServiceFromTile` via tile click). Service Management must not invoke execution.
 
-Phase 104 owns **management UX and selection orchestration** only. It does not own registry curation (Phase 107), Digital Home production polish (Phase 105), full icon lifecycle (Phase 111), or URL canonicalization (Phase 113).
+Phase 104 owns **management UX and selection orchestration** only. It does not own registry curation (Phase 107), Digital Home production polish (Phase 105), full icon lifecycle (Phase 111), or URL canonicalization (Phase 116).
 
 ## Source References
 - `team-Yuri/PHASE.md` — `PHASE=104`
@@ -55,7 +55,7 @@ Phase 104 owns **management UX and selection orchestration** only. It does not o
 | **D-104-13: Resilient discovery section** | AC-104-10 | When registry/catalog fetch fails, **My Services** remains usable from vault state. Discover section shows friendly error/empty state; selected services still manageable. |
 | **D-104-14: Pending-operation safety** | AC-104-13, AC-104-23 | While add/remove/custom-add persist is in flight: disable relevant controls; block navigation side-effects that would leave inconsistent state; clear in-flight lock on success or failure. |
 | **D-104-15: Icons interim** | Phase 111 dependency | Cards use existing logo resolution (`useServiceLogos`, favicon metadata). Full Supabase Storage icon pipeline is **out of scope** for Phase 104. |
-| **D-104-16: Phase 113 integration boundary** | PLAN dependency note | Custom add continues current `createCustomServiceDefinition` + discovery flow. **Full URL canonicalization and duplicate registry prevention** deferred to Phase 113. Phase 104 may add **user-visible reuse messaging** only when existing logic already detects a match — no new canonicalization engine. |
+| **D-104-16: Phase 116 integration boundary** | PLAN dependency note | Custom add continues current `createCustomServiceDefinition` + discovery flow. **Full URL canonicalization and duplicate registry prevention** deferred to Phase 116. Phase 104 may add **user-visible reuse messaging** only when existing logic already detects a match — no new canonicalization engine. |
 | **D-104-17: Execution vs management separation (strict)** | PLAN §14, P5, amended AC-104-17 | **Digital Home** is the **sole user-facing execution surface** — tile click → `openServiceWithProfile` → `executeServiceFromTile`. **Service Management** is **administration-only**: selection, credential/profile management via **ניהול**, remove via ⋮ **הסר שירות**. Service Management must not import or call `executeServiceFromTile`, `openServiceWithProfile`, or any execution helper. Footer secondary CTA: **לבית הדיגיטלי**. |
 | **D-104-18: First-run mode** | Existing product flow | `isFirstRun` remains a **layout/copy variant** of the same Service Management screen (simplified helper text, continue CTA). Same components and persistence rules apply. |
 | **D-104-19: Progressive-disclosure management modal** | AC-104-7, UX simplification | **ניהול** opens `ServiceProfileManagementModal` with mode derived from profile count. **Single-profile service:** modal shows **credential editing directly** for the implicit default profile — profile chrome (rename, delete, set-default, profile list) **hidden**; default profile is internal, not surfaced as a named entity on the card. **Multi-profile service:** modal shows **full profile-aware management** — profile list, rename, delete, set-default, per-profile credential edit. Secondary actions **הוספת פרופיל נוסף** and **ניהול פרופילים** (profile-structure controls) appear **inside the modal only**, not on the card. Underlying `AccessProfile` model, vault credential storage, and CRUD callbacks unchanged. |
@@ -140,7 +140,7 @@ Digital Home re-renders from persisted selectedIds
 - Admin platform / registry CRUD (Phase 107).
 - Lifecycle health UX for stale `loginUrl` (Phase 109).
 - Full icon asset pipeline and Storage (Phase 111).
-- URL canonicalization, duplicate registry prevention, deep-link homepage resolution (Phase 113).
+- URL canonicalization, duplicate registry prevention, deep-link homepage resolution (Phase 116).
 - Subscription / capability gating (Phase 150+).
 - Auto-submit login forms.
 - New execution adapters or autofill engine changes.
@@ -250,7 +250,7 @@ Service Management must **not** call `executeServiceFromTile`, `openServiceWithP
 3. **Publish AC-104-1…23** with **amended AC-104-17** mapping documented above.
 4. **Regression gate:** Phase 103 Shufersal/Clalit open+fill from **Digital Home only** (R1/R2). **Retire R3/R4** (Service Management Open no longer exists).
 5. **Modal progressive disclosure:** Manager must specify acceptance signals for single-profile vs multi-profile modal modes (D-104-19).
-6. **Explicitly defer** Phase 111 icons and Phase 113 canonicalization — document as follow-on, not blockers.
+6. **Explicitly defer** Phase 111 icons and Phase 116 canonicalization — document as follow-on, not blockers.
 7. **First-run:** Preserve `isFirstRun` behavior; do not create a separate onboarding route.
 8. **Developer evidence:** Updated `dev-phase104.md` after re-implementation; build PASS, script PASS, manual checklist.
 9. **Do not** modify `executeServiceFromTile` orchestration or Digital Home execution path.

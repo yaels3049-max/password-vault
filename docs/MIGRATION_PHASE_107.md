@@ -113,6 +113,30 @@ Phase 107 edits metadata only:
 
 All admin writes call `clearRegistryCatalogCache()` in `adminRegistryApi.ts`. Hub clients reload catalog on next fetch; operator may refresh the end-user app to see changes immediately.
 
+## M9 — Admin Console UI/UX Modernization (2026-07-14)
+
+Presentation / UX track (AC-107-8…18). **Does not** change approval RPCs, rediscovery scoring, or credential isolation.
+
+| Change | Notes |
+|---|---|
+| Digital Home visual parity | `admin.css` tokens — primary blue, Assistant typeface (app stack), radius/shadow/cards |
+| Website cards | Icon (Phase 111 Storage when present), name, category, status, login URL, added date, added-by |
+| «פרטים נוספים» | Technical IDs / JSON / adapter / source_type / integration panels in modal |
+| Nav | «אתרים מובנים»; «אתרים בהוספה ע"י משתמשים» |
+| Pending queue | Card layout: submitted date/by, preview icon, category, approve/reject |
+| Home + optional Login URL | Friendly labels; empty login → Home URL copy |
+| Category create | Name + optional emoji icon only; **`generateCategoryId`** auto-code (no manual slug) |
+| Compact edit | Collapsible sections; Save / Cancel |
+| Filters + search | Category, built-in/custom/user-submitted, active/inactive; search name/category/login URL |
+
+Evidence fixture: `scripts/fixtures/phase107-admin-m9.html`  
+Screenshot: `docs/evidence/phase107-admin-m9-console.png`
+
+### Category auto-id
+
+`src/admin/adminPresentation.ts` → `generateCategoryId(displayName, existingIds)`  
+Slug from name (Unicode letters/digits) or `cat_<base36>`; uniqueness against existing `categories.id`. Optional icon is stored as a display_name prefix (categories table has no icon column).
+
 ## Verification
 
 ```bash
@@ -121,7 +145,7 @@ npm run build
 node scripts/verifyPhase102Registry.mjs   # regression
 ```
 
-## AC-107-7 affirmation
+## AC-107-7 / AC-107-18 affirmation
 
 Admin platform **must not**:
 
@@ -129,5 +153,7 @@ Admin platform **must not**:
 - Import or call `vault/crypto` decrypt paths
 - Use `service_role` in client bundle or `VITE_*` env
 - Expose credential field values or `access_profiles` secret UI
+
+M9 is UI/UX only — promote/reject/rediscovery semantics and zero credential access remain intact.
 
 Static proof: `scripts/verifyPhase107Admin.mjs`.

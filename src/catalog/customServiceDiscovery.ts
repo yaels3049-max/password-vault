@@ -19,11 +19,11 @@ export interface CustomServiceDiscoveryResult {
   outcome: CustomServiceDiscoveryOutcome;
 }
 
-const DISCOVERY_SUCCESS_MESSAGE = 'השירות נוסף בהצלחה';
+const DISCOVERY_SUCCESS_MESSAGE = 'האתר נוסף בהצלחה';
 const DISCOVERY_FAILURE_MESSAGE =
-  'השירות נוסף. ייתכן שנצטרך לפתוח אותו דרך דף הבית.';
+  'האתר נוסף. ייתכן שנצטרך לפתוח אותו דרך דף הבית.';
 const EXTENSION_UNAVAILABLE_MESSAGE =
-  'השירות נוסף, אך הרחבת הדפדפן לא זמינה לגילוי דף כניסה. טענו מחדש את התוסף (manifest 1.4.1+) ונסו שוב.';
+  'האתר נוסף, אך הרחבת הדפדפן לא זמינה לגילוי דף כניסה. טענו מחדש את התוסף (manifest 1.4.1+) ונסו שוב.';
 
 function logCustomDiscovery(message: string, detail?: unknown): void {
   if (!import.meta.env.DEV) {

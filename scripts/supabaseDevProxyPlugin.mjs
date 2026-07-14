@@ -91,7 +91,51 @@ async function forwardToSupabase(req, res, targetBase) {
       method: req.method,
       headers,
       body: body.length > 0 ? body : undefined,
+      redirect: 'manual',
     });
+
+    // Do not follow filter interstitials; surface as JSON so clients don't parse HTML as Storage JSON.
+    const location = response.headers.get('location') || '';
+    if (
+      response.status >= 300 &&
+      response.status < 400 &&
+      /safepage|neto\.net\.il/i.test(location)
+    ) {
+      const payload = JSON.stringify({
+        statusCode: '502',
+        error: 'ProxyBlocked',
+        message:
+          'Network filter blocked Supabase (safepage redirect). Whitelist *.supabase.co or check NODE_EXTRA_CA_CERTS.',
+      });
+      res.statusCode = 502;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Length', String(Buffer.byteLength(payload)));
+      res.end(payload);
+      return;
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get('content-type') || '';
+    const head = buffer.subarray(0, Math.min(buffer.length, 256)).toString('utf8');
+    const looksLikeHtml =
+      /text\/html/i.test(contentType) ||
+      /^\s*<!doctype html/i.test(head) ||
+      /^\s*<html[\s>]/i.test(head) ||
+      /safepage\.|neto\.net\.il/i.test(head);
+
+    if (looksLikeHtml && targetUrl.pathname.includes('/storage/')) {
+      const payload = JSON.stringify({
+        statusCode: '502',
+        error: 'ProxyBlocked',
+        message:
+          'Supabase Storage response was replaced by an HTML filter page. Whitelist *.supabase.co for the Node/Vite process.',
+      });
+      res.statusCode = 502;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Length', String(Buffer.byteLength(payload)));
+      res.end(payload);
+      return;
+    }
 
     res.statusCode = response.status;
     response.headers.forEach((value, key) => {
@@ -100,7 +144,6 @@ async function forwardToSupabase(req, res, targetBase) {
       }
     });
 
-    const buffer = Buffer.from(await response.arrayBuffer());
     res.setHeader('Content-Length', String(buffer.length));
     res.end(buffer);
   } catch (error) {
