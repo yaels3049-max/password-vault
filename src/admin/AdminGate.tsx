@@ -10,9 +10,9 @@ interface AdminGateProps {
 type GateState = 'loading' | 'need_login' | 'denied' | 'allowed';
 
 /**
- * D-109-22: `#/admin` without admin access → Login (same Digital Home password),
- * then re-check is_admin / role. Not deny-only when logged out or logged in as non-admin.
- * Vault unlock is not required for catalog admin UI.
+ * `#/admin` always shows Login first (step-up). An existing Digital Home session
+ * must not open the control center without entering email + admin password again.
+ * After successful login, re-check is_admin / role. Vault unlock is not required.
  */
 export default function AdminGate({ children }: AdminGateProps) {
   const [gateState, setGateState] = useState<GateState>('loading');
@@ -22,13 +22,6 @@ export default function AdminGate({ children }: AdminGateProps) {
   const evaluateAccess = useCallback(async (): Promise<GateState> => {
     const access = await resolveAdminAccess();
 
-    if (access.status === 'unauthenticated') {
-      setLoginBanner(null);
-      setDenyMessage(null);
-      setGateState('need_login');
-      return 'need_login';
-    }
-
     if (access.status === 'allowed') {
       setLoginBanner(null);
       setDenyMessage(null);
@@ -36,14 +29,19 @@ export default function AdminGate({ children }: AdminGateProps) {
       return 'allowed';
     }
 
-    // Logged-in but not admin (or inactive): clear session and show Login —
-    // do not leave operators on a deny-only page with a tiny link.
+    if (access.status === 'unauthenticated') {
+      setLoginBanner(null);
+      setDenyMessage(null);
+      setGateState('need_login');
+      return 'need_login';
+    }
+
     if (access.status === 'not_admin' || access.status === 'inactive') {
       await signOutAccount();
       setLoginBanner(
         access.status === 'inactive'
           ? 'החשבון אינו פעיל. התחברו עם חשבון מנהל פעיל.'
-          : 'החשבון הנוכחי אינו מנהל. התחברו עם חשבון שקודם ל־admin ב-SQL, או פנו למפעיל.',
+          : 'החשבון הנוכחי אינו מנהל. התחברו עם חשבון מנהל, או פנו למפעיל.',
       );
       setDenyMessage(null);
       setGateState('need_login');
@@ -58,17 +56,38 @@ export default function AdminGate({ children }: AdminGateProps) {
   useEffect(() => {
     let cancelled = false;
     setGateState('loading');
+
     void (async () => {
-      const next = await evaluateAccess();
-      if (cancelled) {
+      const access = await resolveAdminAccess();
+      if (cancelled) return;
+
+      if (access.status === 'misconfigured' || access.status === 'error') {
+        setDenyMessage(access.error ?? 'לא ניתן לאמת הרשאות ניהול.');
+        setGateState('denied');
         return;
       }
-      setGateState(next);
+
+      // Always require the login screen — never skip from an existing hub/admin session.
+      if (access.status === 'not_admin' || access.status === 'inactive') {
+        await signOutAccount();
+        if (cancelled) return;
+        setLoginBanner(
+          access.status === 'inactive'
+            ? 'החשבון אינו פעיל. התחברו עם חשבון מנהל פעיל.'
+            : 'החשבון הנוכחי אינו מנהל. התחברו עם חשבון מנהל, או פנו למפעיל.',
+        );
+      } else {
+        setLoginBanner(null);
+      }
+
+      setDenyMessage(null);
+      setGateState('need_login');
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [evaluateAccess]);
+  }, []);
 
   async function handleAdminAuthenticated(_profile: AppUserProfile, _password: string) {
     setGateState('loading');
@@ -87,19 +106,15 @@ export default function AdminGate({ children }: AdminGateProps) {
   if (gateState === 'need_login') {
     return (
       <div className="admin-gate admin-gate--login" dir="rtl" data-testid="admin-gate-login">
-        <h1 className="admin-gate-login-title">התחברות לניהול הפלטפורמה</h1>
         {loginBanner ? (
           <p className="admin-gate-login-banner" role="status">
             {loginBanner}
           </p>
-        ) : (
-          <p className="admin-gate-login-hint">
-            הזינו אימייל וסיסמת הבית הדיגיטלי של חשבון מנהל. אחרי קידום ב-SQL התחברו כאן מחדש.
-          </p>
-        )}
+        ) : null}
         <AuthEntryScreen
           loginOnly
-          heading="התחברות לניהול"
+          heading="מרכז הבקרה"
+          subtitle="התחבר כדי לנהל את שירותי המערכת, המשתמשים, ההרשאות ותצורת הכספת."
           onAuthenticated={handleAdminAuthenticated}
         />
         <p className="admin-gate-home-link">

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phase 107 — Categories UX (AC-107-14 / AC-107-19)</title>
+    <style>
+      :root {
+        --admin-primary: #2563eb;
+        --admin-primary-dark: #1d4ed8;
+        --admin-border: #e2e8f0;
+        --admin-muted: #64748b;
+        --admin-ink: #0f172a;
+        --admin-radius-sm: 10px;
+        font-family: 'Assistant', system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 1.25rem;
+        background: #e8eef6;
+        color: var(--admin-ink);
+      }
+      .admin-section--categories {
+        max-width: 22rem;
+      }
+      .admin-category-name {
+        flex: 1 1 8rem;
+        min-width: 0;
+        max-width: 12rem;
+      }
+      .admin-category-name input {
+        width: 100%;
+        max-width: 12rem;
+        box-sizing: border-box;
+        padding: 0.55rem 0.7rem;
+      }
+      .admin-category-create .admin-category-row > .admin-btn {
+        padding: 0.55rem 0.85rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1.25;
+        border-radius: 10px;
+        align-self: end;
+      }
+      .admin-section-header h2 {
+        margin: 0 0 0.35rem;
+        color: #1e3a8a;
+      }
+      .admin-section-header p {
+        margin: 0 0 1rem;
+        color: var(--admin-muted);
+      }
+      .admin-edit-shell {
+        padding: 1rem 1.1rem;
+        border: 1px solid var(--admin-border);
+        border-radius: 12px;
+        background: #fff;
+        margin-bottom: 0.85rem;
+        box-shadow: 0 8px 24px rgba(120, 150, 185, 0.12);
+      }
+      .admin-category-create h3 {
+        margin: 0 0 0.65rem;
+        font-size: 1rem;
+      }
+      .admin-category-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        gap: 0.5rem 0.65rem;
+      }
+      .admin-field {
+        display: grid;
+        gap: 0.25rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #1e3a8a;
+      }
+      .admin-category-name {
+        flex: 1 1 12rem;
+        min-width: 10rem;
+      }
+      .admin-field input {
+        border: 1px solid #d5d9e0;
+        border-radius: var(--admin-radius-sm);
+        padding: 0.55rem 0.7rem;
+        font: inherit;
+        font-weight: 400;
+      }
+      .admin-btn {
+        border: 1px solid transparent;
+        border-radius: 12px;
+        padding: 0.5rem 0.95rem;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        font-size: 0.875rem;
+      }
+      .admin-btn--compact {
+        padding: 0.28rem 0.65rem;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        line-height: 1.2;
+        white-space: nowrap;
+      }
+      .admin-btn-primary {
+        background: var(--admin-primary);
+        color: #fff;
+      }
+      .admin-btn-secondary {
+        background: #fff;
+        border-color: var(--admin-border);
+        color: #334155;
+      }
+      .admin-btn-danger {
+        background: #fff1f2;
+        border-color: #fecdd3;
+        color: #be123c;
+      }
+      .admin-field-hint {
+        margin: 0.55rem 0 0;
+        font-size: 0.8rem;
+        font-weight: 400;
+        color: var(--admin-muted);
+      }
+      .admin-category-item {
+        padding: 0.65rem 0.75rem;
+        border: 1px solid var(--admin-border);
+        border-radius: var(--admin-radius-sm);
+        background: #fff;
+      }
+      .admin-category-actions {
+        display: flex;
+        gap: 0.35rem;
+        align-items: center;
+        padding-bottom: 0.05rem;
+      }
+      .admin-details {
+        flex: 1 1 100%;
+        margin: 0.15rem 0 0;
+        font-size: 0.85rem;
+        color: var(--admin-muted);
+      }
+      .admin-chip {
+        display: inline-block;
+        padding: 0.1rem 0.45rem;
+        border-radius: 999px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 0.75rem;
+      }
+      .note {
+        margin: 0 0 1rem;
+        font-size: 0.85rem;
+        color: #475569;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="admin-section--categories">
+      <header class="admin-section-header">
+        <h2>קטגוריות</h2>
+        <p>יצירה ועריכה של קטגוריות לאתרי הקטלוג. הקוד הטכני נוצר אוטומטית.</p>
+      </header>
+      <p class="note">רוחב צר לשמות קצרים</p>
+
+      <form class="admin-edit-shell admin-category-create">
+        <h3>קטגוריה חדשה</h3>
+        <div class="admin-category-row">
+          <label class="admin-field admin-category-name">
+            <span>שם</span>
+            <input value="" placeholder="לדוגמה: בנקים" />
+          </label>
+          <button type="button" class="admin-btn admin-btn-primary">הוסף קטגוריה</button>
+        </div>
+      </form>
+
+      <div class="admin-category-item">
+        <form class="admin-category-row">
+          <label class="admin-field admin-category-name">
+            <span>שם תצוגה</span>
+            <input value="בנקים" />
+          </label>
+          <div class="admin-category-actions">
+            <button type="button" class="admin-btn admin-btn-secondary admin-btn--compact">שמור</button>
+            <button type="button" class="admin-btn admin-btn-danger admin-btn--compact">מחק</button>
+          </div>
+          <details class="admin-details" open>
+            <summary>פרטים נוספים</summary>
+            <p>קוד מערכת: <span class="admin-chip">banking</span></p>
+          </details>
+        </form>
+      </div>
+    </div>
+  </body>
+</html>

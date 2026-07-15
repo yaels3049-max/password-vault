@@ -7,7 +7,6 @@ import { serviceDefinitionToRegistryInsert } from '../registry/registryMapper';
 import { clearRegistryCatalogCache } from '../registry/registryLoader';
 import {
   isKnownBuiltinServiceId,
-  resolveKnownBuiltinByUrl,
 } from '../catalog/knownServiceBootstrap';
 
 /** Raised when a user already owns a custom service with the same normalized primary URL. */
@@ -106,13 +105,10 @@ export async function upsertCustomServiceRegistryRow(
     return definition;
   }
 
-  const known =
-    (isKnownBuiltinServiceId(definition.id)
-      ? definition
-      : resolveKnownBuiltinByUrl(definition.url)) ?? null;
-
-  if (known) {
-    return ensureKnownBuiltinRegistryRow(known);
+  // Never coerce user custom-add into a global built_in row (D-107-6 / AC-107-3).
+  // Known-builtin seed restore belongs on Discover «הוספה» / ensureKnownBuiltinRegistryRow.
+  if (isKnownBuiltinServiceId(definition.id)) {
+    return ensureKnownBuiltinRegistryRow(definition);
   }
 
   const supabase = getSupabaseClient();

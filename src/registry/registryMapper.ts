@@ -138,7 +138,7 @@ export function serviceDefinitionToRegistryInsert(
     adapter_id: definition.adapterId ?? null,
     login_fields: definition.loginFields ?? null,
     source_type: 'user',
-    service_status: 'active',
+    service_status: 'pending_review',
     metadata: {
       loginUrlDiscoveryOutcome: loginUrl ? 'succeeded' : 'never_run',
       loginUrlDiscoveryAttempted: Boolean(loginUrl),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchAdminCategories,
   fetchPendingSubmissions,
@@ -8,27 +8,33 @@ import {
   type AdminRegistryRow,
 } from './adminRegistryApi';
 import { formatAdminDate, statusLabelHe } from './adminPresentation';
+import { adminRowToLogoService } from './adminLogoService';
 import IntegrationStatusPanel from './IntegrationStatusPanel';
-import { resolveManagedIconUrl } from '../serviceAssets';
+import { useServiceLogos } from '../useServiceLogos';
 
-function PreviewIcon({ row }: { row: AdminRegistryRow }) {
-  const managed = resolveManagedIconUrl({
-    serviceId: row.id,
-    metadata: row.metadata,
-  });
-  if (managed) {
-    return <img className="admin-site-card-icon" src={managed} alt="" width={40} height={40} />;
-  }
-  if (row.icon) {
+function PreviewIcon({
+  row,
+  logoSrc,
+}: {
+  row: AdminRegistryRow;
+  logoSrc?: string | null;
+}) {
+  if (logoSrc) {
     return (
-      <span className="admin-site-card-icon admin-site-card-icon--letter" aria-hidden>
-        {row.icon}
-      </span>
+      <img className="admin-site-card-icon" src={logoSrc} alt="" width={40} height={40} />
     );
   }
+  // Prefer letter/initial over stored emoji (🔗) — same as Digital Home fallback.
+  const emoji =
+    row.icon &&
+    row.icon.trim() &&
+    !/^https?:/i.test(row.icon) &&
+    row.icon.trim() !== '🔗'
+      ? row.icon.trim()
+      : null;
   return (
     <span className="admin-site-card-icon admin-site-card-icon--letter" aria-hidden>
-      {row.display_name.slice(0, 1)}
+      {emoji ?? row.display_name.slice(0, 1)}
     </span>
   );
 }
@@ -44,6 +50,9 @@ export default function ApprovalQueue() {
   const [rejectReason, setRejectReason] = useState('');
   const [discovering, setDiscovering] = useState(false);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
+
+  const logoServices = useMemo(() => rows.map(adminRowToLogoService), [rows]);
+  const logos = useServiceLogos(logoServices);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -138,7 +147,7 @@ export default function ApprovalQueue() {
   }
 
   return (
-    <section className="admin-section">
+    <section className="admin-section admin-section--approvals">
       <header className="admin-section-header">
         <h2>אתרים בהוספה ע&quot;י משתמשים</h2>
         <p>
@@ -164,6 +173,10 @@ export default function ApprovalQueue() {
         </p>
       )}
 
+      <div
+        className="admin-scroll-panel admin-approvals-scroll"
+        aria-label="הגשות ממתינות"
+      >
       <ul className="admin-pending-grid">
         {rows.length === 0 && !loading && (
           <li className="admin-muted">אין הגשות ממתינות כרגע.</li>
@@ -192,7 +205,7 @@ export default function ApprovalQueue() {
                   setShowMoreDetails(false);
                 }}
               >
-                <PreviewIcon row={row} />
+                <PreviewIcon row={row} logoSrc={logos[row.id]} />
                 <div>
                   <div className="admin-site-card-name">{row.display_name}</div>
                   <div className="admin-site-card-meta">
@@ -265,6 +278,7 @@ export default function ApprovalQueue() {
           );
         })}
       </ul>
+      </div>
 
       {showMoreDetails && selected && (
         <div

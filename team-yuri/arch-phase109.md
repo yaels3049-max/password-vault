@@ -17,6 +17,8 @@ AMENDED: 2026-07-13 (cross-browser hydrate) — **D-109-24 / AC-109-38.** Operat
 
 AMENDED: 2026-07-13 (workspace durability) — **D-109-25 / AC-109-39.** Operator report: after internet dropout, one user’s Digital Home survived; the **admin** user’s services and passwords were gone and must be re-added. Likely class: **destructive sync/hydrate** (empty or partial local state dual-written / wiping cloud ciphertext; or empty cloud treated as authority after local cache loss) — **not** an inherent “admin role deletes Home” rule. Admin Digital Home uses the same vault/`userId` rules as any user. Adds anti-wipe constraints.
 
+AMENDED: 2026-07-15 (cross-user profiles + delete ghost) — **D-109-26 / AC-109-40 / AC-109-41.** Operator: profiles named «הורים» created (and one deleted) under user **X** for a service appear under user **Y** for the **same service** — including profiles X deleted. Root-cause class: (1) **access_profiles / credentials not isolated** to `userId` in client path (stale vault/UI or dual-write of another user’s profiles into Y); (2) **«מחיקת פרופיל» updates local only** while cloud `access_profiles` remain; upsert-only sync + hydrate union **resurrects** deleted profiles. Blocking security/privacy defect.
+
 ## Phase Goal
 Deliver a **production-ready user account and authentication foundation**: explicit Login and Create Account flows, **one user-facing Digital Home password**, one immutable authenticated `userId`, database-enforced user isolation, **client workspace isolation per `userId`**, session restore/logout, Chrome and Edge account continuity, and an audited cleanup path for unintended anonymous users — **without** a second vault-password screen, without redesigning Vault crypto algorithms, execution, or registry discovery, and without subscription/billing or MFA.
 
@@ -61,6 +63,7 @@ Phase 109 owns the **account shell** that future subscription (151), MFA/session
 | **D-109-23: Client workspace isolation (userId-scoped vault)** | AC-109-11, AC-109-12, AC-109-36, AC-109-37; operator bug | **Local vault ciphertext / IndexedDB (or equivalent) MUST be keyed by authenticated `userId`.** Same password on two accounts must not open the other account’s workspace. On login/register/logout/account-switch: clear previous user’s in-memory `VaultState` / UI selections before loading the new user’s namespace. Digital Home and Manage derive only from the current `userId`. **Discover catalog:** show global rows (`built_in`, `admin`, `approved_global`) to all users; show `source_type=user` private customs **only** when `owner_user_id = auth.uid()`. Never paint another user’s customs or selections. |
 | **D-109-24: Cross-browser workspace hydrate (cloud authority)** | AC-109-17, AC-109-18, AC-109-38; operator bug Chrome≠Edge | IndexedDB is **per-browser**. After Login: `hydrateWorkspaceFromCloud(userId)` before paint. Cloud membership authoritative **when cloud has selections**; decrypt credentials client-side; persist into this browser’s vault. |
 | **D-109-25: Workspace durability / anti-wipe** | AC-109-39; operator data-loss after outage | **Admin role does not own a separate Digital Home vault** — same `userId`-scoped rules as any user. Hard rules: (1) **Hydrate must never replace a non-empty local workspace with an empty result** solely because cloud read returned zero rows, timed out, or failed partially — treat uncertain cloud as “keep local”. (2) **Dual-write must never delete cloud `encrypted_credentials` for a profile merely because the in-memory credential map omitted that profile’s values** during re-key/sync — delete ciphertext only on explicit user remove-credential / remove-service flows. (3) **Dual-write must never delete `user_services` rows** that are absent from a partial local snapshot unless the user explicitly removed those services. (4) Offline / reconnect: local IndexedDB remains source of truth until a **successful, complete** cloud read; then merge with non-destructive rules (union or cloud-wins-only-when-cloud-non-empty for membership; never empty-wins over local non-empty). (5) Creating a new empty local vault blob (missing IndexedDB) must still hydrate from cloud when online; if both empty, that is true empty — not a wipe. |
+| **D-109-26: Profile isolation + durable profile delete** | AC-109-36, AC-109-40, AC-109-41; operator 2026-07-15 | **Blocking.** Profiles/credentials of user X must never appear under user Y for the same service (including profiles X deleted). (1) Hard-clear prior `VaultState` on account switch; vault namespace + cloud queries strictly `userId`/`auth.uid()`; dual-write never copies another user’s profiles into the active account. (2) «מחיקת פרופיל» must delete cloud `access_profiles` (+ cascade credentials) for this user when online — local-only delete is a defect (upsert-only sync + hydrate resurrects ghosts). (3) Failed cloud delete → error UI, no false success. (4) UAT: X creates «הורים» profiles, deletes one; Y on same device for same service sees neither X’s remaining nor deleted profiles. |
 
 ### Normative entry / session flow
 
@@ -147,7 +150,8 @@ Validate + pending guard
 - **One user-facing password; no Master Password screen** (AC-109-32).
 - **Lock = logout → Login** (AC-109-24).
 - **Admin URL shows Login when unauthenticated** (D-109-22).
-- **No cross-user workspace leak** (AC-109-36); vault storage scoped by `userId` (D-109-23).
+- **No cross-user workspace leak** (AC-109-36 / AC-109-40); vault storage scoped by `userId` (D-109-23 / D-109-26).
+- **Profile delete must remove cloud `access_profiles` for this user** (AC-109-41, D-109-26) — anti-wipe does not forbid intentional deletes.
 - **Same user Chrome↔Edge must show the same Digital Home after login** via cloud hydrate (AC-109-17, AC-109-38, D-109-24).
 - **Never wipe a non-empty workspace via empty/partial hydrate or destructive dual-write** (AC-109-39, D-109-25).
 - **Private customs only for owner** in Discover (AC-109-37).
@@ -208,17 +212,16 @@ Validate + pending guard
 
 ## Handoff Notes for Manager
 
-1. Sync `manager-phase109.md` with **D-109-23/24/25** and **AC-109-36/37/38/39**.
-2. Operator Chrome≠Edge empty Home → hydrate (D-109-24). Operator outage data-loss (admin Home wiped) → **anti-wipe** (D-109-25); do not blame `is_admin` without evidence.
-3. Developer must: fix destructive `deleteEncryptedCredential` on empty payload sync; hydrate must not empty-win over local; evidence reconnect/outage UAT.
-4. Keep prior amendments (single password, Admin Login, isolation, hydrate, no MFA).
-5. Phase 110 does not own this fix — schedule under Phase 109 correction even if PHASE.md is 110.
+1. Sync `manager-phase109.md` with **D-109-23…26** and **AC-109-36…41**.
+2. **Immediate blocking (2026-07-15):** cross-user profile leak + deleted profiles resurrecting — **D-109-26**. Schedule under Phase 109 even if `PHASE.md` is 113.
+3. Developer: explicit `deleteAccessProfileFromCloud` (or equivalent); fix hydrate/dual-write so deleted profiles stay deleted; verify account-switch clears workspace; UAT X vs Y on same browser.
+4. Keep prior amendments (single password, Admin Login, isolation, hydrate, anti-wipe, no MFA).
 
 ## Architect Review
 ARCHITECT_REVIEW_STATUS: NOT_REVIEWED
 
 ### Review Notes
-_Operator 2026-07-13: after internet drop, non-admin retained Home; admin user lost services+passwords. Architecture: not “admin clears Home”; likely destructive sync/hydrate or cloud never durable + local cache loss. D-109-25 / AC-109-39 added._
+_Operator 2026-07-15: profiles «הורים» from user X (including deleted) appear on user Y for בנק ירושלים. D-109-26 / AC-109-40/41 added. Local-only profile delete + upsert-only sync is implicated; also re-verify D-109-23 isolation on account switch._
 
 ### Required Corrections
-_Manager sync; Developer: anti-wipe dual-write + hydrate; verify outage/reconnect does not blank a populated workspace._
+_Developer: cloud profile delete; cross-user isolation UAT; no false-success deletes._

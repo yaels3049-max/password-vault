@@ -3,6 +3,14 @@ import type { VaultState } from '../vault/vault';
 export const SELECTION_PERSIST_FAILED_MESSAGE =
   'לא ניתן לשמור את השינוי כרגע. בדקו חיבור לרשת ונסו שוב.';
 
+/** Cloud membership delete failed — do not show phantom remove (D-113-29 / AC-113-51). */
+export const SELECTION_REMOVE_CLOUD_FAILED_MESSAGE =
+  'לא הצלחנו להסיר את האתר מהחשבון. בדקו חיבור לרשת ונסו שוב.';
+
+/** Thrown by cloud remove when Auth/Supabase is missing (must not no-op). */
+export const CLOUD_REMOVE_UNAVAILABLE_MESSAGE =
+  'CLOUD_REMOVE_UNAVAILABLE';
+
 /** Add a service id to the selection (idempotent — Set dedupes repeated adds). */
 export function addToSelection(state: VaultState, serviceId: string): VaultState {
   const nextIds = new Set(state.selectedIds);

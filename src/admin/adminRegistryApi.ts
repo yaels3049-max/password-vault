@@ -120,19 +120,25 @@ export async function fetchAdminCategories(): Promise<AdminCategory[]> {
   return (data ?? []) as AdminCategory[];
 }
 
+/** AC-107-14 / AC-107-19 — admin UI collects name only; optional sort_order appends transparently. */
 export async function createAdminCategory(input: {
   id: string;
   display_name: string;
-  sort_order: number;
+  /** When omitted, DB default (0) applies. Prefer next after existing for create-at-end. */
+  sort_order?: number;
 }): Promise<void> {
   await ensureSession();
   const supabase = requireSupabase();
 
-  const { error } = await supabase.from('categories').insert({
+  const row: { id: string; display_name: string; sort_order?: number } = {
     id: input.id.trim(),
     display_name: input.display_name.trim(),
-    sort_order: input.sort_order,
-  });
+  };
+  if (typeof input.sort_order === 'number' && Number.isFinite(input.sort_order)) {
+    row.sort_order = Math.trunc(input.sort_order);
+  }
+
+  const { error } = await supabase.from('categories').insert(row);
 
   if (error) {
     throw mapRegistryError(error, 'לא ניתן ליצור קטגוריה.');
@@ -143,7 +149,7 @@ export async function createAdminCategory(input: {
 
 export async function updateAdminCategory(
   id: string,
-  patch: { display_name: string; sort_order: number },
+  patch: { display_name: string },
 ): Promise<void> {
   await ensureSession();
   const supabase = requireSupabase();
@@ -152,12 +158,37 @@ export async function updateAdminCategory(
     .from('categories')
     .update({
       display_name: patch.display_name.trim(),
-      sort_order: patch.sort_order,
     })
     .eq('id', id);
 
   if (error) {
     throw mapRegistryError(error, 'לא ניתן לעדכן קטגוריה.');
+  }
+
+  invalidateCatalogCache();
+}
+
+/**
+ * AC-107-20 — persist display order via sort_order without exposing numbers in the UI.
+ * `orderedIds` is categories from first (top) to last (bottom).
+ */
+export async function reorderAdminCategories(orderedIds: string[]): Promise<void> {
+  await ensureSession();
+  const supabase = requireSupabase();
+  const ids = orderedIds.map((id) => id.trim()).filter(Boolean);
+  if (ids.length === 0) return;
+
+  const updates = ids.map((id, index) =>
+    supabase
+      .from('categories')
+      .update({ sort_order: (index + 1) * 10 })
+      .eq('id', id),
+  );
+
+  const results = await Promise.all(updates);
+  const failed = results.find((r) => r.error);
+  if (failed?.error) {
+    throw mapRegistryError(failed.error, 'לא ניתן לעדכן סדר קטגוריות.');
   }
 
   invalidateCatalogCache();
@@ -188,6 +219,7 @@ export async function deleteAdminCategory(id: string): Promise<void> {
   invalidateCatalogCache();
 }
 
+/** Global catalog only (owner_user_id IS NULL) — used by bulk rediscovery / admin global writes. */
 export async function fetchGlobalRegistryRows(): Promise<AdminRegistryRow[]> {
   await ensureSession();
   const supabase = requireSupabase();
@@ -200,6 +232,23 @@ export async function fetchGlobalRegistryRows(): Promise<AdminRegistryRow[]> {
 
   if (error) {
     throw mapRegistryError(error, 'לא ניתן לטעון אתרים גלובליים.');
+  }
+
+  return (data ?? []) as AdminRegistryRow[];
+}
+
+/** All registry rows visible to admin (global + user-owned) for the «כל האתרים» catalog. */
+export async function fetchAllRegistryRowsForAdmin(): Promise<AdminRegistryRow[]> {
+  await ensureSession();
+  const supabase = requireSupabase();
+
+  const { data, error } = await supabase
+    .from('service_registry')
+    .select(REGISTRY_ADMIN_SELECT)
+    .order('display_name', { ascending: true });
+
+  if (error) {
+    throw mapRegistryError(error, 'לא ניתן לטעון את רשימת האתרים.');
   }
 
   return (data ?? []) as AdminRegistryRow[];
@@ -397,6 +446,45 @@ export async function updateGlobalRegistryRow(
 
   if (error) {
     throw mapRegistryError(error, 'לא ניתן לעדכן אתר גלובלי.');
+  }
+
+  invalidateCatalogCache();
+}
+
+/**
+ * Admin edit of a user-owned submission (owner_user_id stays set).
+ * Approval/promotion remains a separate flow; this only updates reviewable fields.
+ */
+export async function updateUserOwnedRegistryRow(
+  serviceId: string,
+  patch: Pick<
+    GlobalRegistryInput,
+    'display_name' | 'primary_url' | 'login_url' | 'category_id' | 'service_status'
+  >,
+): Promise<void> {
+  await ensureSession();
+  const supabase = requireSupabase();
+
+  const existing = await fetchRegistryRowForAdmin(serviceId);
+  if (!existing || existing.owner_user_id === null) {
+    throw new Error('הגשת משתמש לא נמצאה.');
+  }
+
+  const { error } = await supabase
+    .from('service_registry')
+    .update({
+      display_name: patch.display_name.trim(),
+      primary_url: patch.primary_url.trim(),
+      login_url: patch.login_url?.trim() || null,
+      category_id: patch.category_id,
+      service_status: patch.service_status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', serviceId)
+    .not('owner_user_id', 'is', null);
+
+  if (error) {
+    throw mapRegistryError(error, 'לא ניתן לעדכן הגשת משתמש.');
   }
 
   invalidateCatalogCache();

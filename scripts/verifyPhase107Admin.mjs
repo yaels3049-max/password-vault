@@ -147,9 +147,18 @@ function main() {
     'Approval queue must run Login Discovery on promote',
   );
   assert(
-    read('src/admin/RegistryAdmin.tsx').includes('ServiceExternalLinks') &&
+    read('src/admin/RegistryAdmin.tsx').includes('UrlFieldWithCopy') &&
       read('src/admin/LoginUrlRefresh.tsx').includes('שמור ידנית'),
-    'Global catalog must expose manual login URL edit and external links',
+    'Global catalog must expose URL fields with copy + manual login URL edit',
+  );
+  assert(
+    read('src/admin/RegistryAdmin.tsx').includes('useServiceLogos') &&
+      read('src/admin/adminLogoService.ts').includes('adminRowToLogoService'),
+    'Admin website cards must use Digital Home logo cascade',
+  );
+  assert(
+    !read('src/admin/RegistryAdmin.tsx').includes('כתובת כניסה:</strong>'),
+    'Built-in website cards must not display raw login URL text',
   );
   assert(
     read('src/registry/loginUrlDiscovery.ts').includes('buildDiscoveryMetadataPatch'),
@@ -159,11 +168,16 @@ function main() {
   // M9 — Admin Console UI/UX Modernization (AC-107-8…18)
   const adminApp = read('src/admin/AdminApp.tsx');
   assert(
-    adminApp.includes('אתרים מובנים') &&
+    adminApp.includes('כל האתרים') &&
       adminApp.includes('אתרים בהוספה ע"י משתמשים') &&
       !adminApp.includes('קטלוג גלובלי') &&
       !adminApp.includes('תור אישורים'),
-    'AC-107-11: nav labels renamed to אתרים מובנים / אתרים בהוספה ע"י משתמשים',
+    'AC-107-11: nav labels — כל האתרים / אתרים בהוספה ע"י משתמשים',
+  );
+  assert(
+    read('src/admin/adminRegistryApi.ts').includes('fetchAllRegistryRowsForAdmin') &&
+      read('src/admin/RegistryAdmin.tsx').includes('fetchAllRegistryRowsForAdmin'),
+    'כל האתרים must load global + user-owned registry rows',
   );
 
   const registry = read('src/admin/RegistryAdmin.tsx');
@@ -194,8 +208,47 @@ function main() {
   assert(
     categories.includes('generateCategoryId') &&
       !categories.includes('מזהה (slug)') &&
-      categories.includes('אייקון (אופציונלי)'),
-    'AC-107-14: category create name+optional icon; auto-generated code',
+      !categories.includes('אייקון') &&
+      !/<span>\s*סדר\s*<\/span>/.test(categories) &&
+      !categories.includes('type="number"') &&
+      !categories.includes('newIcon') &&
+      categories.includes('פרטים נוספים'),
+    'AC-107-14/19: category create/edit name only; no icon or typed סדר field; auto code',
+  );
+  assert(
+    categories.includes('admin-btn--compact') &&
+      categories.includes('שמור') &&
+      categories.includes('מחק'),
+    'AC-107-19: compact Save/Delete on category rows',
+  );
+  assert(
+    categories.includes('admin-category-reorder') &&
+      categories.includes('reorderAdminCategories') &&
+      (categories.includes('העבר') || categories.includes('↑')) &&
+      categories.includes('draggable'),
+    'AC-107-20: left/stacked reorder panel with ↑↓ and drag; persists via reorderAdminCategories',
+  );
+
+  const adminApi = read('src/admin/adminRegistryApi.ts');
+  const createCatStart = adminApi.indexOf('export async function createAdminCategory');
+  const updateCatStart = adminApi.indexOf('export async function updateAdminCategory');
+  const reorderCatStart = adminApi.indexOf('export async function reorderAdminCategories');
+  const deleteCatStart = adminApi.indexOf('export async function deleteAdminCategory');
+  const createCat = adminApi.slice(createCatStart, updateCatStart);
+  const updateCat = adminApi.slice(updateCatStart, reorderCatStart);
+  const reorderCat = adminApi.slice(reorderCatStart, deleteCatStart);
+  assert(
+    createCat.includes('display_name'),
+    'AC-107-14: createAdminCategory requires display_name',
+  );
+  assert(
+    updateCat.includes('display_name') &&
+      !/\.update\(\{[^}]*sort_order/.test(updateCat),
+    'AC-107-19: updateAdminCategory patches display_name only (no typed order)',
+  );
+  assert(
+    reorderCat.includes('sort_order') && reorderCat.includes('orderedIds'),
+    'AC-107-20: reorderAdminCategories writes transparent sort_order',
   );
 
   const presentation = read('src/admin/adminPresentation.ts');
@@ -212,6 +265,12 @@ function main() {
       /max-width:\s*700px/.test(adminCss),
     'AC-107-8/17: DH tokens + responsive card/modal styles',
   );
+  assert(
+    adminCss.includes('digital-home-shell-wave-v2.png') &&
+      /\.admin-app\s*\{[\s\S]*?--admin-wide-bg-image/.test(adminCss) &&
+      /\.admin-gate\s*\{[\s\S]*?--admin-wide-bg-image/.test(adminCss),
+    'Control Center uses landscape wave-v2 on admin-app + admin-gate',
+  );
 
   // Re-affirm AC-107-7 / AC-107-18 — no credential access after M9
   assert(
@@ -223,6 +282,8 @@ function main() {
   console.log('  admin modules: AdminGate + Categories + Registry + Approval + Login URL + Icon + Status');
   console.log('  AC-107-7: no encrypted_credentials / vault decrypt / service_role in src/admin/**');
   console.log('  M9: cards, More Details, nav rename, filters, auto category id (AC-107-8…18)');
+  console.log('  Categories UX: name-only; no icon/typed סדר; compact Save/Delete (AC-107-14/19)');
+  console.log('  Categories reorder panel left/stacked (AC-107-20)');
   console.log('  migration: is_admin + RLS + promote_user_submission + admin_update_login_url');
   console.log('  AC-107-5: icon panel superseded by Phase 111 IconAssetEditor (file upload)');
   console.log('');

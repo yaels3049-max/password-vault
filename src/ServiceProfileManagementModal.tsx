@@ -24,7 +24,7 @@ interface ServiceProfileManagementModalProps {
   onAddProfile: (displayName: string) => void;
   onRenameProfile: (profileId: string, displayName: string) => void;
   onSetDefaultProfile: (profileId: string) => void;
-  onDeleteProfile: (profileId: string) => void;
+  onDeleteProfile: (profileId: string) => void | Promise<void>;
   onClose: () => void;
   onLockVault?: () => void;
   error?: string | null;
@@ -89,7 +89,8 @@ export default function ServiceProfileManagementModal({
   error = null,
   vaultUnlocked = true,
 }: ServiceProfileManagementModalProps) {
-  const logos = useServiceLogos([service]);
+  const logoServices = useMemo(() => [service], [service]);
+  const logos = useServiceLogos(logoServices);
   const logoSrc = logos[service.id];
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
@@ -118,12 +119,12 @@ export default function ServiceProfileManagementModal({
   const [statusTone, setStatusTone] = useState<'ok' | 'err' | 'info'>('info');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [copiedFieldId, setCopiedFieldId] = useState<string | null>(null);
-  const [overflowOpen, setOverflowOpen] = useState(false);
   const [discardPrompt, setDiscardPrompt] = useState<DiscardKind>(null);
   const [deletePrompt, setDeletePrompt] = useState<ConfirmDeleteKind>(null);
   const [showCompactSecurity, setShowCompactSecurity] = useState(
     () => !isFirstTimeSecurityTipDismissed(),
   );
+  const dirtyRef = useRef(false);
 
   const isMultiProfile = sortedProfiles.length > 1;
   const selectedProfile =
@@ -131,6 +132,7 @@ export default function ServiceProfileManagementModal({
   const dirty =
     selectedProfile != null &&
     !valuesEqual(loginFields, credentialValues, baselineValues);
+  dirtyRef.current = dirty;
   const selectedHasCredentials = selectedProfile
     ? hasCompleteCredentials(credentials[selectedProfile.id], loginFields)
     : false;
@@ -154,7 +156,6 @@ export default function ServiceProfileManagementModal({
     setIsRenaming(false);
     setPasswordVisible(false);
     setStatusMessage(null);
-    setOverflowOpen(false);
   }
 
   useEffect(() => {
@@ -174,11 +175,32 @@ export default function ServiceProfileManagementModal({
     }
   }, [sortedProfiles, selectedProfileId]);
 
+  // Load credentials only when the selected profile changes — not on every parent
+  // credentials/loginFields identity (that caused freeze / wiped typing).
   useEffect(() => {
-    loadProfile(selectedProfile);
-    // Only reload when profile id or credential snapshot for that id changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional profile isolation
-  }, [selectedProfileId, credentials, loginFields]);
+    const profile =
+      sortedProfiles.find((item) => item.id === selectedProfileId) ?? null;
+    loadProfile(profile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- profile isolation
+  }, [selectedProfileId]);
+
+  // Sync from vault when stored credentials for this profile change and the form is clean.
+  const storedCredentialKey = selectedProfileId
+    ? JSON.stringify(credentials[selectedProfileId] ?? null)
+    : '';
+  const loginFieldKey = loginFields.map((field) => field.id).join('|');
+
+  useEffect(() => {
+    if (!selectedProfileId || dirtyRef.current || saving) return;
+    const next = emptyValues(loginFields, credentials[selectedProfileId]);
+    setCredentialValues((prev) =>
+      valuesEqual(loginFields, prev, next) ? prev : next,
+    );
+    setBaselineValues((prev) =>
+      valuesEqual(loginFields, prev, next) ? prev : next,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by credential/field snapshots
+  }, [storedCredentialKey, loginFieldKey, selectedProfileId, saving]);
 
   useEffect(() => {
     closeBtnRef.current?.focus();
@@ -190,7 +212,7 @@ export default function ServiceProfileManagementModal({
   }
 
   function requestClose() {
-    if (dirty) {
+    if (dirtyRef.current) {
       setDiscardPrompt('close');
       return;
     }
@@ -207,10 +229,6 @@ export default function ServiceProfileManagementModal({
         }
         if (discardPrompt) {
           setDiscardPrompt(null);
-          return;
-        }
-        if (overflowOpen) {
-          setOverflowOpen(false);
           return;
         }
         requestClose();
@@ -234,7 +252,7 @@ export default function ServiceProfileManagementModal({
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [deletePrompt, discardPrompt, overflowOpen, dirty]);
+  }, [deletePrompt, discardPrompt]);
 
   function requestSwitchProfile(nextId: string) {
     if (nextId === selectedProfileId) return;
@@ -304,10 +322,20 @@ export default function ServiceProfileManagementModal({
     }
   }
 
-  function handleDeleteProfile() {
+  async function handleDeleteProfile() {
     if (!selectedProfile || !canDeleteProfile) return;
-    onDeleteProfile(selectedProfile.id);
-    setDeletePrompt(null);
+    setSaving(true);
+    setStatusMessage(null);
+    try {
+      await onDeleteProfile(selectedProfile.id);
+      setDeletePrompt(null);
+    } catch {
+      setStatusTone('err');
+      setStatusMessage(MSG_SAVE_FAIL);
+      setDeletePrompt(null);
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleAddProfile(e: React.FormEvent) {
@@ -367,99 +395,24 @@ export default function ServiceProfileManagementModal({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="cd-header">
-          {/* RTL flex-start = physical right: actions first, X last → top-left (AC-113-37). */}
-          <div className="cd-header-actions">
-            <VaultStateBadge unlocked={vaultUnlocked} onLock={onLockVault} />
-            <div className="cd-overflow">
-              <button
-                type="button"
-                className="cd-overflow-btn"
-                aria-label="פעולות נוספות"
-                aria-haspopup="menu"
-                aria-expanded={overflowOpen}
-                onClick={() => setOverflowOpen((v) => !v)}
-              >
-                ⋮
-              </button>
-              {overflowOpen && (
-                <>
-                  <div
-                    className="cd-overflow-backdrop"
-                    onClick={() => setOverflowOpen(false)}
-                  />
-                  <div className="cd-overflow-menu" role="menu">
-                    {selectedProfile && !selectedProfile.isDefault && (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="cd-menu-item"
-                        onClick={() => {
-                          setOverflowOpen(false);
-                          onSetDefaultProfile(selectedProfile.id);
-                        }}
-                      >
-                        קבע כברירת מחדל
-                      </button>
-                    )}
-                    {selectedProfile && (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="cd-menu-item"
-                        onClick={() => {
-                          setOverflowOpen(false);
-                          setIsRenaming(true);
-                        }}
-                      >
-                        שינוי שם פרופיל
-                      </button>
-                    )}
-                    {selectedHasCredentials && (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="cd-menu-item cd-menu-item--danger"
-                        onClick={() => {
-                          setOverflowOpen(false);
-                          setDeletePrompt('credentials');
-                        }}
-                      >
-                        מחיקת פרטי כניסה
-                      </button>
-                    )}
-                    {canDeleteProfile && selectedProfile && (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="cd-menu-item cd-menu-item--danger"
-                        onClick={() => {
-                          setOverflowOpen(false);
-                          setDeletePrompt('profile');
-                        }}
-                      >
-                        מחיקת פרופיל
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+          {/* RTL grid: title column (right), start cluster (left). Cluster DOM = badge then X → physical X | badge. */}
           <div className="cd-header-text">
             <h2 id="cd-title" className="cd-title">
               פרטי כניסה
             </h2>
-            <p className="cd-subtitle">{service.name}</p>
           </div>
-          <button
-            ref={closeBtnRef}
-            type="button"
-            className="cd-close"
-            aria-label="סגירה"
-            onClick={requestClose}
-          >
-            <IconClose />
-          </button>
+          <div className="cd-header-start">
+            <VaultStateBadge unlocked={vaultUnlocked} onLock={onLockVault} />
+            <button
+              ref={closeBtnRef}
+              type="button"
+              className="cd-close"
+              aria-label="סגירה"
+              onClick={requestClose}
+            >
+              <IconClose />
+            </button>
+          </div>
         </header>
 
         <div className="cd-body">
@@ -571,7 +524,7 @@ export default function ServiceProfileManagementModal({
                 <p className="cd-empty">{MSG_EMPTY_PROFILE}</p>
               )}
 
-              {loginFields.map((field, index) => {
+              {loginFields.map((field) => {
                 const isPassword = field.type === 'password';
                 return (
                   <label key={field.id} className="cd-field">
@@ -586,7 +539,6 @@ export default function ServiceProfileManagementModal({
                         onChange={(e) =>
                           handleCredentialChange(field.id, e.target.value)
                         }
-                        autoFocus={index === 0}
                         disabled={saving}
                         className="cd-field-input"
                       />
@@ -630,6 +582,49 @@ export default function ServiceProfileManagementModal({
               >
                 {saving ? 'שומר…' : 'שמירת שינויים'}
               </button>
+
+              <div className="cd-secondary-actions">
+                {selectedProfile && !selectedProfile.isDefault && (
+                  <button
+                    type="button"
+                    className="cd-secondary-btn"
+                    onClick={() => onSetDefaultProfile(selectedProfile.id)}
+                    disabled={saving}
+                  >
+                    קבע כברירת מחדל
+                  </button>
+                )}
+                {selectedProfile && !isRenaming && (
+                  <button
+                    type="button"
+                    className="cd-secondary-btn"
+                    onClick={() => setIsRenaming(true)}
+                    disabled={saving}
+                  >
+                    שינוי שם פרופיל
+                  </button>
+                )}
+                {selectedHasCredentials && (
+                  <button
+                    type="button"
+                    className="cd-secondary-btn cd-secondary-btn--danger"
+                    onClick={() => setDeletePrompt('credentials')}
+                    disabled={saving}
+                  >
+                    מחיקת פרטי כניסה
+                  </button>
+                )}
+                {canDeleteProfile && selectedProfile && (
+                  <button
+                    type="button"
+                    className="cd-secondary-btn cd-secondary-btn--danger"
+                    onClick={() => setDeletePrompt('profile')}
+                    disabled={saving}
+                  >
+                    מחיקת פרופיל
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -724,7 +719,7 @@ export default function ServiceProfileManagementModal({
                   if (deletePrompt === 'credentials') {
                     void handleDeleteCredentials();
                   } else {
-                    handleDeleteProfile();
+                    void handleDeleteProfile();
                   }
                 }}
               >

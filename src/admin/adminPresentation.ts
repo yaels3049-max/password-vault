@@ -89,3 +89,14 @@ export function sourceFilterKind(
   }
   return 'custom';
 }
+
+export function sourceKindLabelHe(row: AdminRegistryRow): string {
+  switch (sourceFilterKind(row)) {
+    case 'built_in':
+      return 'מובנה';
+    case 'user_submitted':
+      return 'הוגש ע"י משתמש';
+    default:
+      return 'מותאם / מנהל';
+  }
+}

@@ -1357,7 +1357,9 @@ It defines only the user experience around security.
 | AC-107-11 | Navigation labels use «אתרים מובנים» and «אתרים בהוספה ע"י משתמשים» (or equivalent Hebrew); admin UI uses אתר/אתרים glossary |
 | AC-107-12 | Pending user websites queue shows submitted date, submitted by, preview icon, category, approve, and reject in a card-friendly layout |
 | AC-107-13 | Admin can configure Home URL and optional Login URL for websites without exposure to implementation jargon; missing Login URL means Digital Home uses Home URL |
-| AC-107-14 | Category creation collects name (and optional icon) only; the system generates a unique category code/id |
+| AC-107-14 | Category creation collects **display name only**; the system generates a unique category code/id; no icon field; no typed numeric sort/order field in the admin UI |
+| AC-107-19 | Categories admin list/edit shows no icon and no typed «סדר» field; Save and Delete controls are compact (not large full-row primary buttons) |
+| AC-107-20 | Categories admin screen provides a left-side (or stacked on narrow) reorder panel so administrators can change the display order of existing categories without typing sort numbers; order is persisted |
 | AC-107-15 | Website edit uses compact sections / collapsible groups with clear Save and Cancel (not oversized full-page forms) |
 | AC-107-16 | Admin can filter by category, built-in, custom, user-submitted, active, inactive and search by website name, category, or login URL |
 | AC-107-17 | Admin screens are usable on desktop/tablet/laptop without unnecessary horizontal scrolling or oversized controls |
@@ -2287,6 +2289,8 @@ The development team must provide:
 | AC-109-37 | Discover / Add Services lists global catalog services (`built_in`, `admin`, `approved_global`) for all users, and lists private user-created custom services only for the owning user |
 | AC-109-38 | After online Login on a second supported browser (e.g. Edge after Chrome), Digital Home shows the same user’s persisted service selections hydrated from cloud (`user_services` and related owned data); an empty local vault alone must not leave Home blank when cloud membership exists |
 | AC-109-39 | A non-empty user workspace must not be wiped by offline/reconnect, empty/partial cloud reads, or dual-write re-key: hydrate must not empty-win over local non-empty membership; dual-write must not delete cloud encrypted credentials or `user_services` unless the user explicitly removed them; admin role does not change these durability rules |
+| AC-109-40 | Access profiles and credentials of user A never appear under user B for the same service on a shared browser (including after A deletes or edits profiles) |
+| AC-109-41 | «מחיקת פרופיל» removes the profile from cloud `access_profiles` (and cascaded credentials) for the authenticated user when online; deleted profiles do not return after re-login/hydrate; failed cloud delete shows an error and does not claim success |
 
 > **Note:** Prior Phase 109 content (Credential Lifecycle UX) is deferred. Related signals belong with Phase 115 (Credential Change Detection) and Trust/execution failure hints — not renumbered here.
 
@@ -3512,7 +3516,8 @@ Phase 113 is a **User Experience** and **Login Assistance** phase. It does not e
 | AC-113-22 | All user-visible Login Assistance strings are Hebrew only; English jargon such as Manual Only or Best Effort must not appear in user-facing banners or labels |
 | AC-113-23 | When no Login URL is configured and the Home URL will open, the user receives a friendly Hebrew explanation that a login page was not found and the home page will open |
 | AC-113-24 | When a service has no stored credentials for use, Digital Home does not open the floating Login Assistance panel; the user receives a friendly Hebrew prompt to enter credentials in service management |
-| AC-113-25 | Digital Home content shell max-width matches Discover/Manage service screens; service icon grid shows at most five tiles per row with side padding |
+| AC-113-25 | Digital Home content shell max-width matches Discover/Manage («הוספת אתרים» / ניהול) screens; service icon grid shows at most five tiles per row with side padding |
+| AC-113-47 | Shared Digital Home / Discover(Add) / Manage content-shell max-width is approximately 10% narrower than the previous shipping width (phone-like silhouette); Home and Add remain identical; wave background remains sharp/perceptible |
 | AC-113-26 | Digital Home title is «הבית הדיגיטלי של {user full name}»; marketing subtitle under the title is removed; PoC/test fill buttons are removed from Home |
 | AC-113-27 | «ניהול שירותים» on Digital Home is centered and styled consistently with Discover’s primary navigation CTA («לבית הדיגיטלי») |
 | AC-113-28 | Manage Services removes the marketing subtitle under the title; «לבית הדיגיטלי» appears in the top chrome consistent with Home’s manage CTA placement |
@@ -3520,7 +3525,8 @@ Phase 113 is a **User Experience** and **Login Assistance** phase. It does not e
 | AC-113-30 | Practice login service («תרגול התחברות») is removed from the user-facing catalog and selection flows |
 | AC-113-31 | Multi-profile alone does not show status «דורש תשומת לב» on Manage Services cards |
 | AC-113-32 | User-visible Hebrew UI uses אתר/אתרים instead of שירות/שירותים for catalog websites (buttons, titles, messages); code identifiers unchanged |
-| AC-113-33 | Digital Home and Manage Sites share the approved soft background treatment and clearly rounded content-shell corners; the wave/dot pattern must be visually perceptible to the operator (not a flat washed card) |
+| AC-113-33 | Digital Home and Manage Sites share the approved soft background treatment and clearly rounded content-shell corners; the wave/dot pattern must be visually perceptible to the operator (not a flat washed card). **Approved asset:** operator wave-v2 (`team-Yuri/assets/digital-home-shell-wave-v2.png` shipped into app static) |
+| AC-113-46 | Login / Auth entry uses the same approved Digital Home shell background asset (wave-v2) as the landscape Digital Home / Manage shells; pattern remains perceptible (no heavy wash) |
 | AC-113-34 | Application user-facing UI uses the Heebo typeface as the primary font family |
 | AC-113-35 | On Digital Home and Manage/Add Sites, lock/access controls appear inside the rounded content shell; the persistent name+email identity chip is not shown on those screens |
 | AC-113-36 | In «האתרים שלי», the remove action menu is fully visible (not clipped), uses blue text without a trash icon |
@@ -3529,10 +3535,14 @@ Phase 113 is a **User Experience** and **Login Assistance** phase. It does not e
 | AC-113-39 | Profile selector is compact (chips/tabs); multi-profile switch loads only that profile’s credentials and re-hides passwords |
 | AC-113-40 | Each credential field has a compact copy control; password has separate reveal and copy; copy confirmations never expose secrets; no browser alerts |
 | AC-113-41 | Primary action «שמירת שינויים» is disabled when clean; shows loading/success/failure; failed save retains entered values |
-| AC-113-42 | Delete is secondary (overflow or compact); confirmation dialog required; existing delete semantics unchanged; not visually equal to Save |
+| AC-113-42 | Delete is secondary compact control (not a header ⋮ menu); confirmation dialog required; existing delete semantics unchanged; not visually equal to Save |
 | AC-113-43 | «+ הוספת פרופיל נוסף» appears below credentials, collapsed by default, secondary styling; reuses existing create logic |
 | AC-113-44 | If open/auto actions exist on the screen, they are compact Hebrew icon+text (`פתח כניסה` / `נסה מילוי`); auto uses existing runtime only and always shows visible feedback |
 | AC-113-45 | Credential Details redesign is UI-only: no schema, encryption, autofill-engine, or Phase 112 changes; RTL/a11y/responsive evidence provided |
+| AC-113-48 | Credential Details modal remains fully interactive after open — no app freeze/hang/dead UI when typing, saving, closing, or using lock controls |
+| AC-113-49 | Credential Details header has no three-dot / overflow kebab control |
+| AC-113-50 | «הגישה פתוחה» / «נעל» sits on the left side of the Credential Details modal immediately beside the X (to the right of X in RTL), not at the far opposite header edge |
+| AC-113-51 | Removing a site via «הסר אתר» removes it from Digital Home and the removal survives app re-entry / re-login; if cloud delete fails, the UI must show an error and must not present a successful remove that later resurrects |
 
 ---
 
@@ -5179,5 +5189,12 @@ flowchart LR
 | **5.31** | 2026-07-14 | **Phase 108 — D-108-32 revised.** Revert focus-stealing discovery popup; inactive same-window tab + Hub refocus. AC-108-26 clarified. |
 | **5.32** | 2026-07-14 | **Phase 113 — Credential Details modal redesign.** Compact modern UI; D-113-25; AC-113-37…45. |
 | **5.33** | 2026-07-14 | **Phase 107 — Admin Console UI/UX modernization.** DH visual parity; website cards; More Details modal; nav rename; auto category codes; filters. AC-107-8…18 / D-107-13…20. |
+| **5.34** | 2026-07-15 | **Phase 113 — Background wave-v2 + Login.** New operator soft-blue wave asset on Digital Home, Manage/Add Sites, and Auth entry. D-113-26; AC-113-33 / AC-113-46. |
+| **5.35** | 2026-07-15 | **Phase 107 — Categories admin UX fix.** Name-only; remove icon + סדר; compact Save/Delete. D-107-5 amend; AC-107-14 / AC-107-19. |
+| **5.36** | 2026-07-15 | **Phase 107 — Category visual reorder.** Left empty area = reorder panel (no typed סדר). D-107-5 amend; AC-107-20. |
+| **5.37** | 2026-07-15 | **Phase 113 — Shell width −10%.** Phone-like silhouette; Home = Discover/Add identical. D-113-27; AC-113-47. |
+| **5.38** | 2026-07-15 | **Phase 113 — Credential Details freeze + header chrome.** Fix hang; remove ⋮; lock beside X. D-113-28; AC-113-48…50. |
+| **5.39** | 2026-07-15 | **Phase 113 — Remove-site durability.** Fix resurrect after re-login (cloud delete + hydrate). D-113-29; AC-113-51. |
+| **5.40** | 2026-07-15 | **Phase 109 — Cross-user profile leak + durable profile delete.** Profiles of X (incl. deleted) must not appear on Y; cloud delete for «מחיקת פרופיל». D-109-26; AC-109-40/41. |
 
 Implementation plans for individual production phases may be authored separately; they must align with this document and must not duplicate it as a second architecture source.

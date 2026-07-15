@@ -157,17 +157,32 @@ function mainStatic() {
   assert(dash.includes('ניהול אתרים') && !dash.includes('ניהול שירותים'), 'AC-113-32 Home glossary');
 
   const css = read('src/App.css');
-  assert(css.includes('--app-content-max: 880px'), 'AC-113-25 shared shell width');
+  assert(css.includes('--app-content-max: 792px'), 'AC-113-25/47 shared shell width (−10% phone silhouette)');
+  assert(
+    !/--app-content-max:\s*880px/.test(css),
+    'D-113-27: prior 880px shell retired — single shared token only',
+  );
   assert(css.includes('--dh-launcher-max'), 'launcher not edge-stretched');
   assert(
-    css.includes('digital-home-shell.jpg') &&
+    /--app-shell-bg-image:\s*url\([^)]*digital-home-shell-portrait\.png/.test(css) &&
+      /--app-wide-bg-image:\s*url\([^)]*digital-home-shell-wave-v2\.png/.test(css) &&
+      !/--app-shell-bg-image:\s*url\([^)]*digital-home-shell\.jpg/.test(css) &&
       css.includes('--app-shell-radius') &&
       /border-radius:\s*var\(--app-shell-radius\)/.test(css),
-    'AC-113-33 shared BG + rounded shells',
+    'AC-113-33 portrait Home/Manage BG + rounded shells; wave-v2 reserved for wide surfaces',
   );
   assert(
-    existsSync(join(root, 'src/assets/backgrounds/digital-home-shell.jpg')),
-    'shell JPG present under src/assets',
+    existsSync(join(root, 'src/assets/backgrounds/digital-home-shell-portrait.png')),
+    'portrait PNG present under src/assets',
+  );
+  assert(
+    existsSync(join(root, 'src/assets/backgrounds/digital-home-shell-wave-v2.png')),
+    'wave-v2 PNG present under src/assets',
+  );
+  assert(
+    css.includes('unlock.auth-entry') &&
+      /unlock\.auth-entry[\s\S]{0,200}--app-wide-bg-image/.test(css),
+    'AC-113-46 Login/Auth entry uses landscape wave-v2',
   );
   // D-113-22: url() alone is not enough — reject the wash that flattened the pattern.
   assert(
@@ -181,7 +196,7 @@ function mainStatic() {
   assert(
     shellBlock.includes('var(--app-shell-bg-image)') &&
       !/linear-gradient\s*\(/.test(shellBlock),
-    'D-113-22 shell BG is the JPG without stacked wash gradient',
+    'D-113-22 Home/Manage shell BG is portrait asset without stacked wash gradient',
   );
   const smSection = css.match(/\.sm-section\s*\{[^}]+\}/)?.[0] ?? '';
   assert(
@@ -295,8 +310,35 @@ function mainStatic() {
   assert(
     credDetails.includes('מחיקת פרופיל') &&
       credDetails.includes('למחוק את פרטי הכניסה?') &&
+      credDetails.includes('cd-secondary-btn') &&
+      !credDetails.includes('cd-overflow') &&
+      !credDetails.includes('⋮') &&
       !credDetails.includes('מחק פרטי כניסה'),
-    'AC-113-42 delete via overflow + confirm; no large red delete text',
+    'AC-113-42/49 delete via compact secondary + confirm; no header ⋮',
+  );
+  assert(
+    /cd-header-start[\s\S]*VaultStateBadge[\s\S]*cd-close/.test(credDetails) ||
+      /cd-header-start[\s\S]*cd-close/.test(credDetails),
+    'AC-113-50 lock chrome + X in left header cluster',
+  );
+  assert(
+    css.includes('.cd-header-start') &&
+      css.includes('.cd-secondary-actions') &&
+      !css.includes('.cd-overflow') &&
+      !css.includes('.cd-header-actions'),
+    'AC-113-49/50 header CSS: start cluster + secondary actions; no ⋮ chrome',
+  );
+  assert(
+    credDetails.includes('dirtyRef') &&
+      !/\[selectedProfileId,\s*credentials,\s*loginFields\]/.test(credDetails),
+    'AC-113-48 loadProfile not tied to unstable credentials identity (freeze fix)',
+  );
+  const logoHook = read('src/useServiceLogos.ts');
+  assert(
+    logoHook.includes('[serviceIds]') &&
+      !/},\s*\[serviceIds,\s*services\]\)/.test(logoHook) &&
+      logoHook.includes('prev[service.id] === logo'),
+    'AC-113-48 useServiceLogos must not re-effect on inline array identity (modal freeze)',
   );
   assert(
     credDetails.includes('+ הוספת פרופיל נוסף') &&
@@ -323,6 +365,68 @@ function mainStatic() {
   );
   const hubInput = read('src/trust/HubCredentialInput.tsx');
   assert(hubInput.includes('revealAsText'), 'password reveal without dropping Hub hardening');
+
+  // --- D-113-29 / AC-113-51 remove-site durability ---
+  const appSrc = read('src/App.tsx');
+  const persistence = read('src/supabase/persistence.ts');
+  const selection = read('src/serviceManagement/serviceSelection.ts');
+  assert(
+    selection.includes('SELECTION_REMOVE_CLOUD_FAILED_MESSAGE') &&
+      appSrc.includes('SELECTION_REMOVE_CLOUD_FAILED_MESSAGE'),
+    'AC-113-51 friendly Hebrew on cloud remove failure',
+  );
+  assert(
+    appSrc.includes("mode === 'remove'") &&
+      appSrc.includes('removeUserServiceFromCloud') &&
+      appSrc.includes('SELECTION_REMOVE_CLOUD_FAILED_MESSAGE') &&
+      /removeUserServiceFromCloud\(id\);[\s\S]*setSelectionError\(SELECTION_REMOVE_CLOUD_FAILED_MESSAGE\)[\s\S]*return;/.test(
+        appSrc,
+      ),
+    'AC-113-51 cloud remove failure sets Hebrew error and returns (no success paint)',
+  );
+  assert(
+    /await removeUserServiceFromCloud\(id\);[\s\S]*persistSelectionState\(next/.test(appSrc) &&
+      appSrc.includes('awaitCloudSync: mode === \'remove\'') &&
+      appSrc.includes('setVaultState(next)'),
+    'AC-113-51 cloud delete before local persist + awaited sync before success',
+  );
+  assert(
+    appSrc.includes('pruneInactiveRef') ||
+      /activeCatalogIds[\s\S]*selectedIds/.test(appSrc),
+    'Admin-disabled / inactive registry rows must be pruned from selections',
+  );
+  assert(
+    persistence.includes('CLOUD_REMOVE_UNAVAILABLE') &&
+      /throw new Error\(CLOUD_REMOVE_UNAVAILABLE_MESSAGE\)/.test(persistence),
+    'AC-113-51 removeUserServiceFromCloud must not silent-return without client/auth',
+  );
+  assert(
+    persistence.includes('bumpDualWriteGeneration') &&
+      /remaining|\.maybeSingle\(\)/.test(persistence) &&
+      persistence.includes('dualWriteGeneration'),
+    'AC-113-51 remove must verify row gone + invalidate stale dual-writes',
+  );
+  assert(
+    /Membership \(`user_services`\) follows `selectedIds` only|selectedIds only/.test(
+      persistence,
+    ) ||
+      persistence.includes('Do not recreate user_services') ||
+      persistence.includes('do not recreate user_services'),
+    'AC-113-51 sync must not re-upsert user_services from deselected local profiles',
+  );
+  const syncFnMatch = persistence.match(
+    /export async function syncVaultStateToSupabase[\s\S]*?^export async function syncVaultStateToSupabaseSafe/m,
+  );
+  const syncBody = syncFnMatch?.[0] ?? '';
+  assert(syncBody.length > 0, 'Could not locate syncVaultStateToSupabase for AC-113-51');
+  assert(
+    !/upsertUserService\(userId,\s*serviceId,\s*null\)/.test(syncBody),
+    'AC-113-51 sync must not create user_services for deselected profile-only services',
+  );
+  assert(
+    !/\.from\(['"]user_services['"]\)\s*\.delete\(/.test(syncBody),
+    'AC-109-39 / AC-113-51 sync remains upsert-only (explicit remove API only)',
+  );
 }
 
 function main() {

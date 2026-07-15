@@ -4,10 +4,13 @@
 PHASE=113
 
 ## Status
-STATUS: READY_FOR_DEVELOPER
+STATUS: READY_FOR_DEVELOPER — **M8 Background wave-v2 + Login**
 
 ## Contract note
-Architecture contract is **FINAL** (operator-approved clarifications, 2026-07-14). Manager must **not** redefine architecture. Follow `arch-phase113.md` and PLAN AC-113-1…21 strictly.
+Architecture contract is **FINAL** (operator-approved clarifications). Manager must **not** redefine architecture. Follow `arch-phase113.md` and PLAN ACs strictly.
+
+**Active milestone for this handoff:** **M8** — Background asset v2 + Login (D-113-20, D-113-22, D-113-26 / AC-113-33, AC-113-46).  
+Do **not** fold Admin console (Phase 107) into this task.
 
 ## Phase Goal
 Improve the **user journey around login** in Digital Home: open the correct URL, select an Access Profile, display stored credentials, and enable reliable **manual credential copying** — with optional **Best Effort** automatic credential completion **only when an existing runtime implementation is available**.
@@ -24,8 +27,9 @@ Improve the **user journey around login** in Digital Home: open the correct URL,
 
 ## Source References
 - `team-Yuri/PHASE.md` — `PHASE=113` (**confirmed**)
-- `team-Yuri/arch-phase113.md` — **FINAL**; READY_FOR_MANAGER; D-113-0 … D-113-14
-- `team-Yuri/PLAN.md` §18 — Phase 113 (AC-113-1 … AC-113-21); changelog **5.18…5.20**
+- `team-Yuri/arch-phase113.md` — **FINAL**; D-113-20 / D-113-22 / D-113-26 (M8); Handoff Notes item 6
+- `team-Yuri/PLAN.md` §18 — Phase 113; **AC-113-33**, **AC-113-46**; changelog **5.34**
+- Operator asset: `team-Yuri/assets/digital-home-shell-wave-v2.png`
 - `team-Yuri/arch-phase103.md` — open/execute (soft UX wrappers only)
 - `team-Yuri/arch-phase105.md` — Digital Home surfaces
 - `team-Yuri/arch-phase106.md` — password reveal/copy Trust UX
@@ -63,6 +67,9 @@ Improve the **user journey around login** in Digital Home: open the correct URL,
 | **D-113-12** | If auto attempted → exactly one visible status; silent failure forbidden |
 | **D-113-13** | Soft-wrap around existing open/execute; no 103 redesign; no 116 |
 | **D-113-14** | Infra alone ≠ accept; observable UX required |
+| **D-113-20** | Shared soft background + CSS rounded shells on landscape Digital Home / Manage shells (amended: asset = wave-v2; Login in scope via D-113-26) |
+| **D-113-22** | Wave/dot pattern must be **perceptible** — no heavy white wash / flat washed card |
+| **D-113-26** | Ship `team-Yuri/assets/digital-home-shell-wave-v2.png` as sole DH-family shell BG; apply Home + Manage/Add Sites + **Login/Auth**; retire prior JPG as product BG; Admin **not** required in 113 |
 
 ## Acceptance Criteria (AC-113-1 … AC-113-21)
 
@@ -89,6 +96,13 @@ Improve the **user journey around login** in Digital Home: open the correct URL,
 | AC-113-19 | Validation evidence: open Login/Home; multi-profile; copy; password protect; graceful fallback; ≥1 Manual Only service; **successful auto is not acceptance** |
 | AC-113-20 | Build passes |
 | AC-113-21 | No Phase 112 dependency; does not fix/replace 112; no new LI / website / field detection |
+
+### M8 background ACs (amendments — changelog 5.34)
+
+| AC | Statement |
+|---|---|
+| AC-113-33 | Digital Home and Manage Sites share the approved soft background + rounded shells; wave/dot pattern must be visually perceptible (not a flat washed card). **Approved asset:** wave-v2 (`team-Yuri/assets/digital-home-shell-wave-v2.png` shipped into app static) |
+| AC-113-46 | Login / Auth entry uses the same wave-v2 shell background; pattern remains perceptible (no heavy wash) |
 
 ## Hard Gates
 
@@ -120,8 +134,9 @@ If auto attempted → one status; never silent. Outcome does not gate PASS.
 | **M4** | Support level badge | Supported / Best Effort / Manual Only; Manual skips auto | Badge + Manual Only UAT | AC-113-16, 17 |
 | **M5** | Optional existing auto wire | Call **current** runtime completion if available; one status if attempted; never block on outcome | Optional; non-gating | AC-113-13…15 |
 | **M6** | Evidence + build + docs | Guaranteed journey evidence; **no autofill-success requirement**; migration doc | PASS | AC-113-19…21 |
+| **M8** | **Background wave-v2 + Login** | Ship wave-v2 PNG; apply Home + Manage/Add Sites + Login/Auth; perceptible pattern; retire JPG as product BG | Screenshots Home + Login with new waves | AC-113-33, AC-113-46 |
 
-**Ship order:** M1→M4 before M5. Do not delay Manual UX for auto wiring.
+**Ship order:** M1→M4 before M5. **Active handoff:** M8 (background). Do not fold Admin console into M8.
 
 ## AC → Milestone Mapping
 
@@ -138,6 +153,8 @@ If auto attempted → one status; never silent. Outcome does not gate PASS.
 | AC-113-19 | M6 | Journey evidence package (not autofill PASS) |
 | AC-113-20 | M6 | Build PASS |
 | AC-113-21 | All | Affirm no 112 dependency / no new detection |
+| AC-113-33 | M8 | Home + Manage share wave-v2; pattern perceptible; rounded shells |
+| AC-113-46 | M8 | Login/Auth uses same wave-v2; pattern perceptible |
 
 ## Detailed Development Plan
 
@@ -180,6 +197,29 @@ If auto attempted → one status; never silent. Outcome does not gate PASS.
 
 Also: `docs/MIGRATION_PHASE_113.md`; `npm run build` PASS; affirm AC-113-18 / AC-113-21.
 
+### M8 — Background asset wave-v2 + Login (D-113-20, D-113-22, D-113-26)
+
+**Source asset (committed):** `team-Yuri/assets/digital-home-shell-wave-v2.png`
+
+**Tasks:**
+1. **Copy** wave-v2 into app static — `src/assets/backgrounds/` (Vite bundles this when `publicDir: false`) and/or `public/backgrounds/` for local serving. Replace prior `digital-home-shell.jpg` as the **product** background (retire JPG from CSS/`--app-shell-bg-image` usage).
+2. **Apply** on:
+   - Digital Home (landscape shell)
+   - Manage Sites / Add Sites (wide landscape shells)
+   - **Login / Auth entry** (`AuthEntryScreen` / vault entry)
+3. **Keep pattern perceptible** (D-113-22): soft blue waves / fine lines / dot clusters must be noticeable to a normal user. Reduce/remove heavy white scrim/wash. Flat gray/white card with only radius = **FAIL**.
+4. Treatment: `background-size: cover`, centered; CSS `border-radius` on shells + `overflow: hidden` (D-113-20). Keep text contrast.
+5. Confirm asset loads at runtime (DevTools Network 200 for bundled PNG).
+6. **Do not** apply to Admin console in this milestone (Phase 107 owns Admin UX).
+
+**Evidence required:**
+- Screenshot: Digital Home showing new wave pattern
+- Screenshot: Login / Auth entry showing same wave pattern
+- Optionally Manage/Add Sites if easy; Home + Login are mandatory
+- Note in `dev-phase113.md` (M8): file paths changed; wash/scrim approach; affirm Admin not touched
+- `npm run build` PASS if CSS/assets touched
+- Update `docs/MIGRATION_PHASE_113.md` background asset note to wave-v2 + Login scope
+
 ## Functional Test Matrix
 
 | # | Test | Expected | AC |
@@ -198,8 +238,13 @@ Also: `docs/MIGRATION_PHASE_113.md`; `npm run build` PASS; affirm AC-113-18 / AC
 | T12 | No 112 / no new detection | Affirmation | AC-113-21 |
 | T13 | No schema change | Affirmation | AC-113-18 |
 | T14 | Build | PASS | AC-113-20 |
+| T15 | Wave-v2 on Digital Home | Open Home; operator sees soft blue waves/dots | Pattern perceptible; not flat wash | AC-113-33 |
+| T16 | Wave-v2 on Manage/Add Sites | Open wide Manage/Add shell | Same approved asset; pattern perceptible | AC-113-33 |
+| T17 | Wave-v2 on Login | Open Auth entry / Login | Same wave-v2; pattern perceptible | AC-113-46 |
+| T18 | Asset load | DevTools Network | Bundled wave-v2 PNG 200; old JPG not the product BG | D-113-26 |
+| T19 | Admin not in M8 | Admin console | No requirement to adopt wave-v2 under 113 M8 | D-113-26 |
 
-**Critical:** T1–T9, T11–T14. T10 optional/non-gating.
+**Critical:** T1–T9, T11–T14 (journey). **M8 critical:** T15, T17 (Home + Login evidence). T10 optional/non-gating.
 
 ## Required Developer Evidence
 `team-Yuri/dev-phase113.md` must include:
@@ -211,9 +256,10 @@ Also: `docs/MIGRATION_PHASE_113.md`; `npm run build` PASS; affirm AC-113-18 / AC
 | M1–M4 UAT | Open/profile/copy/password/badge/Manual Only observations |
 | M5 | How existing auto is called (or skipped); status if attempted; affirm success not required |
 | M6 | `MIGRATION_PHASE_113.md`; build PASS |
+| **M8** | wave-v2 copied to app static; CSS/path updated; Home + Manage/Add + Login applied; screenshots Home + Login; no heavy wash; Admin not folded in |
 | Acceptance | Guaranteed journey + graceful fallback evidenced |
 | Affirmations | No Phase 112 work; no new LI/detection; no schema migration; no 116; no autofill-PASS gate |
-| Scope | No federated/modal/multi-step automation engines |
+| Scope | No federated/modal/multi-step automation engines; **no Admin console restyle under M8** |
 
 ## Out of Scope
 - Phase **112** fixes, revalidation, LI, detection, medium orchestration
@@ -225,20 +271,24 @@ Also: `docs/MIGRATION_PHASE_113.md`; `npm run build` PASS; affirm AC-113-18 / AC
 - Auto-submit / auto-click Next/Continue/Sign In
 - Phase 108 rediscovery / Zap / PayPal M16
 - Treating autofill PASS as phase acceptance
+- **Admin console** background / restyle (Phase 107 M9 — do not fold into M8)
 
 ## Risks / Open Questions
 - Accidentally coupling support levels to Phase 112 LI fields — use independent UX mapping/metadata only.
 - Expanding M5 into engine work — reject; Best Effort call only.
 - UAT blocked waiting for autofill success — wrong bar; Manual journey is enough.
+- **M8 wash regression:** prior ~62% white scrim made pattern invisible — keep wash light enough for wave-v2 (D-113-22).
+- **Asset path:** prefer bundled `src/assets/backgrounds/` so production build (`publicDir: false`) still serves the PNG.
 
 ## Manager Review
 MANAGER_REVIEW_STATUS: NOT_REVIEWED
 
 ### Review Notes
 - PHASE.md confirmed `PHASE=113`.
-- Manager plan synced from **FINAL** `arch-phase113.md` + PLAN AC-113-1…21 (changelog 5.20).
-- Acceptance = observable open/profile/copy/password/support-level/fallback — **not** autofill PASS demos.
-- STATUS: **READY_FOR_DEVELOPER** — hand off to Sarah (prefer Manual UX M1–M4 first).
+- **M8** planned from arch D-113-20 / D-113-22 / D-113-26 + PLAN AC-113-33 / AC-113-46 (changelog 5.34).
+- Source asset present: `team-Yuri/assets/digital-home-shell-wave-v2.png`.
+- Acceptance for M8: Home + Login screenshots with perceptible new waves — not Admin work.
+- STATUS: **READY_FOR_DEVELOPER** — hand M8 to Sarah.
 
 ### Required Corrections
-_None at planning._
+_None at M8 planning._

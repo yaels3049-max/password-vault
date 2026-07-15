@@ -4,12 +4,12 @@
 PHASE=107
 
 ## Status
-STATUS: COMPLETE — includes **M9 Admin Console UI/UX Modernization** (AC-107-8…18; verify + build PASS). T1–T22 / T23–T33 live operator UAT still recommended. PHASE.md remains **113** (parallel track).
+STATUS: COMPLETE — includes **M9**, **Categories UX** (AC-107-14/19), **user-owned edit**, and **category reorder panel** (AC-107-20). PHASE.md remains **113** (parallel track).
 
 ## Source References
-- `team-Yuri/arch-phase107.md` — D-107-13…20
+- `team-Yuri/arch-phase107.md` — D-107-5 (amended reorder), D-107-13…20
 - `team-Yuri/manager-phase107.md` — M9.1–M9.10
-- `team-Yuri/PLAN.md` §18 — Phase 107 (AC-107-1 … AC-107-18)
+- `team-Yuri/PLAN.md` §18 — Phase 107 (AC-107-1 … AC-107-20)
 - `docs/MIGRATION_PHASE_107.md`
 
 ## Implementation Summary
@@ -149,7 +149,7 @@ PASS: Phase 107 Admin Management Platform (static)
 | M9.4 Nav rename | Yes | «אתרים מובנים»; «אתרים בהוספה ע"י משתמשים» |
 | M9.5 Pending cards | Yes | Date/by/icon/category/approve/reject; promote semantics unchanged |
 | M9.6 Home + Login URL | Yes | Friendly labels + empty-login helper copy |
-| M9.7 Category auto-code | Yes | `generateCategoryId`; no manual slug on create |
+| M9.7 Category auto-code | Yes | `generateCategoryId`; name-only (AC-107-14/19 — no icon/סדר) |
 | M9.8 Compact edit | Yes | Collapsible sections; Save/Cancel |
 | M9.9 Filters + responsive | Yes | Category/source/status + search; stacks &lt;700/900px |
 | M9.10 Evidence | Yes | Fixture screenshot + verify + build |
@@ -162,7 +162,7 @@ PASS: Phase 107 Admin Management Platform (static)
 | `src/admin/AdminApp.tsx` | Nav rename |
 | `src/admin/RegistryAdmin.tsx` | Cards, filters, compact edit, More Details |
 | `src/admin/ApprovalQueue.tsx` | Pending cards |
-| `src/admin/CategoriesAdmin.tsx` | Auto category id; optional icon |
+| `src/admin/CategoriesAdmin.tsx` | Auto category id; name-only (no icon / no סדר) |
 | `src/admin/adminPresentation.ts` | Labels, dates, `generateCategoryId` |
 | `src/admin/LoginUrlRefresh.tsx` | Home URL helper copy |
 | `scripts/verifyPhase107Admin.mjs` | AC-107-8…18 static asserts |
@@ -205,6 +205,101 @@ PASS
 | T32 | Responsive | CSS breakpoints PASS |
 | T33 | Integrity + no credentials | verify PASS |
 
+## Categories admin UX fix (2026-07-15 — AC-107-14 / AC-107-19)
+
+Operator UAT rejected icon + «סדר» on Categories. **UI/presentation only.**
+
+| Change | Status |
+|---|:---:|
+| No category icon on create or rows | Yes |
+| No «סדר» / `sort_order` in UI | Yes |
+| Create/edit = display name only; auto `generateCategoryId` | Yes |
+| Technical id under «פרטים נוספים» | Yes |
+| Compact «שמור» / «מחק» (`admin-btn--compact`) | Yes |
+| Registry/approval/credential rules unchanged | Honored |
+
+### Files
+
+| File | Change |
+|---|---|
+| `src/admin/CategoriesAdmin.tsx` | Name-only create/edit; compact actions |
+| `src/admin/adminRegistryApi.ts` | create/update omit `sort_order` (DB default) |
+| `src/admin/admin.css` | `.admin-btn--compact` + category row layout |
+| `scripts/verifyPhase107Admin.mjs` | AC-107-14/19 asserts |
+| `scripts/fixtures/phase107-categories-ux.html` | Visual fixture |
+| `docs/evidence/phase107-categories-ux.png` | Screenshot (create card + row) |
+| `docs/MIGRATION_PHASE_107.md` | Categories UX note |
+
+### Verification
+
+```text
+> node scripts/verifyPhase107Admin.mjs
+PASS … Categories UX: name-only; no icon/סדר; compact Save/Delete (AC-107-14/19)
+
+> npm run build
+PASS
+```
+
+## Categories reorder panel (AC-107-20)
+
+Operator layout: fill empty left region with reorder; keep right create/edit.
+
+| Change | Status |
+|---|:---:|
+| Left panel סידור תצוגה (drag + ↑↓) | Yes |
+| Persist via `reorderAdminCategories` → `sort_order` | Yes |
+| No typed numeric order field / no icon | Yes |
+| Right create + name edit + compact Save/Delete | Yes |
+| Narrow stack (reorder above) | Yes |
+
+### Files
+
+| File | Change |
+|---|---|
+| `src/admin/CategoriesAdmin.tsx` | Two-column layout + reorder UI |
+| `src/admin/adminRegistryApi.ts` | `reorderAdminCategories`; create append `sort_order` |
+| `src/admin/admin.css` | `.admin-categories-layout` / `.admin-category-reorder` |
+| `scripts/verifyPhase107Admin.mjs` | AC-107-20 asserts |
+| `docs/evidence/phase107-categories-reorder.png` | Layout screenshot |
+| `docs/MIGRATION_PHASE_107.md` | Reorder note |
+
+### Functional path
+
+1. Open `#/admin` → קטגוריות.
+2. On wide width: reorder panel on the left, create/edit on the right.
+3. Move one category with ↑ or drag another below it.
+4. Refresh — order remains (stored in `categories.sort_order`).
+
+### Verification
+
+```text
+> node scripts/verifyPhase107Admin.mjs
+PASS … Categories reorder panel left/stacked (AC-107-20)
+> npx tsc -b
+PASS
+```
+
+## Control Center landscape background (2026-07-15)
+
+מרכז הבקרה (login + all management screens) uses landscape **wave-v2** via `--admin-wide-bg-image` on `.admin-app` / `.admin-gate`. Digital Home / Add Sites stay on the **portrait** shell (Phase 113).
+
+Evidence: `docs/evidence/phase107-admin-wide-bg.png`.
+
+## User custom-add → approval queue fix (2026-07-15)
+
+Operator: site added via Hub «הוספת אתר» appeared as `built_in` in Control Center and **not** under «אתרים בהוספה ע"י משתמשים».
+
+**Cause:** `addCustomService` / `upsertCustomServiceRegistryRow` coerced known catalog URLs into `ensureKnownBuiltinRegistryRow` (`source_type=built_in`).
+
+**Fix:** custom-add always inserts `source_type=user` + `pending_review` (unless the URL already exists as a non–user catalog card — then select only). Known-builtin restore stays on Discover «הוספה» by id.
+
 ## Phase 111 note
 
 Admin icons prefer Phase 111 Storage (`resolveManagedIconUrl`) on cards when present. M9 did **not** add a new Storage pipeline. Legacy AC-107-5 metadata emoji remains fallback.
+
+## Developer Declaration
+Detected phase: 107  
+Selected state: IMPLEMENT  
+Status: COMPLETE  
+
+Sarah (Team Yuri Developer) — Categories reorder (AC-107-20) + prior Categories UX.

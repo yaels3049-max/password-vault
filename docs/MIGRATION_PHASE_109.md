@@ -167,10 +167,15 @@ Operator report: after an internet drop, a normal user’s Digital Home survived
 |---|---|
 | Dual-write | **Upsert only** — never delete `encrypted_credentials` because values were omitted from a partial sync/re-key payload |
 | Explicit credential delete | `deleteCloudEncryptedCredentialByLocalProfileId` from Manage Services only |
-| Explicit remove-service | `removeUserServiceFromCloud` after local selection remove (FK cascade cleans profiles/ciphertext) |
+| Explicit remove-service | `removeUserServiceFromCloud` **must succeed** when authenticated (D-113-29 / AC-113-51); dual-write must not re-create membership from leftover local profiles |
+| Explicit delete-profile | `deleteAccessProfileFromCloud` before local delete (D-109-26 / AC-109-41); cascaded ciphertext via FK |
+| Account-switch dual-write | `expectedUserId` on sync — abort if Auth user differs mid-flight (AC-109-40) |
+| Hydrate profiles | When cloud has profiles for a service, do not keep local-only ghosts for that service |
 | Hydrate | Failed/incomplete cloud read → **keep local**; empty cloud must **not** empty-win over non-empty local membership |
 | Credentials merge | Never drop a local credential solely because cloud decrypt failed |
 | Admin | Identical durability rules — no separate Home vault |
+
+See also Phase 113 migration note: remove-site durability across re-login.
 
 ### Durability UAT
 

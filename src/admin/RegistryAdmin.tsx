@@ -6,11 +6,12 @@ import {
   createGlobalRegistryRowWithDiscovery,
   disableGlobalRegistryRow,
   fetchAdminCategories,
-  fetchGlobalRegistryRows,
+  fetchAllRegistryRowsForAdmin,
   fetchRegistryRowForAdmin,
   markGlobalLoginUrlInvalid,
   parseLoginFieldsJson,
   updateGlobalRegistryRow,
+  updateUserOwnedRegistryRow,
   updateIconMetadata,
   uploadAdminIconFile,
   adminRefreshServiceIcon,
@@ -25,6 +26,7 @@ import {
   addedByLabel,
   formatAdminDate,
   sourceFilterKind,
+  sourceKindLabelHe,
   statusLabelHe,
 } from './adminPresentation';
 import { deriveRegistryServiceIdFromUrl } from '../registry/serviceIdFromUrl';
@@ -32,8 +34,9 @@ import IconAssetEditor from './IconAssetEditor';
 import IntegrationStatusPanel from './IntegrationStatusPanel';
 import LoginIntelligencePanel from './LoginIntelligencePanel';
 import LoginUrlRefresh from './LoginUrlRefresh';
-import ServiceExternalLinks from './ServiceExternalLinks';
-import { resolveManagedIconUrl } from '../serviceAssets';
+import UrlFieldWithCopy from './UrlFieldWithCopy';
+import { adminRowToLogoService } from './adminLogoService';
+import { useServiceLogos } from '../useServiceLogos';
 
 const EMPTY_FORM: GlobalRegistryInput = {
   display_name: '',
@@ -56,24 +59,28 @@ function emptyCreateForm(categories: AdminCategory[]): GlobalRegistryInput {
   };
 }
 
-function SiteIcon({ row }: { row: AdminRegistryRow }) {
-  const managed = resolveManagedIconUrl({
-    serviceId: row.id,
-    metadata: row.metadata,
-  });
-  if (managed) {
-    return <img className="admin-site-card-icon" src={managed} alt="" width={40} height={40} />;
-  }
-  if (row.icon) {
+function SiteIcon({
+  row,
+  logoSrc,
+}: {
+  row: AdminRegistryRow;
+  logoSrc?: string | null;
+}) {
+  if (logoSrc) {
     return (
-      <span className="admin-site-card-icon admin-site-card-icon--letter" aria-hidden>
-        {row.icon}
-      </span>
+      <img className="admin-site-card-icon" src={logoSrc} alt="" width={40} height={40} />
     );
   }
+  const emoji =
+    row.icon &&
+    row.icon.trim() &&
+    !/^https?:/i.test(row.icon) &&
+    row.icon.trim() !== '🔗'
+      ? row.icon.trim()
+      : null;
   return (
     <span className="admin-site-card-icon admin-site-card-icon--letter" aria-hidden>
-      {row.display_name.slice(0, 1)}
+      {emoji ?? row.display_name.slice(0, 1)}
     </span>
   );
 }
@@ -99,6 +106,9 @@ export default function RegistryAdmin() {
   const [filterSource, setFilterSource] = useState<SourceFilter>('all');
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('all');
 
+  const logoServices = useMemo(() => rows.map(adminRowToLogoService), [rows]);
+  const logos = useServiceLogos(logoServices);
+
   const categoryLabel = useCallback(
     (categoryId: string | null | undefined) => {
       if (!categoryId) return 'ללא קטגוריה';
@@ -113,7 +123,7 @@ export default function RegistryAdmin() {
 
     try {
       const [registryRows, categoryRows] = await Promise.all([
-        fetchGlobalRegistryRows(),
+        fetchAllRegistryRowsForAdmin(),
         fetchAdminCategories(),
       ]);
       setRows(registryRows);
@@ -228,18 +238,29 @@ export default function RegistryAdmin() {
           );
         }
       } else if (selectedId) {
-        await updateGlobalRegistryRow(selectedId, {
-          display_name: form.display_name,
-          primary_url: form.primary_url,
-          login_url: form.login_url,
-          category_id: form.category_id,
-          icon: form.icon,
-          adapter_id: form.adapter_id || null,
-          source_type: form.source_type,
-          service_status: form.service_status,
-          metadata: form.metadata,
-        });
-        setSuccess('האתר עודכן.');
+        if (selectedRow?.owner_user_id != null) {
+          await updateUserOwnedRegistryRow(selectedId, {
+            display_name: form.display_name,
+            primary_url: form.primary_url,
+            login_url: form.login_url,
+            category_id: form.category_id,
+            service_status: form.service_status,
+          });
+          setSuccess('הגשת המשתמש עודכנה.');
+        } else {
+          await updateGlobalRegistryRow(selectedId, {
+            display_name: form.display_name,
+            primary_url: form.primary_url,
+            login_url: form.login_url,
+            category_id: form.category_id,
+            icon: form.icon,
+            adapter_id: form.adapter_id || null,
+            source_type: form.source_type,
+            service_status: form.service_status,
+            metadata: form.metadata,
+          });
+          setSuccess('האתר עודכן.');
+        }
       }
 
       await reload();
@@ -281,6 +302,10 @@ export default function RegistryAdmin() {
   }
 
   async function handleDisable(serviceId: string) {
+    if (selectedRow?.owner_user_id != null) {
+      setError('לא ניתן להשבית כאן אתר בבעלות משתמש. השתמשו באישור או דחייה בתור ההגשות.');
+      return;
+    }
     if (!window.confirm('להשבית את האתר הזה?')) {
       return;
     }
@@ -296,12 +321,17 @@ export default function RegistryAdmin() {
   }
 
   const editing = isCreating || selectedId;
+  const isUserOwnedRow =
+    !isCreating && selectedRow != null && selectedRow.owner_user_id != null;
 
   return (
-    <section className="admin-section">
+    <section className="admin-section admin-section--registry">
       <header className="admin-section-header">
-        <h2>אתרים מובנים</h2>
-        <p>ניהול קטלוג האתרים הגלובלי — ללא גישה לפרטי כניסה של משתמשים.</p>
+        <h2>כל האתרים</h2>
+        <p>
+          קטלוג מלא של אתרים (מובנים, מנהל, והגשות משתמשים) — ללא גישה לפרטי כניסה של משתמשים.
+          השתמשו בסינון לפי מקור וסטטוס.
+        </p>
       </header>
 
       {loading && <p className="admin-muted">טוען…</p>}
@@ -395,7 +425,10 @@ export default function RegistryAdmin() {
       </div>
 
       <div className="admin-split">
-        <div className="admin-split-main">
+        <div
+          className="admin-split-main admin-scroll-panel"
+          aria-label="רשימת אתרים"
+        >
           <ul className="admin-card-grid">
             {filteredRows.map((row) => (
               <li key={row.id}>
@@ -405,11 +438,14 @@ export default function RegistryAdmin() {
                   onClick={() => startEdit(row)}
                 >
                   <div className="admin-site-card-head">
-                    <SiteIcon row={row} />
+                    <SiteIcon row={row} logoSrc={logos[row.id]} />
                     <div>
                       <div className="admin-site-card-name">{row.display_name}</div>
                       <div className="admin-site-card-meta">
                         <span className="admin-badge">{categoryLabel(row.category_id)}</span>
+                        <span className="admin-badge admin-badge--muted">
+                          {sourceKindLabelHe(row)}
+                        </span>
                         <span
                           className={`admin-badge${
                             row.service_status === 'active' ? ' admin-badge--ok' : ' admin-badge--warn'
@@ -420,20 +456,10 @@ export default function RegistryAdmin() {
                       </div>
                     </div>
                   </div>
-                  {row.login_url ? (
-                    <p className="admin-site-card-line">
-                      <strong>כתובת כניסה:</strong> {row.login_url}
-                    </p>
-                  ) : null}
                   <p className="admin-site-card-line">
                     <strong>נוסף:</strong> {formatAdminDate(row.created_at)} ·{' '}
                     <strong>על ידי:</strong> {addedByLabel(row)}
                   </p>
-                  <ServiceExternalLinks
-                    compact
-                    primaryUrl={row.primary_url}
-                    loginUrl={row.login_url}
-                  />
                 </button>
               </li>
             ))}
@@ -443,10 +469,23 @@ export default function RegistryAdmin() {
           )}
         </div>
 
-        <div className="admin-split-detail">
+        <div className="admin-split-detail admin-scroll-panel" aria-label="עריכת אתר">
           {editing && (
             <form className="admin-edit-shell" onSubmit={(event) => void handleSave(event)}>
-              <h3>{isCreating ? 'יצירת אתר' : 'עריכת אתר'}</h3>
+              <h3>
+                {isCreating
+                  ? 'יצירת אתר'
+                  : isUserOwnedRow
+                    ? 'פרטי אתר (הגשת משתמש)'
+                    : 'עריכת אתר'}
+              </h3>
+
+              {isUserOwnedRow && (
+                <p className="admin-field-hint" role="status">
+                  זו הגשה בבעלות משתמש — ניתן לערוך את השדות ולשמור. לאישור או דחייה עברו ל-
+                  «אתרים בהוספה ע&quot;י משתמשים».
+                </p>
+              )}
 
               <div className="admin-collapse-body" style={{ padding: 0 }}>
                 <label className="admin-field">
@@ -458,28 +497,20 @@ export default function RegistryAdmin() {
                     autoFocus
                   />
                 </label>
-                <label className="admin-field">
-                  <span>כתובת הבית (Home URL)</span>
-                  <input
-                    type="url"
-                    value={form.primary_url}
-                    onChange={(e) => setForm({ ...form, primary_url: e.target.value })}
-                    required
-                    placeholder="https://www.example.co.il"
-                  />
-                </label>
-                <label className="admin-field">
-                  <span>כתובת כניסה (אופציונלי)</span>
-                  <input
-                    type="url"
-                    value={form.login_url ?? ''}
-                    onChange={(e) => setForm({ ...form, login_url: e.target.value })}
-                    placeholder="ריק = ייעשה שימוש בכתובת הבית"
-                  />
-                  <p className="admin-field-hint">
-                    אם כתובת הכניסה ריקה, הבית הדיגיטלי יפתח את כתובת הבית.
-                  </p>
-                </label>
+                <UrlFieldWithCopy
+                  label="כתובת הבית (Home URL)"
+                  value={form.primary_url}
+                  onChange={(value) => setForm({ ...form, primary_url: value })}
+                  required
+                  placeholder="https://www.example.co.il"
+                />
+                <UrlFieldWithCopy
+                  label="כתובת כניסה (אופציונלי)"
+                  value={form.login_url ?? ''}
+                  onChange={(value) => setForm({ ...form, login_url: value })}
+                  placeholder="ריק = ייעשה שימוש בכתובת הבית"
+                  hint="אם כתובת הכניסה ריקה, הבית הדיגיטלי יפתח את כתובת הבית."
+                />
                 <label className="admin-field">
                   <span>קטגוריה</span>
                   <select
@@ -508,6 +539,7 @@ export default function RegistryAdmin() {
                     }
                   >
                     <option value="active">פעיל</option>
+                    <option value="pending_review">ממתין לאישור</option>
                     <option value="deprecated">מיושן</option>
                     <option value="disabled">מושבת</option>
                   </select>
@@ -519,16 +551,15 @@ export default function RegistryAdmin() {
                       {deriveRegistryServiceIdFromUrl(form.primary_url) || '— הזינו כתובת בית'}
                     </strong>
                   </p>
-                ) : (
-                  <ServiceExternalLinks
-                    primaryUrl={form.primary_url || selectedRow?.primary_url}
-                    loginUrl={form.login_url || selectedRow?.login_url}
-                  />
-                )}
+                ) : null}
               </div>
 
               <div className="admin-actions-row">
-                <button type="submit" className="admin-btn admin-btn-primary" disabled={discovering}>
+                <button
+                  type="submit"
+                  className="admin-btn admin-btn-primary"
+                  disabled={discovering}
+                >
                   שמור
                 </button>
                 <button
@@ -547,13 +578,15 @@ export default function RegistryAdmin() {
                     >
                       פרטים נוספים
                     </button>
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn-danger"
-                      onClick={() => void handleDisable(selectedId)}
-                    >
-                      השבת
-                    </button>
+                    {!isUserOwnedRow && (
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn-danger"
+                        onClick={() => void handleDisable(selectedId)}
+                      >
+                        השבת
+                      </button>
+                    )}
                   </>
                 )}
               </div>

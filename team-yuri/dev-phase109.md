@@ -4,13 +4,39 @@
 PHASE=109
 
 ## Status
-STATUS: IN_PROGRESS — D-109-25 anti-wipe code + static verify delivered; durability UAT **PENDING_OPERATOR**. Hydrate Chrome↔Edge UAT (T35–T36) still operator-gated. Isolation T31–T34 previously Pass.
+STATUS: IN_PROGRESS — D-109-26 profile isolation + durable delete delivered (static verify). Operator UAT for AC-109-40/41 **PENDING**. D-109-25 durability UAT still operator-gated.
 
 ## Source References
-- `team-Yuri/arch-phase109.md` (D-109-22…**D-109-25**)
-- `team-Yuri/PLAN.md` §18 — AC-109-39
+- `team-Yuri/arch-phase109.md` (D-109-22…**D-109-26**)
+- `team-Yuri/PLAN.md` §18 — AC-109-39, **AC-109-40**, **AC-109-41**
 - `docs/MIGRATION_PHASE_109.md`
-- Note: `manager-phase109.md` may still need Manager sync for D-109-25 (Developer cannot edit Manager artifacts)
+
+## Amendments (2026-07-15) — D-109-26 / AC-109-40 / AC-109-41
+
+| Requirement | Implementation |
+|---|---|
+| Cross-user profile isolation | Dual-write binds `expectedUserId`; aborts if Auth switched; hydrate scopes credentials to healed profiles |
+| Durable «מחיקת פרופיל» | `deleteAccessProfileFromCloud` before local `deleteAccessProfile`; Hebrew error on failure |
+| Deleted profiles stay gone | Cloud delete + hydrate drops local-only ghosts when cloud has that service |
+| Anti-wipe | Sync still upsert-only; no delete-by-omission |
+
+### Files
+| File | Change |
+|---|---|
+| `src/supabase/persistence.ts` | `deleteAccessProfileFromCloud`; sync `expectedUserId`; hydrate cloud-authority per service |
+| `src/vault/vault.ts` | Pass `expectedUserId` on dual-write |
+| `src/ManageServices.tsx` | Cloud profile delete before local |
+| `src/ServiceProfileManagementModal.tsx` | Async delete + error path |
+| `src/vault/profileManagement.ts` | `PROFILE_DELETE_CLOUD_FAILED_MESSAGE` |
+| `scripts/verifyPhase109Accounts.mjs` | AC-109-40/41 asserts |
+
+### Isolation / delete UAT (required)
+
+| # | Step | Expected | Result |
+|---:|---|---|---|
+| T40 | User X: create 2+ profiles on a service, delete one, re-login | Deleted profile gone | **PENDING_OPERATOR** |
+| T41 | Same browser: login User Y → same service | Zero of X's profiles (deleted or remaining) | **PENDING_OPERATOR** |
+| T42 | Cloud: X's deleted `local_profile_id` absent from X's `access_profiles`; none of X’s ids on Y | Confirmed | **PENDING_OPERATOR** |
 
 ## Amendments (2026-07-13)
 
@@ -62,8 +88,9 @@ Pass/Fail:
 
 | Command | Result |
 |---|---|
-| `node scripts/verifyPhase109Accounts.mjs` | **PASS** (incl. D-109-25 anti-wipe asserts) |
-| `npm run build` | **PASS** |
+| `node scripts/verifyPhase109Accounts.mjs` | **PASS** (D-109-25 + D-109-26 / AC-109-40/41) |
+| `npx tsc -b` | **PASS** |
+| `node scripts/verifyPhase113LoginAssistance.mjs` | **PASS** (no regression) |
 
 ## Files Changed (D-109-25 delta)
 
@@ -79,9 +106,10 @@ Pass/Fail:
 
 | Gate | Status |
 |---|---|
-| H9 Isolation | PASS (T31–T34) |
+| H9 Isolation | PASS (T31–T34); D-109-26 hardening static PASS |
 | H10 Hydrate Chrome↔Edge | UAT pending |
 | **H11 Durability / anti-wipe** | Code PASS / **UAT PENDING_OPERATOR** |
+| **H12 Profile isolation + durable delete** | Code PASS / **UAT T40–T42 PENDING_OPERATOR** |
 
 ## Scope
 
@@ -91,9 +119,9 @@ Pass/Fail:
 ## Developer Declaration
 
 ```text
-Detected phase: 109 (correction D-109-25; PHASE.md may show 110 in parallel)
+Detected phase: 109
 Selected state: IMPLEMENT
-Status: IN_PROGRESS
+Status: COMPLETE (code + static verify; operator UAT T40–T42 pending)
 ```
 
-Manager: please sync `manager-phase109.md` with D-109-25 / AC-109-39 if not already. Phase COMPLETE for this correction after T38–T40 Pass.
+Sarah — D-109-26: cloud profile delete; dual-write abort on account switch; hydrate drops deleted ghosts.

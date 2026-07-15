@@ -3,6 +3,7 @@ import {
   createAdminCategory,
   deleteAdminCategory,
   fetchAdminCategories,
+  reorderAdminCategories,
   updateAdminCategory,
   type AdminCategory,
 } from './adminRegistryApi';
@@ -11,11 +12,11 @@ import { generateCategoryId } from './adminPresentation';
 export default function CategoriesAdmin() {
   const [categories, setCategories] = useState<AdminCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reordering, setReordering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
-  const [newIcon, setNewIcon] = useState('');
-  const [newSortOrder, setNewSortOrder] = useState(100);
+  const [dragId, setDragId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -35,6 +36,63 @@ export default function CategoriesAdmin() {
     void reload();
   }, [reload]);
 
+  async function persistOrder(next: AdminCategory[]) {
+    setReordering(true);
+    setError(null);
+    setSuccess(null);
+    const previous = categories;
+    setCategories(next);
+
+    try {
+      await reorderAdminCategories(next.map((c) => c.id));
+      setSuccess('סדר התצוגה עודכן.');
+      await reload();
+    } catch (err) {
+      setCategories(previous);
+      setError(err instanceof Error ? err.message : 'עדכון סדר הקטגוריות נכשל.');
+    } finally {
+      setReordering(false);
+    }
+  }
+
+  function moveCategory(categoryId: string, direction: -1 | 1) {
+    if (reordering) return;
+    const index = categories.findIndex((c) => c.id === categoryId);
+    if (index < 0) return;
+    const target = index + direction;
+    if (target < 0 || target >= categories.length) return;
+
+    const next = [...categories];
+    const [item] = next.splice(index, 1);
+    next.splice(target, 0, item);
+    void persistOrder(next);
+  }
+
+  function onDragStart(categoryId: string) {
+    if (reordering) return;
+    setDragId(categoryId);
+  }
+
+  function onDragOver(event: React.DragEvent, overId: string) {
+    event.preventDefault();
+    if (!dragId || dragId === overId || reordering) return;
+  }
+
+  function onDrop(overId: string) {
+    if (!dragId || dragId === overId || reordering) {
+      setDragId(null);
+      return;
+    }
+    const from = categories.findIndex((c) => c.id === dragId);
+    const to = categories.findIndex((c) => c.id === overId);
+    setDragId(null);
+    if (from < 0 || to < 0) return;
+    const next = [...categories];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    void persistOrder(next);
+  }
+
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -47,17 +105,18 @@ export default function CategoriesAdmin() {
       trimmedName,
       categories.map((c) => c.id),
     );
-    const icon = newIcon.trim();
-    const displayName = icon ? `${icon} ${trimmedName}` : trimmedName;
+    const maxOrder = categories.reduce(
+      (max, c) => Math.max(max, Number.isFinite(c.sort_order) ? c.sort_order : 0),
+      0,
+    );
 
     try {
       await createAdminCategory({
         id,
-        display_name: displayName,
-        sort_order: newSortOrder,
+        display_name: trimmedName,
+        sort_order: maxOrder + 10,
       });
       setNewName('');
-      setNewIcon('');
       setSuccess(`הקטגוריה נוצרה (קוד: ${id}).`);
       await reload();
     } catch (err) {
@@ -65,14 +124,13 @@ export default function CategoriesAdmin() {
     }
   }
 
-  async function handleUpdate(category: AdminCategory, displayName: string, sortOrder: number) {
+  async function handleUpdate(category: AdminCategory, displayName: string) {
     setError(null);
     setSuccess(null);
 
     try {
       await updateAdminCategory(category.id, {
         display_name: displayName,
-        sort_order: sortOrder,
       });
       setSuccess('הקטגוריה עודכנה.');
       await reload();
@@ -99,7 +157,7 @@ export default function CategoriesAdmin() {
   }
 
   return (
-    <section className="admin-section">
+    <section className="admin-section admin-section--categories">
       <header className="admin-section-header">
         <h2>קטגוריות</h2>
         <p>יצירה ועריכה של קטגוריות לאתרי הקטלוג. הקוד הטכני נוצר אוטומטית.</p>
@@ -117,56 +175,94 @@ export default function CategoriesAdmin() {
         </p>
       )}
 
-      <form className="admin-edit-shell" onSubmit={(event) => void handleCreate(event)}>
-        <h3>קטגוריה חדשה</h3>
-        <div className="admin-form-inline admin-form">
-          <label className="admin-field">
-            <span>שם</span>
-            <input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              required
-              placeholder="לדוגמה: בנקים"
-            />
-          </label>
-          <label className="admin-field admin-field--narrow">
-            <span>אייקון (אופציונלי)</span>
-            <input
-              value={newIcon}
-              onChange={(e) => setNewIcon(e.target.value)}
-              placeholder="🏦"
-              maxLength={4}
-              aria-label="אייקון אופציונלי"
-            />
-          </label>
-          <label className="admin-field admin-field--narrow">
-            <span>סדר</span>
-            <input
-              type="number"
-              value={newSortOrder}
-              onChange={(e) => setNewSortOrder(Number(e.target.value))}
-            />
-          </label>
-          <button type="submit" className="admin-btn admin-btn-primary">
-            הוסף קטגוריה
-          </button>
-        </div>
-        <p className="admin-field-hint">
-          אין צורך להזין קוד/מזהה — המערכת מייצרת קוד ייחודי אוטומטית.
-        </p>
-      </form>
+      <div className="admin-categories-layout">
+        {/* First in DOM = right in RTL (editor). Second = left (reorder panel). */}
+        <div className="admin-category-editor">
+          <form
+            className="admin-edit-shell admin-category-create"
+            onSubmit={(event) => void handleCreate(event)}
+          >
+            <h3>קטגוריה חדשה</h3>
+            <div className="admin-category-row">
+              <label className="admin-field admin-category-name">
+                <span>שם</span>
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  required
+                  placeholder="לדוגמה: בנקים"
+                />
+              </label>
+              <button type="submit" className="admin-btn admin-btn-primary">
+                הוסף קטגוריה
+              </button>
+            </div>
+          </form>
 
-      <ul className="admin-list">
-        {categories.map((category) => (
-          <li key={category.id} className="admin-list-item">
-            <CategoryRow
-              category={category}
-              onSave={handleUpdate}
-              onDelete={() => void handleDelete(category.id)}
-            />
-          </li>
-        ))}
-      </ul>
+          <div className="admin-scroll-panel admin-category-scroll" aria-label="עריכת קטגוריות">
+            <ul className="admin-list admin-category-list">
+              {categories.map((category) => (
+                <li key={category.id} className="admin-list-item admin-category-item">
+                  <CategoryRow
+                    category={category}
+                    onSave={handleUpdate}
+                    onDelete={() => void handleDelete(category.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <aside className="admin-category-reorder" aria-label="סידור קטגוריות">
+          <h3>סידור תצוגה</h3>
+          <p className="admin-field-hint">
+            גררו קטגוריה, או השתמשו בחצים, כדי לשנות את סדר התצוגה בקטלוג.
+          </p>
+          {categories.length === 0 ? (
+            <p className="admin-muted">אין עדיין קטגוריות לסידור.</p>
+          ) : (
+            <ul className="admin-reorder-list">
+              {categories.map((category, index) => (
+                <li
+                  key={category.id}
+                  className={`admin-reorder-item${dragId === category.id ? ' is-dragging' : ''}`}
+                  draggable={!reordering}
+                  onDragStart={() => onDragStart(category.id)}
+                  onDragOver={(event) => onDragOver(event, category.id)}
+                  onDrop={() => onDrop(category.id)}
+                  onDragEnd={() => setDragId(null)}
+                >
+                  <span className="admin-reorder-handle" aria-hidden="true">
+                    ⋮⋮
+                  </span>
+                  <span className="admin-reorder-name">{category.display_name}</span>
+                  <div className="admin-reorder-actions">
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn-secondary admin-btn--compact"
+                      disabled={reordering || index === 0}
+                      aria-label={`העבר את ${category.display_name} למעלה`}
+                      onClick={() => moveCategory(category.id, -1)}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn-secondary admin-btn--compact"
+                      disabled={reordering || index === categories.length - 1}
+                      aria-label={`העבר את ${category.display_name} למטה`}
+                      onClick={() => moveCategory(category.id, 1)}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+      </div>
     </section>
   );
 }
@@ -177,44 +273,36 @@ function CategoryRow({
   onDelete,
 }: {
   category: AdminCategory;
-  onSave: (category: AdminCategory, displayName: string, sortOrder: number) => Promise<void>;
+  onSave: (category: AdminCategory, displayName: string) => Promise<void>;
   onDelete: () => void;
 }) {
   const [displayName, setDisplayName] = useState(category.display_name);
-  const [sortOrder, setSortOrder] = useState(category.sort_order);
 
   useEffect(() => {
     setDisplayName(category.display_name);
-    setSortOrder(category.sort_order);
-  }, [category.display_name, category.sort_order]);
+  }, [category.display_name]);
 
   return (
     <form
-      className="admin-form admin-form-inline"
+      className="admin-category-row"
       onSubmit={(event) => {
         event.preventDefault();
-        void onSave(category, displayName, sortOrder);
+        void onSave(category, displayName);
       }}
     >
-      <label className="admin-field">
+      <label className="admin-field admin-category-name">
         <span>שם תצוגה</span>
         <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
       </label>
-      <label className="admin-field admin-field--narrow">
-        <span>סדר</span>
-        <input
-          type="number"
-          value={sortOrder}
-          onChange={(e) => setSortOrder(Number(e.target.value))}
-        />
-      </label>
-      <button type="submit" className="admin-btn admin-btn-secondary">
-        שמור
-      </button>
-      <button type="button" className="admin-btn admin-btn-danger" onClick={onDelete}>
-        מחק
-      </button>
-      <details className="admin-details">
+      <div className="admin-category-actions">
+        <button type="submit" className="admin-btn admin-btn-secondary admin-btn--compact">
+          שמור
+        </button>
+        <button type="button" className="admin-btn admin-btn-danger admin-btn--compact" onClick={onDelete}>
+          מחק
+        </button>
+      </div>
+      <details className="admin-details admin-category-details">
         <summary>פרטים נוספים</summary>
         <p className="admin-muted">
           קוד מערכת: <span className="admin-chip">{category.id}</span>

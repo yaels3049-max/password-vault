@@ -19,6 +19,8 @@ interface AuthEntryScreenProps {
   loginOnly?: boolean;
   /** Optional heading override (e.g. admin console). */
   heading?: string;
+  /** Optional subtitle under the heading (e.g. admin login hint). */
+  subtitle?: string;
 }
 
 export default function AuthEntryScreen({
@@ -26,6 +28,7 @@ export default function AuthEntryScreen({
   initialEmail = '',
   loginOnly = false,
   heading,
+  subtitle,
 }: AuthEntryScreenProps) {
   const [mode, setMode] = useState<AuthMode>(loginOnly ? 'login' : 'login');
   const [email, setEmail] = useState(initialEmail);
@@ -41,9 +44,17 @@ export default function AuthEntryScreen({
   const policy = getAccountPasswordPolicy();
 
   function switchMode(next: AuthMode) {
-    if (loading) return;
+    if (loading || next === mode) return;
     setMode(next);
     setError('');
+    // Do not carry credentials between login and register (fresh form each mode).
+    setEmail('');
+    setPassword('');
+    setPasswordConfirm('');
+    setFirstName('');
+    setLastName('');
+    setPhone('');
+    setShowPassword(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -86,7 +97,14 @@ export default function AuthEntryScreen({
       <div className="unlock-card auth-entry-card">
         <header className="unlock-header">
           <h1>{heading ?? AUTH_COPY.productTitle}</h1>
-          <p className="unlock-trust-line">{AUTH_COPY.accountPasswordHint}</p>
+          {(subtitle || !loginOnly) && (
+            <p className="unlock-trust-line">
+              {subtitle ??
+                (mode === 'register'
+                  ? AUTH_COPY.registerAccountHint
+                  : AUTH_COPY.accountPasswordHint)}
+            </p>
+          )}
         </header>
 
         {!loginOnly && (
@@ -116,16 +134,7 @@ export default function AuthEntryScreen({
         </div>
         )}
 
-        {loginOnly && (
-          <p className="auth-policy-hint">
-            אין חשבון?{' '}
-            <a className="admin-link" href="#/">
-              צרו חשבון בבית הדיגיטלי
-            </a>
-          </p>
-        )}
-
-        <form onSubmit={handleSubmit} data-testid="auth-entry-form">
+        <form key={mode} onSubmit={handleSubmit} data-testid="auth-entry-form">
           {mode === 'register' && !loginOnly && (
             <>
               <label className="unlock-field">
@@ -178,7 +187,9 @@ export default function AuthEntryScreen({
           </label>
 
           <label className="unlock-field">
-            <span>{AUTH_COPY.password}</span>
+            <span>
+              {loginOnly ? AUTH_COPY.adminPassword : AUTH_COPY.password}
+            </span>
             <div className="auth-password-wrap">
               <input
                 type={showPassword ? 'text' : 'password'}

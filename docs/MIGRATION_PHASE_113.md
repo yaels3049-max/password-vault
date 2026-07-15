@@ -34,24 +34,37 @@ Built-in catalog marks **בנק לאומי** (`leumi`) with `loginAssistanceLeve
 - Self-hosted via `@fontsource/assistant` (Hebrew + Latin weights 400/500/600/700).
 - Primary stack on `:root` / `body` in `src/index.css`; all app shells inherit.
 
-## Shared background + rounded shells (D-113-20 / D-113-22 / AC-113-33)
-- Asset: `src/assets/backgrounds/digital-home-shell.jpg` (JPEG; also mirrored under `public/backgrounds/` for local serving). Operator-provided soft wave/dot art; baked black rounded corners are soft-filled before commit.
-- Production Vite build sets `publicDir: false`, so the shell BG is bundled via CSS from `src/assets` (Network should show hashed `digital-home-shell-*.jpg` 200 from `/assets/`).
-- `.dashboard` and `.service-management` share `background-size: cover`, CSS `border-radius: 24px`, `overflow: hidden`.
-- **D-113-22:** Do **not** stack a heavy white linear-gradient scrub (~62%) over the JPG — the asset is already light and the wash made Home look like a flat pale card. Shell uses the JPG directly (soft `#e8eef6` fallback only). Wave/dot pattern must be operator-visible; CSS `url()` alone is not acceptance.
-- **Corner fill:** Source JPG had baked rounded corners with near-black pixels (JPEG has no alpha). Those corners are filled with soft blue-white so Home/Manage edges stay soft. Page `body` ambient matches `#e8eef6`.
-- **Manage sections:** `.sm-section` uses translucent glass (not solid white) so the shell pattern shows through discovery/mine grids; service cards remain solid for readability.
+## Shared background + rounded shells (D-113-20 / D-113-22 / D-113-26 / AC-113-33 / AC-113-46)
+Operator correction (2026-07-15): **two assets by surface** — do not reuse landscape wave-v2 on tall Home/Manage shells.
+
+| Surface | Asset | CSS |
+|---|---|---|
+| Digital Home + Manage/Add Sites | **Portrait** `digital-home-shell-portrait.png` (485×1024) | `--app-shell-bg-image` on `.dashboard` / `.service-management` |
+| Login / Auth entry | **Landscape** `digital-home-shell-wave-v2.png` (1024×576) | `--app-wide-bg-image` on `.unlock.auth-entry` |
+| Control Center (מרכז הבקרה) login + all admin screens | **Landscape** wave-v2 | `--admin-wide-bg-image` on `.admin-app` / `.admin-gate` (Phase 107) |
+
+- Sources mirrored under `team-Yuri/assets/` and `public/backgrounds/`; production Vite `publicDir: false` bundles from `src/assets`.
+- Prior `digital-home-shell.jpg` remains unused by product CSS.
+- Shells: `background-size: cover`, centered; Home/Manage `border-radius: 24px` + `overflow: hidden`.
+- Portrait asset is **full-bleed** (baked black phone-mask corners removed → soft `#e8eef6`) so CSS radius does not show dark dog-ears on Digital Home / Add Sites.
+- **D-113-22:** No heavy white scrub (~62%). Soft `#e8eef6` fallback only.
+- **Manage sections:** translucent `.sm-section` so portrait pattern shows through.
 
 ## Vault chrome inside shell (D-113-23 / AC-113-35)
 - On Digital Home and Manage/Add Sites, **no** persistent name+email identity chip (`.app-vault-account-chip` removed from `AppVaultShell`).
 - «הגישה פתוחה» / «נעל» (`VaultStateBadge`) renders **inside** `.dashboard` / `.service-management` headers (`.shell-lock-row`) — not in a gray exterior bar around the BG card.
 - `AppVaultShell` is a thin layout wrapper only.
 
-## Remove-site kebab menu (D-113-24 / AC-113-36)
+## Remove-site kebab menu (D-113-24 / AC-113-36) + durability (D-113-29 / AC-113-51)
 - «האתרים שלי» ⋮ menu uses a `createPortal` + `position: fixed` popover so shell/`overflow: hidden` cannot clip it.
 - Label «הסר אתר» only (no 🗑); blue text (same family as «ניהול»), not danger-red.
+- **Durable remove (blocking):** `changeSelection(remove)` awaits `removeUserServiceFromCloud` **before** painting success (verifies row gone). Dual-write uses a generation so in-flight upserts cannot resurrect. Awaited post-remove sync + re-delete guard.
+- Stale catalog session cache cleared on unlock; selections for admin-**disabled** registry rows are pruned from Home/Manage + cloud.
+- Dual-write upserts `user_services` for **`selectedIds` only** — leftover local profiles/credentials (AC-104-16) must not re-create cloud membership.
+- Anti-wipe (AC-109-39) unchanged: sync never deletes by omission; empty cloud still does not wipe unrelated local data. Registry rows untouched.
+- UAT: «הסר אתר» → gone on Home → logout/login → still gone; no `user_services` row for that service.
 
-## Credential Details modal (D-113-25 / AC-113-37…45)
+## Credential Details modal (D-113-25 / D-113-28 / AC-113-37…45 / AC-113-48…50)
 - Target: `ServiceProfileManagementModal` from Manage Sites «ניהול».
 - **UI/interaction only** — no credential schema, encryption, profile cardinality, autofill engine, notes field, or Phase 112 changes.
 - Compact dialog (~580px desktop); sticky header title «פרטי כניסה»; X close (`aria-label="סגירה"`); no large bottom Close.
@@ -59,10 +72,13 @@ Built-in catalog marks **בנק לאומי** (`leumi`) with `loginAssistanceLeve
 - Profile chips (multi) or static chip (single); switch isolates one profile and re-hides password.
 - Compact copy + eye/eye-off; toasts never include secret values; no `alert()`.
 - Primary «שמירת שינויים» disabled when clean; save uses `type="button"` (Phase 106 PM hardening).
-- Delete via header ⋮ («מחיקת פרופיל» / «מחיקת פרטי כניסה») + confirm; no large red delete text.
+- **D-113-28 / AC-113-48:** Opening/using the modal must not freeze the Hub. `loadProfile` runs on `selectedProfileId` only; clean vault sync uses stable credential/field keys + `dirtyRef` / equality guards. **`useServiceLogos` must not depend on array identity** (inline `useServiceLogos([service])` previously caused infinite `setLogos` once cached logos resolve).
+- **AC-113-49 / AC-113-42:** Header ⋮ removed entirely. Delete / rename / set-default live under Save as compact secondary text controls (confirm dialogs retained).
+- **AC-113-50:** Left header cluster (RTL): `[X]` then immediately `[הגישה פתוחה | נעל]` beside the X (lock chrome on the left side — not far top-right).
 - «+ הוספת פרופיל נוסף» collapsed by default.
 - Open/fill actions were not on this screen → AC-113-44 N/A (no new open/fill UI).
 - Return focus to the «ניהול» opener on close.
+- Evidence: `docs/evidence/phase113-credential-details-header-m10.png`.
 
 ## Product glossary (D-113-19 / AC-113-32)
 User-facing Hebrew uses **אתר / אתרים** for catalog websites (not שירות / שירותים).  
@@ -75,8 +91,11 @@ Exception kept: auth «שירות החשבון…» (backend account service, no
 - Practice login («תרגול התחברות») excluded from user catalog / discovery surfaces.
 - Multi-profile alone no longer maps to «דורש תשומת לב».
 
-## Digital Home chrome (D-113-17 / AC-113-25…27)
-- Content shell `max-width` shared with Discover/Manage: `--app-content-max: 880px`.
+## Digital Home chrome (D-113-17 / D-113-27 / AC-113-25…27 / AC-113-47)
+- Content shell `max-width` shared with Discover/Manage: `--app-content-max: 792px` (≈10% under prior 880px; phone silhouette).
+- Home icon grid still capped at **max 5 tiles/row** (`--dh-launcher-max`).
+- Admin console width unchanged (Phase 107).
+- Evidence: `docs/evidence/phase113-shell-narrow.png` (Home + Add side-by-side).
 - Icon launcher stays phone-dense (`--dh-launcher-max: 36rem`, max 5 tiles/row) with side margins inside the wider shell.
 - H1: «הבית הדיגיטלי של {fullName}» from session (fallback: «הבית הדיגיטלי»).
 - PoC fill buttons and marketing subtitle removed; «ניהול אתרים» centered using Discover CTA classes.
@@ -127,6 +146,12 @@ npm run build
 
 Fixture mockup: `scripts/fixtures/phase113-credential-details.html`  
 Evidence screenshots: `docs/evidence/phase113-credential-details-desktop.png`, `docs/evidence/phase113-credential-details-mobile.png`.
+
+### M8 backgrounds — portrait Home vs landscape Login/Admin
+- Portrait (Home/Manage): `src/assets/backgrounds/digital-home-shell-portrait.png`
+- Landscape wave-v2 (Login + Control Center): `src/assets/backgrounds/digital-home-shell-wave-v2.png`
+- Evidence: `docs/evidence/phase113-wave-v2-home.png` (portrait), `docs/evidence/phase113-wave-v2-login.png` (wide)
+- Fixtures: `scripts/fixtures/phase113-wave-v2-home.html`, `phase113-wave-v2-login.html`
 
 ## Operator UAT spine (acceptance)
 Observable UX only — **do not** require autofill PASS:

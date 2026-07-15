@@ -26,11 +26,15 @@ import {
   ensureDefaultProfileForService,
   getProfilesForService,
   ProfileManagementError,
+  PROFILE_DELETE_CLOUD_FAILED_MESSAGE,
   renameAccessProfile,
   saveCredentialForProfile,
   setDefaultAccessProfile,
 } from './vault/profileManagement';
-import { deleteCloudEncryptedCredentialByLocalProfileId } from './supabase/persistence';
+import {
+  deleteAccessProfileFromCloud,
+  deleteCloudEncryptedCredentialByLocalProfileId,
+} from './supabase/persistence';
 import { toFriendlySecurityError, VaultStateBadge } from './trust';
 
 interface ManageServicesProps {
@@ -391,7 +395,7 @@ export default function ManageServices({
 
         {selectedServices.length === 0 ? (
           <p className="sm-empty">
-            עדיין לא נבחרו אתרים. הוסיפו אתר מתוך «הוספת אתרים» למטה.
+            עדיין לא נבחרו אתרים.
           </p>
         ) : (
           <>
@@ -567,7 +571,11 @@ export default function ManageServices({
               </div>
             </div>
 
-            <div className="sm-add-results" aria-live="polite">
+            <div
+              className="sm-add-results"
+              aria-live="polite"
+              aria-label="קטלוג אתרים להוספה"
+            >
               {discoveryServices.length === 0 ? (
                 <p className="sm-empty">לא נמצאו אתרים תואמים. נסו חיפוש אחר או הוסיפו אתר חדש.</p>
               ) : (
@@ -649,9 +657,18 @@ export default function ManageServices({
           onSetDefaultProfile={(profileId) =>
             void applyVaultUpdate((state) => setDefaultAccessProfile(state, profileId))
           }
-          onDeleteProfile={(profileId) =>
-            void applyVaultUpdate((state) => deleteAccessProfile(state, profileId))
-          }
+          onDeleteProfile={async (profileId) => {
+            try {
+              await deleteAccessProfileFromCloud(profileId);
+            } catch (error) {
+              if (import.meta.env.DEV) {
+                console.warn('[vault] cloud delete-profile failed:', error);
+              }
+              setProfileError(PROFILE_DELETE_CLOUD_FAILED_MESSAGE);
+              throw new Error(PROFILE_DELETE_CLOUD_FAILED_MESSAGE);
+            }
+            await applyVaultUpdate((state) => deleteAccessProfile(state, profileId));
+          }}
           onSaveCredential={(profileId, credential: Credential) =>
             applyVaultUpdate((state) =>
               saveCredentialForProfile(state, profileId, credential),

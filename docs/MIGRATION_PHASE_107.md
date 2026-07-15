@@ -71,6 +71,13 @@ Existing `persist_discovered_login_url` remains narrow (global `built_in` discov
 
 ## Approval flow
 
+User custom-add (`upsertCustomServiceRegistryRow` / `serviceDefinitionToRegistryInsert`) writes
+`source_type=user`, `service_status=pending_review`, `owner_user_id=<uid>`. It must **not**
+coerce the URL into a known `built_in` seed row (that path hid submissions from
+«אתרים בהוספה ע"י משתמשים»). If the URL already exists in the Hub catalog as a
+non–user-created service, the Hub selects that existing card instead of inserting a
+duplicate submission.
+
 ```text
 User row (source_type=user, owner_user_id set)
   → Admin reviews in ApprovalQueue
@@ -125,7 +132,7 @@ Presentation / UX track (AC-107-8…18). **Does not** change approval RPCs, redi
 | Nav | «אתרים מובנים»; «אתרים בהוספה ע"י משתמשים» |
 | Pending queue | Card layout: submitted date/by, preview icon, category, approve/reject |
 | Home + optional Login URL | Friendly labels; empty login → Home URL copy |
-| Category create | Name + optional emoji icon only; **`generateCategoryId`** auto-code (no manual slug) |
+| Category create | **Display name only** (AC-107-14 / AC-107-19); no icon; no «סדר»; **`generateCategoryId`** auto-code; compact שמור/מחק |
 | Compact edit | Collapsible sections; Save / Cancel |
 | Filters + search | Category, built-in/custom/user-submitted, active/inactive; search name/category/login URL |
 
@@ -135,7 +142,21 @@ Screenshot: `docs/evidence/phase107-admin-m9-console.png`
 ### Category auto-id
 
 `src/admin/adminPresentation.ts` → `generateCategoryId(displayName, existingIds)`  
-Slug from name (Unicode letters/digits) or `cat_<base36>`; uniqueness against existing `categories.id`. Optional icon is stored as a display_name prefix (categories table has no icon column).
+Slug from name (Unicode letters/digits) or `cat_<base36>`; uniqueness against existing `categories.id`.
+
+### Categories UX fix (2026-07-15 — AC-107-14 / AC-107-19)
+
+- Create/edit: **display name only** (no icon field; no typed «סדר» number field).
+- Technical id only under «פרטים נוספים».
+- Compact שמור / מחק (`admin-btn--compact`).
+
+### Category reorder panel (2026-07-15 — AC-107-20)
+
+- Left region (RTL): **סידור תצוגה** — drag-and-drop + ↑↓; persists via `sort_order` (transparent).
+- Right: create + name edit (unchanged).
+- Narrow widths: reorder stacks above editor.
+- Evidence: `docs/evidence/phase107-categories-reorder.png`
+- API: `reorderAdminCategories(orderedIds)` in `adminRegistryApi.ts`
 
 ## Verification
 
@@ -153,6 +174,10 @@ Admin platform **must not**:
 - Import or call `vault/crypto` decrypt paths
 - Use `service_role` in client bundle or `VITE_*` env
 - Expose credential field values or `access_profiles` secret UI
+
+### Control Center background (2026-07-15)
+
+Admin login **and** all מרכז הבקרה management screens use landscape **wave-v2** (`digital-home-shell-wave-v2.png`) via `--admin-wide-bg-image` on `.admin-app` / `.admin-gate`. Digital Home / Add Sites keep the **portrait** shell (Phase 113).
 
 M9 is UI/UX only — promote/reject/rediscovery semantics and zero credential access remain intact.
 

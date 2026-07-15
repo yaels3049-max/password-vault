@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phase 107 — Control Center landscape BG</title>
+    <style>
+      body { margin: 0; font-family: Assistant, system-ui, sans-serif; }
+      .admin-app {
+        --admin-wide-bg-image: url('../../src/assets/backgrounds/digital-home-shell-wave-v2.png');
+        min-height: 100vh;
+        background-color: #e8eef6;
+        background-image: var(--admin-wide-bg-image);
+        background-size: cover;
+        background-position: center;
+        padding: 1.5rem;
+        color: #0f172a;
+      }
+      .card {
+        max-width: 640px;
+        margin: 2rem auto;
+        padding: 1.25rem 1.5rem;
+        background: rgba(255, 255, 255, 0.94);
+        border-radius: 14px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+      }
+      h1 { margin: 0 0 0.35rem; color: #1e3a8a; }
+      p { margin: 0; color: #64748b; }
+    </style>
+  </head>
+  <body>
+    <div class="admin-app">
+      <div class="card">
+        <h1>מרכז הבקרה</h1>
+        <p>Landscape wave-v2 on all admin screens (login + management)</p>
+      </div>
+    </div>
+  </body>
+</html>

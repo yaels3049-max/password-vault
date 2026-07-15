@@ -15,10 +15,33 @@ import {
   registryRowToServiceDefinition,
   type ServiceRegistryRow,
 } from '../registry/registryMapper';
+import { CLOUD_REMOVE_UNAVAILABLE_MESSAGE } from '../serviceManagement/serviceSelection';
 
 export interface CloudSyncOptions {
   /** Test hook: simulate Supabase write failure without disabling local persist. */
   forceFail?: boolean;
+  /**
+   * Vault namespace that started this dual-write (D-109-26).
+   * Abort if Auth session has switched to another user mid-flight.
+   */
+  expectedUserId?: string;
+  /**
+   * Dual-write generation (D-113-29). Stale in-flight syncs abort so they cannot
+   * re-upsert a service after «הסר אתר».
+   */
+  generation?: number;
+}
+
+/** Bumped on every vault persist/cloud write start — invalidates older dual-writes. */
+let dualWriteGeneration = 0;
+
+export function bumpDualWriteGeneration(): number {
+  dualWriteGeneration += 1;
+  return dualWriteGeneration;
+}
+
+export function getDualWriteGeneration(): number {
+  return dualWriteGeneration;
 }
 
 const nowIso = (): string => new Date().toISOString();
@@ -39,14 +62,6 @@ function isKdfParams(value: unknown): value is KdfParams {
     typeof row.memorySize === 'number' &&
     typeof row.parallelism === 'number'
   );
-}
-
-function collectServiceIds(state: VaultState): string[] {
-  const ids = new Set<string>(state.selectedIds);
-  for (const profile of state.accessProfiles) {
-    ids.add(profile.serviceId.trim());
-  }
-  return [...ids];
 }
 
 export async function ensureUserRow(userId: string): Promise<void> {
@@ -254,8 +269,45 @@ export async function deleteCloudEncryptedCredentialByLocalProfileId(
 }
 
 /**
- * Explicit user remove-service only (D-109-25). Cascades profiles + ciphertext via FK.
+ * Explicit user delete-profile only (D-109-26 / AC-109-41).
+ * Cascades encrypted_credentials via FK. Dual-write must NOT delete profiles by omission.
+ * Silent no-op without client/session is forbidden — UI must not claim success.
+ */
+export async function deleteAccessProfileFromCloud(
+  localProfileId: string,
+): Promise<void> {
+  const trimmed = localProfileId.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error(CLOUD_REMOVE_UNAVAILABLE_MESSAGE);
+  }
+
+  const userId = await tryGetAuthenticatedUserId();
+  if (!userId) {
+    throw new Error(CLOUD_REMOVE_UNAVAILABLE_MESSAGE);
+  }
+
+  const { error } = await supabase
+    .from('access_profiles')
+    .delete()
+    .eq('user_id', userId)
+    .eq('local_profile_id', trimmed);
+
+  if (error) {
+    throw error;
+  }
+}
+
+/**
+ * Explicit user remove-service only (D-109-25 / D-113-29). Cascades profiles + ciphertext via FK.
  * Dual-write must NOT delete user_services absent from a partial local snapshot.
+ *
+ * When the Hub is cloud-capable, silent no-op is forbidden (AC-113-51): missing client or
+ * session must throw so the UI rolls back and does not claim a durable remove.
  */
 export async function removeUserServiceFromCloud(serviceId: string): Promise<void> {
   const trimmed = serviceId.trim();
@@ -265,13 +317,16 @@ export async function removeUserServiceFromCloud(serviceId: string): Promise<voi
 
   const supabase = getSupabaseClient();
   if (!supabase) {
-    return;
+    throw new Error(CLOUD_REMOVE_UNAVAILABLE_MESSAGE);
   }
 
   const userId = await tryGetAuthenticatedUserId();
   if (!userId) {
-    return;
+    throw new Error(CLOUD_REMOVE_UNAVAILABLE_MESSAGE);
   }
+
+  // Invalidate in-flight dual-writes that might re-upsert this membership.
+  bumpDualWriteGeneration();
 
   const { error } = await supabase
     .from('user_services')
@@ -282,12 +337,31 @@ export async function removeUserServiceFromCloud(serviceId: string): Promise<voi
   if (error) {
     throw error;
   }
+
+  // Supabase can "succeed" with 0 rows deleted — verify membership is gone (AC-113-51).
+  const { data: remaining, error: verifyError } = await supabase
+    .from('user_services')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('service_id', trimmed)
+    .maybeSingle();
+
+  if (verifyError) {
+    throw verifyError;
+  }
+  if (remaining?.id) {
+    throw new Error(CLOUD_REMOVE_UNAVAILABLE_MESSAGE);
+  }
 }
 
 /**
  * Dual-write vault state to Supabase — **upsert only** (D-109-25 / AC-109-39).
  * Never deletes cloud `encrypted_credentials` or `user_services` because they are
  * missing from this payload. Explicit removes use dedicated APIs.
+ *
+ * Membership (`user_services`) follows `selectedIds` only. Local profiles/credentials
+ * for deselected sites stay in IndexedDB (AC-104-16) but must NOT re-upsert cloud
+ * membership — that resurrected tiles after «הסר אתר» (D-113-29 / AC-113-51).
  *
  * ID mapping: vault `profile-*` ids → `access_profiles.local_profile_id`.
  */
@@ -311,32 +385,62 @@ export async function syncVaultStateToSupabase(
     return;
   }
 
+  // D-109-26 / AC-109-40: never dual-write another user's vault into the active Auth session.
+  if (options?.expectedUserId && options.expectedUserId.trim() !== userId) {
+    if (isDevBuild()) {
+      console.warn(
+        '[vault] dual-write aborted — Auth user changed since vault persist started',
+        { expected: options.expectedUserId, auth: userId },
+      );
+    }
+    return;
+  }
+
+  const generation = options?.generation ?? dualWriteGeneration;
+  if (generation !== dualWriteGeneration) {
+    if (isDevBuild()) {
+      console.warn('[vault] dual-write aborted — superseded by newer persist/remove');
+    }
+    return;
+  }
+
   await ensureUserRow(userId);
 
-  const serviceIds = collectServiceIds(state);
+  // Cloud membership = Digital Home selection only (not orphaned local profiles).
+  const selectedIds = [...new Set(state.selectedIds.map((id) => id.trim()).filter(Boolean))];
   const userServiceIdByServiceId = new Map<string, string>();
 
-  for (let index = 0; index < serviceIds.length; index += 1) {
-    const serviceId = serviceIds[index];
+  for (let index = 0; index < selectedIds.length; index += 1) {
+    const serviceId = selectedIds[index];
     if (!serviceId) {
       continue;
     }
-    const sortOrder = state.selectedIds.indexOf(serviceId);
-    const userServiceId = await upsertUserService(
-      userId,
-      serviceId,
-      sortOrder >= 0 ? sortOrder : null,
-    );
+    if (generation !== dualWriteGeneration) {
+      return;
+    }
+    // Re-check Auth binding before each write (logout mid-sync).
+    const stillUser = await tryGetAuthenticatedUserId();
+    if (!stillUser || stillUser !== userId) {
+      return;
+    }
+    const userServiceId = await upsertUserService(userId, serviceId, index);
     userServiceIdByServiceId.set(serviceId, userServiceId);
   }
 
   for (const profile of state.accessProfiles) {
     const serviceId = profile.serviceId.trim();
-    let userServiceId = userServiceIdByServiceId.get(serviceId);
-    if (!userServiceId) {
-      userServiceId = await upsertUserService(userId, serviceId, null);
-      userServiceIdByServiceId.set(serviceId, userServiceId);
+    if (!serviceId || !userServiceIdByServiceId.has(serviceId)) {
+      // Deselected local profile — keep IndexedDB; do not recreate user_services.
+      continue;
     }
+    if (generation !== dualWriteGeneration) {
+      return;
+    }
+    const stillUser = await tryGetAuthenticatedUserId();
+    if (!stillUser || stillUser !== userId) {
+      return;
+    }
+    const userServiceId = userServiceIdByServiceId.get(serviceId)!;
 
     const cloudProfileId = await upsertAccessProfile(userId, userServiceId, profile);
     const credential = state.credentials[profile.id];
@@ -352,9 +456,10 @@ export async function syncVaultStateToSupabase(
 export async function syncVaultStateToSupabaseSafe(
   cryptoKey: CryptoKey,
   state: VaultState,
+  options?: CloudSyncOptions,
 ): Promise<{ ok: true } | { ok: false; error: unknown }> {
   try {
-    await syncVaultStateToSupabase(cryptoKey, state);
+    await syncVaultStateToSupabase(cryptoKey, state, options);
     return { ok: true };
   } catch (error) {
     if (isDevBuild()) {
@@ -552,25 +657,53 @@ export async function hydrateWorkspaceFromCloud(
     const selectedIds =
       selectedFromCloud.length > 0 ? selectedFromCloud : [...local.selectedIds];
 
-    // Union profiles by id; cloud metadata wins on conflict.
-    const profileById = new Map(
-      local.accessProfiles.map((profile) => [profile.id, profile] as const),
+    // D-109-26 / AC-109-41: when cloud returned ≥1 profile for a service, cloud is the
+    // authority for that service's profile set — do not resurrect local-only deleted ghosts.
+    const cloudLocalProfileIds = new Set(cloudAccessProfiles.map((profile) => profile.id));
+    const servicesWithCloudProfiles = new Set(
+      cloudAccessProfiles.map((profile) => profile.serviceId.trim()).filter(Boolean),
     );
+
+    const profileById = new Map<string, AccessProfile>();
     for (const profile of cloudAccessProfiles) {
-      profileById.set(profile.id, profile);
+      if (selectedIds.includes(profile.serviceId)) {
+        profileById.set(profile.id, profile);
+      }
     }
-    const mergedProfiles = [...profileById.values()].filter((profile) =>
-      selectedIds.includes(profile.serviceId),
-    );
+    for (const profile of local.accessProfiles) {
+      const serviceId = profile.serviceId.trim();
+      if (!selectedIds.includes(serviceId)) {
+        continue;
+      }
+      if (
+        servicesWithCloudProfiles.has(serviceId) &&
+        !cloudLocalProfileIds.has(profile.id)
+      ) {
+        continue;
+      }
+      if (!profileById.has(profile.id)) {
+        profileById.set(profile.id, profile);
+      }
+    }
+
+    const mergedProfiles = [...profileById.values()];
 
     const healedProfiles = normalizeExactlyOneDefaultPerService(
       mergedProfiles.length > 0 ? mergedProfiles : local.accessProfiles,
     );
 
+    const allowedProfileIds = new Set(healedProfiles.map((profile) => profile.id));
+    const scopedCredentials: Record<string, Credential> = {};
+    for (const [profileId, credential] of Object.entries(credentials)) {
+      if (allowedProfileIds.has(profileId)) {
+        scopedCredentials[profileId] = credential;
+      }
+    }
+
     return {
       selectedIds,
       accessProfiles: healedProfiles,
-      credentials,
+      credentials: scopedCredentials,
       customServices: [...customById.values()],
     };
   } catch (error) {

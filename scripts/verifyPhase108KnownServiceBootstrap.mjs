@@ -7,7 +7,8 @@
  *   - ensureKnownBuiltinRegistryRow + RPC restore path exists
  *   - Catalog loader bootstraps missing known builtins
  *   - Discovery persist does not write login_fields / DEFAULT_LOGIN_FIELDS
- *   - App routes known URLs to canonical restore, not generic custom create
+ *   - Discover add/select restores known builtins via ensureKnownBuiltinRegistryRow
+ *   - User custom-add must NOT coerce by URL into built_in (approval queue / D-107-6)
  *
  * Usage: node scripts/verifyPhase108KnownServiceBootstrap.mjs
  */
@@ -82,8 +83,12 @@ function main() {
   assert(
     persistence.includes('ensureKnownBuiltinRegistryRow') &&
       persistence.includes('ensure_known_builtin_registry_row') &&
-      persistence.includes('resolveKnownBuiltinByUrl'),
+      persistence.includes('isKnownBuiltinServiceId'),
     'Persistence must restore known builtins via RPC, not generic custom insert',
+  );
+  assert(
+    !persistence.includes('resolveKnownBuiltinByUrl'),
+    'upsertCustomServiceRegistryRow must not coerce user URLs into known built_in rows',
   );
 
   assert(
@@ -119,10 +124,16 @@ function main() {
   );
 
   assert(
-    app.includes('resolveKnownBuiltinByUrl') &&
-      app.includes('ensureKnownBuiltinRegistryRow') &&
-      app.includes('isKnownBuiltinServiceId'),
-    'App must restore known services on add/select',
+    app.includes('ensureKnownBuiltinRegistryRow') &&
+      app.includes('isKnownBuiltinServiceId') &&
+      app.includes('getKnownBuiltinDefinition'),
+    'App must restore known services on Discover add/select by id',
+  );
+  assert(
+    app.includes('upsertCustomServiceRegistryRow') &&
+      app.includes("catalogMatch.source !== 'user-created'") &&
+      !/async function addCustomService[\s\S]*?resolveKnownBuiltinByUrl/.test(app),
+    'addCustomService must keep non-catalog URLs as user submissions (not known-builtin coerce)',
   );
 
   console.log('PASS: Phase 108 known-service empty-DB bootstrap (static)');

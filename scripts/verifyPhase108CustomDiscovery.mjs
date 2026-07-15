@@ -156,6 +156,17 @@ function main() {
     'Custom add must persist discovery failure outcome without blocking creation',
   );
 
+  assert(
+    read('src/registry/registryMapper.ts').includes("service_status: 'pending_review'") &&
+      read('src/registry/registryMapper.ts').includes("source_type: 'user'"),
+    'User custom registry inserts must be source_type=user + pending_review for approval queue',
+  );
+
+  assert(
+    !app.includes('resolveKnownBuiltinByUrl'),
+    'User custom-add must not route through resolveKnownBuiltinByUrl (built_in hijack)',
+  );
+
   console.log('PASS: Phase 108 custom-service Login Discovery shares admin pipeline (create-then-discover).');
   console.log('  bulk refresh + admin override protection + expanded login_url_status');
 }

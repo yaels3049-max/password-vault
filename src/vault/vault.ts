@@ -22,6 +22,7 @@ import {
   ensureVaultKdfSeeded,
   fetchVaultKdf,
   syncVaultStateToSupabaseSafe,
+  bumpDualWriteGeneration,
 } from '../supabase/persistence';
 
 let vaultKey: CryptoKey | null = null;
@@ -165,7 +166,7 @@ export async function unlockVault(
 
 export async function persistVault(
   state: VaultState,
-  options?: { skipCloudSync?: boolean },
+  options?: { skipCloudSync?: boolean; awaitCloudSync?: boolean },
 ): Promise<void> {
   if (!vaultKey || !vaultKdf || !activeVaultUserId) {
     throw new Error('Vault is locked');
@@ -180,8 +181,18 @@ export async function persistVault(
   void ensureVaultKdfSeeded(userId, kdf);
   if (!options?.skipCloudSync) {
     // Dual-write credentials with cross-browser cloud key when available.
+    // Bind expectedUserId + generation so logout / newer remove aborts this write.
     const syncKey = cloudCredentialKey ?? vaultKey;
-    void syncVaultStateToSupabaseSafe(syncKey, state);
+    const generation = bumpDualWriteGeneration();
+    const syncPromise = syncVaultStateToSupabaseSafe(syncKey, state, {
+      expectedUserId: userId,
+      generation,
+    });
+    if (options?.awaitCloudSync) {
+      await syncPromise;
+    } else {
+      void syncPromise;
+    }
   }
 }
 

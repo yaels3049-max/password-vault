@@ -209,14 +209,7 @@ export default function Dashboard({
 
         {!catalogLoading && services.length === 0 && (
           <div className="dashboard-empty-state">
-            <p className="dashboard-empty">עדיין לא נבחרו אתרים לבית הדיגיטלי.</p>
-            <button
-              type="button"
-              className="sm-action sm-action--secondary sm-footer-nav"
-              onClick={onAddMore}
-            >
-              הוספת אתרים
-            </button>
+            <p className="dashboard-empty">עדיין לא נבחרו אתרים</p>
           </div>
         )}
 

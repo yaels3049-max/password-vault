@@ -29,6 +29,7 @@ export function getCachedServiceLogo(service: Service): Promise<string | null> {
     {
       serviceId: service.id,
       logoUrl: service.logoUrl,
+      metadata: service.metadata,
     },
     128,
   );

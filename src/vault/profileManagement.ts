@@ -20,6 +20,10 @@ export class ProfileManagementError extends Error {
   }
 }
 
+/** Cloud profile delete failed — do not show phantom delete (D-109-26 / AC-109-41). */
+export const PROFILE_DELETE_CLOUD_FAILED_MESSAGE =
+  'לא הצלחנו למחוק את הפרופיל מהחשבון. בדקו חיבור לרשת ונסו שוב.';
+
 function assertValidProfiles(profiles: AccessProfile[]): void {
   const validation = validateExactlyOneDefaultPerService(profiles);
   if (!validation.valid) {

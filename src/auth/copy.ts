@@ -6,6 +6,8 @@ export const AUTH_COPY = {
   registerTab: 'יצירת חשבון',
   email: 'אימייל',
   password: 'סיסמת הבית הדיגיטלי',
+  /** Admin console login password field label. */
+  adminPassword: 'סיסמת מנהל מערכת',
   passwordConfirm: 'אימות סיסמה',
   firstName: 'שם פרטי',
   lastName: 'שם משפחה',
@@ -18,6 +20,9 @@ export const AUTH_COPY = {
   /** Single Digital Home password — one secret for Auth + local vault (AC-109-32). */
   accountPasswordHint:
     'הזן את סיסמת הבית הדיגיטלי כדי לגשת בבטחה לכל האתרים ופרטי ההתחברות השמורים שלך.',
+  /** Register-mode subtitle under product title. */
+  registerAccountHint:
+    'הצטרף לכספת הבית הדיגיטלית וצור מקום מאובטח לניהול כל האתרים, החשבונות ופרטי ההתחברות שלך.',
   logout: 'התנתקות',
   sessionBlocked: 'החשבון אינו פעיל. פנו לתמיכה אם זו טעות.',
   supabaseMissing: 'שירות החשבון אינו מוגדר בסביבה זו.',

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phase 113 M9 — shared shell −10% (AC-113-47)</title>
+    <style>
+      :root {
+        --app-content-max: 792px;
+        --app-shell-radius: 24px;
+        --app-shell-bg-image: url('../../src/assets/backgrounds/digital-home-shell-portrait.png');
+        font-family: Assistant, system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 1rem;
+        background: #e8eef6;
+        color: #0f172a;
+      }
+      h1.page {
+        margin: 0 0 0.35rem;
+        text-align: center;
+        color: #1e3a8a;
+        font-size: 1.1rem;
+      }
+      .note {
+        margin: 0 0 1rem;
+        text-align: center;
+        color: #64748b;
+        font-size: 0.85rem;
+      }
+      .pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        align-items: start;
+        max-width: 1680px;
+        margin: 0 auto;
+      }
+      .shell {
+        max-width: var(--app-content-max);
+        width: 100%;
+        margin: 0 auto;
+        min-height: 520px;
+        padding: 1.5rem 1rem 2rem;
+        border-radius: var(--app-shell-radius);
+        overflow: hidden;
+        background-color: #e8eef6;
+        background-image: var(--app-shell-bg-image);
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        box-shadow: 0 16px 40px rgba(120, 150, 185, 0.14);
+        box-sizing: border-box;
+      }
+      .shell h2 {
+        margin: 0 0 0.35rem;
+        text-align: center;
+        color: #1e3a8a;
+        font-size: 1.35rem;
+      }
+      .shell p {
+        margin: 0 0 1rem;
+        text-align: center;
+        color: #475569;
+        font-size: 0.8rem;
+      }
+      .measure {
+        display: block;
+        margin: 0 auto 0.75rem;
+        width: 100%;
+        max-width: var(--app-content-max);
+        text-align: center;
+        font-size: 0.75rem;
+        color: #1d4ed8;
+        font-weight: 600;
+      }
+      .tiles {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 0.5rem;
+        max-width: 36rem;
+        margin: 0 auto;
+      }
+      .tile {
+        aspect-ratio: 1;
+        border-radius: 12px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+      }
+      @media (max-width: 900px) {
+        .pair { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <h1 class="page">AC-113-47 / D-113-27 — shared shell 792px (−10% from 880)</h1>
+    <p class="note">Digital Home + הוספת אתרים identical width · max 5 tiles/row · portrait BG cover</p>
+    <div class="pair">
+      <div>
+        <span class="measure">הבית הדיגיטלי · max-width: 792px</span>
+        <div class="shell dashboard">
+          <h2>הבית הדיגיטלי</h2>
+          <p>phone silhouette</p>
+          <div class="tiles" aria-hidden="true">
+            <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
+            <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <span class="measure">הוספת אתרים · max-width: 792px</span>
+        <div class="shell service-management">
+          <h2>הוספת אתרים</h2>
+          <p>same shared token</p>
+          <div class="tiles" aria-hidden="true">
+            <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
+            <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

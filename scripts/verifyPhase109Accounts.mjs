@@ -330,10 +330,47 @@ function main() {
     'App must call removeUserServiceFromCloud on explicit remove-service',
   );
 
+  assert(
+    persistence.includes('deleteAccessProfileFromCloud'),
+    'Explicit cloud delete-profile API required (D-109-26 / AC-109-41)',
+  );
+  assert(
+    /throw new Error\(CLOUD_REMOVE_UNAVAILABLE_MESSAGE\)/.test(persistence) &&
+      persistence.includes('deleteAccessProfileFromCloud'),
+    'deleteAccessProfileFromCloud must not silent-return without client/auth',
+  );
+  assert(
+    persistence.includes('expectedUserId') &&
+      /Auth user changed since vault persist|dual-write aborted/.test(persistence),
+    'Dual-write must abort when Auth user switches mid-flight (AC-109-40)',
+  );
+  assert(
+    persistence.includes('servicesWithCloudProfiles') ||
+      /cloud is the[\s\S]*authority for that service/i.test(persistence),
+    'Hydrate must not resurrect local-only deleted profiles when cloud has the service',
+  );
+
   const manageSrc = read('src/ManageServices.tsx');
   assert(
     manageSrc.includes('deleteCloudEncryptedCredentialByLocalProfileId'),
     'ManageServices must delete cloud ciphertext only on explicit credential delete',
+  );
+  assert(
+    manageSrc.includes('deleteAccessProfileFromCloud') &&
+      manageSrc.includes('PROFILE_DELETE_CLOUD_FAILED_MESSAGE'),
+    'ManageServices must cloud-delete profile before local success (AC-109-41)',
+  );
+  assert(
+    /deleteAccessProfileFromCloud\(profileId\)[\s\S]*deleteAccessProfile\(state,\s*profileId\)/.test(
+      manageSrc,
+    ),
+    'AC-109-41 cloud profile delete before local VaultState update',
+  );
+
+  const vaultSrc = read('src/vault/vault.ts');
+  assert(
+    /syncVaultStateToSupabaseSafe\([\s\S]*expectedUserId:\s*userId/.test(vaultSrc),
+    'persistVault must bind dual-write to vault namespace userId (AC-109-40)',
   );
 
   const vaultKdfMigration = listFiles(join(root, 'supabase/migrations'), (name) =>

@@ -1075,7 +1075,7 @@ export async function discoverLoginEntry(
         validateOptions,
       );
       if (live) {
-        return discoverySuccess(
+      return discoverySuccess(
           normalizedPrimary,
           live.url,
           live.method,
@@ -1288,10 +1288,10 @@ export async function discoverLoginEntry(
           validated.url,
           validated.method,
           validated.confidence,
-          {
-            redirectChain,
-            finalUrlAfterRedirects,
-            candidates: allCandidates,
+        {
+          redirectChain,
+          finalUrlAfterRedirects,
+          candidates: allCandidates,
             loginEntryType: 'navigable',
             usesModal: false,
           },
@@ -1314,10 +1314,10 @@ export async function discoverLoginEntry(
   if (modalTriggers.length > 0) {
     return {
       ...discoveryFailure(normalizedPrimary, 'consumer_login_is_modal', {
-        redirectChain,
-        finalUrlAfterRedirects,
-        modalTrigger: modalTriggers[0],
-        candidates: allCandidates,
+      redirectChain,
+      finalUrlAfterRedirects,
+      modalTrigger: modalTriggers[0],
+      candidates: allCandidates,
       }),
       reason: CONSUMER_LOGIN_MODAL_REASON,
       loginEntryType: 'modal',

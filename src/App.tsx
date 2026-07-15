@@ -49,7 +49,6 @@ import {
 import {
   getKnownBuiltinDefinition,
   isKnownBuiltinServiceId,
-  resolveKnownBuiltinByUrl,
 } from './catalog/knownServiceBootstrap';
 
 import { credentialsByServiceId } from './vault/credentialAccess';
@@ -58,6 +57,7 @@ import {
   addToSelection,
   removeFromSelection,
   SELECTION_PERSIST_FAILED_MESSAGE,
+  SELECTION_REMOVE_CLOUD_FAILED_MESSAGE,
   shouldForcePersistFailure,
 } from './serviceManagement/serviceSelection';
 
@@ -75,6 +75,7 @@ import {
   hydrateWorkspaceFromCloud,
   syncVaultStateToSupabase,
   removeUserServiceFromCloud,
+  bumpDualWriteGeneration,
 } from './supabase/persistence';
 
 import { ProfileResolution } from './profile';
@@ -375,6 +376,8 @@ function App() {
     setCatalogLoading(true);
     setCatalogError(null);
     setCatalogHydrated(false);
+    // Always refetch — stale session cache kept admin-disabled services visible.
+    clearRegistryCatalogCache();
 
     loadBuiltinCatalogDefinitions()
       .then(async (definitions) => {
@@ -404,6 +407,77 @@ function App() {
     };
   }, [isUnlocked]);
 
+  // Drop selections for registry services that are no longer active (admin-disabled)
+  // and remove their cloud membership so hydrate cannot resurrect them.
+  // IMPORTANT: never apply a stale VaultState snapshot — that stomped custom-add
+  // selection (tile appeared in Discover but not in «האתרים שלי»).
+  const vaultStateRef = useRef(vaultState);
+  vaultStateRef.current = vaultState;
+  const pruneInactiveRef = useRef(false);
+  useEffect(() => {
+    if (!isUnlocked || !catalogHydrated || catalogError || catalogLoading) {
+      return;
+    }
+    if (catalogDefinitions.length === 0 && vaultState.selectedIds.length > 0) {
+      // Empty catalog with selections — likely load failure path already handled.
+      return;
+    }
+    if (pruneInactiveRef.current) {
+      return;
+    }
+
+    const activeCatalogIds = new Set(catalogDefinitions.map((definition) => definition.id));
+    const latest = vaultStateRef.current;
+    const privateCustomIds = new Set(
+      latest.customServices.map((service) => service.id.trim()).filter(Boolean),
+    );
+    const removed = latest.selectedIds.filter(
+      (id) => !activeCatalogIds.has(id) && !privateCustomIds.has(id),
+    );
+    if (removed.length === 0) {
+      return;
+    }
+
+    const removedSet = new Set(removed);
+    pruneInactiveRef.current = true;
+    void (async () => {
+      try {
+        for (const id of removed) {
+          try {
+            await removeUserServiceFromCloud(id);
+          } catch (error) {
+            if (import.meta.env.DEV) {
+              console.warn('[vault] prune inactive cloud remove failed:', id, error);
+            }
+          }
+        }
+        // Re-read latest after awaits so a concurrent custom-add is not erased.
+        const current = vaultStateRef.current;
+        const nextSelected = current.selectedIds.filter((id) => !removedSet.has(id));
+        if (nextSelected.length === current.selectedIds.length) {
+          return;
+        }
+        const next: VaultState = { ...current, selectedIds: nextSelected };
+        await persistVault(next, { awaitCloudSync: true });
+        setVaultState(next);
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.warn('[vault] prune inactive selections failed:', error);
+        }
+      } finally {
+        pruneInactiveRef.current = false;
+      }
+    })();
+  }, [
+    isUnlocked,
+    catalogHydrated,
+    catalogLoading,
+    catalogError,
+    catalogDefinitions,
+    vaultState.selectedIds,
+    vaultState.customServices,
+  ]);
+
 
 
   async function saveVaultState(state: VaultState) {
@@ -414,7 +488,7 @@ function App() {
 
 
 
-  /** D-109-23: drop prior user's in-memory workspace before loading another. */
+  /** D-109-23 / D-109-26: drop prior user's in-memory workspace before loading another. */
   function clearWorkspaceMemory() {
     lockVault();
     setIsUnlocked(false);
@@ -428,6 +502,7 @@ function App() {
     setPendingIds(new Set());
     setSelectionError(null);
     selectionLockRef.current = new Set();
+    pruneInactiveRef.current = false;
     clearRegistryCatalogCache();
   }
 
@@ -473,7 +548,9 @@ function App() {
       // Uses local Chrome credentials when present (legacy vault-key dual-write era).
       if (Object.keys(loaded.credentials).length > 0) {
         try {
-          await syncVaultStateToSupabase(cloudCredKey, loaded);
+          await syncVaultStateToSupabase(cloudCredKey, loaded, {
+            expectedUserId: profile.id,
+          });
         } catch (error) {
           if (isDevBuild()) {
             console.warn('[vault] cloud credential re-key failed:', error);
@@ -491,7 +568,9 @@ function App() {
       // without wiping ciphertext omitted from partial payloads (D-109-25).
       await persistVault(hydrated, { skipCloudSync: true });
       try {
-        await syncVaultStateToSupabase(cloudCredKey, hydrated);
+        await syncVaultStateToSupabase(cloudCredKey, hydrated, {
+          expectedUserId: profile.id,
+        });
       } catch (error) {
         if (isDevBuild()) {
           console.warn('[vault] post-hydrate upsert-only sync failed:', error);
@@ -526,15 +605,21 @@ function App() {
 
 
 
-  async function persistSelectionState(next: VaultState) {
+  async function persistSelectionState(
+    next: VaultState,
+    options?: { awaitCloudSync?: boolean },
+  ) {
     if (shouldForcePersistFailure()) {
       throw new Error('Forced persist failure (Phase 104 test hook)');
     }
-    await saveVaultState(next);
+    await persistVault(next, {
+      awaitCloudSync: options?.awaitCloudSync === true,
+    });
   }
 
   // Idempotent, persist-first selection change (D-104-4, D-104-5, D-104-14).
   // Digital Home reflects the change only after persistVault succeeds (AC-104-15).
+  // Remove: cloud user_services delete must succeed before UI success (D-113-29 / AC-113-51).
   async function changeSelection(id: string, mode: 'add' | 'remove') {
     if (selectionLockRef.current.has(id)) {
       return;
@@ -558,16 +643,49 @@ function App() {
       const next =
         mode === 'add' ? addToSelection(vaultState, id) : removeFromSelection(vaultState, id);
 
-      await persistSelectionState(next);
       if (mode === 'remove') {
+        // Durable remove: delete cloud membership BEFORE local success paint.
+        // Bump dual-write gen so any in-flight upsert cannot resurrect this row.
+        bumpDualWriteGeneration();
         try {
           await removeUserServiceFromCloud(id);
         } catch (error) {
           if (import.meta.env.DEV) {
             console.warn('[vault] cloud remove-service failed:', error);
           }
+          setSelectionError(SELECTION_REMOVE_CLOUD_FAILED_MESSAGE);
+          return;
         }
       }
+
+      try {
+        await persistSelectionState(next, {
+          awaitCloudSync: mode === 'remove',
+        });
+      } catch (error) {
+        if (mode === 'remove') {
+          if (import.meta.env.DEV) {
+            console.warn('[serviceManagement] local persist after cloud remove failed:', error);
+          }
+          setSelectionError(SELECTION_REMOVE_CLOUD_FAILED_MESSAGE);
+          return;
+        }
+        throw error;
+      }
+
+      if (mode === 'remove') {
+        // Final guard: a raced upsert must not leave membership behind.
+        try {
+          await removeUserServiceFromCloud(id);
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.warn('[vault] cloud remove re-verify failed:', error);
+          }
+          setSelectionError(SELECTION_REMOVE_CLOUD_FAILED_MESSAGE);
+          return;
+        }
+      }
+
       setVaultState(next);
     } catch (error) {
       if (import.meta.env.DEV) {
@@ -605,73 +723,35 @@ function App() {
       throw new Error(CUSTOM_SERVICE_DUPLICATE_MESSAGE);
     }
 
-    // Known services (Clalit, Shufersal, …): restore canonical seed — never a generic custom row.
-    const known = resolveKnownBuiltinByUrl(normalizedUrl);
-    if (known) {
-      try {
-        await ensureKnownBuiltinRegistryRow(known);
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          console.warn('[vault] Known builtin restore failed:', error);
-        }
-        throw new Error(CUSTOM_SERVICE_CLOUD_FAIL_MESSAGE);
-      }
-
-      const nextState: VaultState = {
-        ...vaultState,
-        selectedIds: [...new Set([...selectedIds, known.id])],
-      };
-
-      try {
-        await saveVaultState(nextState);
-      } catch (error) {
-        throw error;
-      }
-
-      setVaultState(nextState);
-      setSelectionError(null);
-      clearRegistryCatalogCache();
-      const refreshed = await loadBuiltinCatalogDefinitions();
-      setRuntimeCategoryCatalog(await loadRegistryCategories());
-      setCatalogDefinitions(refreshed);
-
-      // Optional discovery — must not block; must not overwrite seeded login_fields.
-      try {
-        await discoverLoginForRegistryService(known, {
-          primaryUrl: known.url,
-          force: false,
-          source: 'user',
-        });
-        clearRegistryCatalogCache();
-        setCatalogDefinitions(await loadBuiltinCatalogDefinitions());
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          console.warn('[vault] Known-service discovery skipped:', error);
-        }
-      }
-
-      return {
-        definition: known,
-        discovery: null,
-        outcome: {
-          status: 'success',
-          message: 'האתר נוסף בהצלחה',
-        },
-      };
-    }
-
+    // If this URL is already in the Hub catalog (built-in / admin / approved),
+    // select that card — do NOT rewrite it as built_in via the custom-add path
+    // (that hid submissions from «אתרים בהוספה ע"י משתמשים»).
     const catalogMatch = catalogDefinitions.find((existing) =>
       urlsReferToSameService(existing.url, normalizedUrl),
     );
-    if (catalogMatch) {
-      throw new Error(
-        catalogMatch.source === 'user-created'
-          ? CUSTOM_SERVICE_DUPLICATE_MESSAGE
-          : 'האתר כבר קיים בקטלוג. השתמשו ב«הוספה» על הכרטיס הקיים במקום להוסיף אתר חדש.',
-      );
+    if (catalogMatch && catalogMatch.source !== 'user-created') {
+      const nextState: VaultState = {
+        ...vaultState,
+        selectedIds: [...new Set([...selectedIds, catalogMatch.id])],
+      };
+      await persistVault(nextState, { awaitCloudSync: true });
+      setVaultState(nextState);
+      setSelectionError(null);
+      return {
+        definition: catalogMatch,
+        discovery: null,
+        outcome: {
+          status: 'success',
+          message: 'האתר כבר קיים בקטלוג והתווסף לאתרים שלי',
+        },
+      };
+    }
+    if (catalogMatch && catalogMatch.source === 'user-created') {
+      throw new Error(CUSTOM_SERVICE_DUPLICATE_MESSAGE);
     }
 
-    // Phase 108: create/reuse service_registry row FIRST, then run shared Login Discovery
+    // Phase 108: create user-owned service_registry row FIRST, then discovery.
+    // Always source_type=user + owner — admin approval queue (D-107-6).
     try {
       await upsertCustomServiceRegistryRow(definition);
     } catch (error) {
@@ -728,7 +808,7 @@ function App() {
 
     // Persist-first: only commit the tile after persistVault succeeds (AC-104-14, AC-104-15).
     try {
-      await saveVaultState(nextState);
+      await persistVault(nextState, { awaitCloudSync: true });
     } catch (error) {
       // Best-effort rollback to avoid a registry row without a tile.
       try {

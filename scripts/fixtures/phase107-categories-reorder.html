@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phase 107 — Categories reorder (AC-107-20)</title>
+    <style>
+      :root {
+        --admin-primary: #2563eb;
+        --admin-border: #e2e8f0;
+        --admin-muted: #64748b;
+        --admin-ink: #0f172a;
+        --admin-radius: 14px;
+        --admin-radius-sm: 10px;
+        --admin-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+        font-family: Assistant, system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 1.25rem;
+        background: #e8eef6;
+        color: var(--admin-ink);
+      }
+      h2 { margin: 0 0 0.35rem; color: #1e3a8a; }
+      .hint { margin: 0 0 1rem; color: var(--admin-muted); font-size: 0.9rem; }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(16rem, 22rem) minmax(14rem, 1fr);
+        gap: 1rem;
+      }
+      .editor, .reorder {
+        border: 1px solid var(--admin-border);
+        border-radius: var(--admin-radius);
+        background: rgba(255,255,255,0.92);
+        box-shadow: var(--admin-shadow);
+        padding: 0.85rem 0.9rem;
+      }
+      .reorder h3, .editor h3 { margin: 0 0 0.5rem; color: #1e3a8a; font-size: 1rem; }
+      .item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.55rem;
+        border: 1px solid var(--admin-border);
+        border-radius: 10px;
+        background: #fff;
+        margin-bottom: 0.45rem;
+      }
+      .item span { flex: 1; font-weight: 600; }
+      .btn {
+        border: 1px solid var(--admin-border);
+        border-radius: 8px;
+        padding: 0.28rem 0.55rem;
+        background: #fff;
+        font-size: 0.75rem;
+      }
+      .field {
+        display: grid;
+        gap: 0.25rem;
+        margin-bottom: 0.65rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #1e3a8a;
+      }
+      input {
+        padding: 0.55rem 0.7rem;
+        border: 1px solid #d5d9e0;
+        border-radius: 10px;
+        max-width: 12rem;
+      }
+      .row { display: flex; gap: 0.5rem; align-items: end; }
+      .primary {
+        background: var(--admin-primary);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 0.55rem 0.85rem;
+        font-size: 0.875rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>קטגוריות</h2>
+    <p class="hint">AC-107-20 — left reorder panel + right create/edit (RTL)</p>
+    <div class="layout">
+      <div class="editor">
+        <h3>קטגוריה חדשה</h3>
+        <div class="row">
+          <label class="field">שם<input placeholder="לדוגמה: בנקים" /></label>
+          <button class="primary" type="button">הוסף קטגוריה</button>
+        </div>
+        <div class="item"><span>בנקים</span><button class="btn" type="button">שמור</button><button class="btn" type="button">מחק</button></div>
+        <div class="item"><span>בריאות</span><button class="btn" type="button">שמור</button><button class="btn" type="button">מחק</button></div>
+      </div>
+      <aside class="reorder">
+        <h3>סידור תצוגה</h3>
+        <p class="hint">גררו או השתמשו ב־↑↓ — בלי שדה מספרי</p>
+        <div class="item"><span>⋮⋮</span><span>בנקים</span><button class="btn" type="button">↑</button><button class="btn" type="button">↓</button></div>
+        <div class="item"><span>⋮⋮</span><span>בריאות</span><button class="btn" type="button">↑</button><button class="btn" type="button">↓</button></div>
+        <div class="item"><span>⋮⋮</span><span>קניות</span><button class="btn" type="button">↑</button><button class="btn" type="button">↓</button></div>
+      </aside>
+    </div>
+  </body>
+</html>
