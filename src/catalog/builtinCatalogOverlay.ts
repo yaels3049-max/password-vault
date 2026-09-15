@@ -8,8 +8,8 @@ const BUILTIN_BY_ID = new Map(
 /**
  * Fill gaps from builtinCatalog when registry rows are stale.
  * Presentation: icon, category, favicon.
- * Execution (Phase 110): missing loginUrl / loginFields — so Digital Home opens the
- * real login entry and generic autofill can run (e.g. Hapoalim after seed lag).
+ * Execution (Phase 110): missing loginUrl — so Digital Home can still open a login entry.
+ * Never overlays loginFields — that would change resolved credentialMode.
  * Never overwrites non-empty registry/admin values.
  */
 export function applyBuiltinCatalogOverlay(definition: ServiceDefinition): ServiceDefinition {
@@ -29,19 +29,12 @@ export function applyBuiltinCatalogOverlay(definition: ServiceDefinition): Servi
   }
 
   const loginUrl = definition.loginUrl?.trim() || builtin.loginUrl?.trim() || undefined;
-  const loginFields =
-    definition.loginFields && definition.loginFields.length > 0
-      ? definition.loginFields
-      : builtin.loginFields && builtin.loginFields.length > 0
-        ? builtin.loginFields
-        : definition.loginFields;
 
   return {
     ...definition,
     category: definition.category ?? builtin.category,
     icon: definition.icon ?? builtin.icon,
     ...(loginUrl ? { loginUrl } : {}),
-    ...(loginFields ? { loginFields } : {}),
     metadata: Object.keys(metadata).length > 0 ? metadata : definition.metadata,
   };
 }

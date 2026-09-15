@@ -394,6 +394,37 @@ PASS: Phase 103 unified execution (static)
 
 R1–R4 execution regression gate is unaffected (no execution path change); presentation-only.
 
+### Custom add outcome consolidation (2026-09-15)
+
+Architecture-approved narrow fix: dual outcome contract (typed statuses vs legacy duplicate
+throws) caused intermittent old/new UX. `App.addCustomService` is now the single producer.
+
+| File | Change Summary |
+|---|---|
+| `src/catalog/addCustomServiceOutcome.ts` | `classifyAddCustomService` — globals first, then same-user custom. |
+| `src/App.tsx` | Create path returns typed outcomes; catalog snapshot via existing loader when not ready; `DuplicateCustomServiceError` → `same_user_custom_duplicate`. |
+| `src/ManageServices.tsx` | Renders `same_user_custom_duplicate` as informational dialog (not red inline). |
+| `src/supabase/registryPersistence.ts` | Result union + `sameUserCustomDuplicateMessage`; persistence duplicate includes `display_name`. |
+| `scripts/verifyPhase104ServiceManagement.mjs` | Static contract + esbuild runtime fixtures A–G / Clalit non-goal. |
+| `docs/MIGRATION_PHASE_104.md` | Consolidation note. |
+
+Phase 116 identity unchanged. Legacy create-path throw of «האתר כבר קיים ברשימת האתרים שלך.» removed.
+
+```text
+> node scripts/verifyPhase104ServiceManagement.mjs
+PASS: Phase 104 Service Management (static)
+  custom-add outcomes: typed contract (global-first; no legacy duplicate throw)
+PASS: Phase 104 custom-add classifier runtime (A-G fixtures, Clalit non-goal)
+
+> npx tsc -b --pretty false
+(exit 0)
+
+> node scripts/verifyPhase108KnownServiceBootstrap.mjs
+PASS: Phase 108 known-service empty-DB bootstrap (static)
+```
+
+CEO logged-in browser UAT for A–G (repeat after reload) remains operator-owned; classifier runtime covers A–D, F, G (mixed order), Clalit non-equivalence, and E (invalid URL helper).
+
 ## Manager Handoff
 
 - Authoritative verify: `node scripts/verifyPhase104ServiceManagement.mjs` (**PASS**).

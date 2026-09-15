@@ -1,20 +1,35 @@
 import { useState } from 'react';
 import { validateCustomPrimaryUrl } from './catalog';
+import {
+  EMPTY_LOGIN_URL_MESSAGE,
+  INVALID_LOGIN_URL_MESSAGE,
+  LOGIN_URL_FIELD_LABEL,
+  SAME_AS_WEBSITE_LABEL,
+  isExplicitHttpUrl,
+} from './catalog/explicitLoginEntry';
 import { categoryLabels, runtimeCategoryLabels, type ServiceCategory } from './mockServices';
 
+export interface AddSiteFormValues {
+  displayName: string;
+  primaryUrl: string;
+  category: ServiceCategory;
+  sameAsWebsite: boolean;
+  dedicatedLoginUrl: string;
+}
+
 interface AddSiteModalProps {
-  onAdd: (
-    displayName: string,
-    primaryUrl: string,
-    category: ServiceCategory,
-  ) => void | Promise<void>;
+  onAdd: (values: AddSiteFormValues) => void | Promise<void>;
   onCancel: () => void;
   /** Selectable categories (practice is dev-only and excluded by the caller). */
   categoryOptions: ServiceCategory[];
   error?: string | null;
-  isDiscovering?: boolean;
-  discoveryMessage?: string | null;
-  discoveryOutcome?: 'success' | 'failure' | null;
+  isSaving?: boolean;
+  mode?: 'create' | 'edit';
+  initialDisplayName?: string;
+  initialPrimaryUrl?: string;
+  initialCategory?: ServiceCategory;
+  initialSameAsWebsite?: boolean;
+  initialLoginUrl?: string;
 }
 
 export default function AddSiteModal({
@@ -22,14 +37,22 @@ export default function AddSiteModal({
   onCancel,
   categoryOptions,
   error,
-  isDiscovering = false,
-  discoveryMessage = null,
-  discoveryOutcome = null,
+  isSaving = false,
+  mode = 'create',
+  initialDisplayName = '',
+  initialPrimaryUrl = '',
+  initialCategory,
+  initialSameAsWebsite = true,
+  initialLoginUrl = '',
 }: AddSiteModalProps) {
-  const [displayName, setDisplayName] = useState('');
-  const [primaryUrl, setPrimaryUrl] = useState('');
+  const [displayName, setDisplayName] = useState(initialDisplayName);
+  const [primaryUrl, setPrimaryUrl] = useState(initialPrimaryUrl);
   const [category, setCategory] = useState<ServiceCategory>(
-    categoryOptions[0] ?? 'shopping',
+    initialCategory ?? categoryOptions[0] ?? 'shopping',
+  );
+  const [sameAsWebsite, setSameAsWebsite] = useState(initialSameAsWebsite);
+  const [dedicatedLoginUrl, setDedicatedLoginUrl] = useState(
+    initialSameAsWebsite ? '' : initialLoginUrl,
   );
   const [urlError, setUrlError] = useState<string | null>(null);
 
@@ -49,24 +72,45 @@ export default function AddSiteModal({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (isDiscovering) return;
+    if (isSaving) return;
 
     const trimmedName = displayName.trim();
     const trimmedUrl = primaryUrl.trim();
     if (!trimmedName || !trimmedUrl) return;
     const normalized = normalizeUrlField(trimmedUrl);
     if (!normalized) return;
-    void onAdd(trimmedName, normalized, category);
+
+    if (!sameAsWebsite) {
+      const dedicated = dedicatedLoginUrl.trim();
+      if (!dedicated) {
+        setUrlError(EMPTY_LOGIN_URL_MESSAGE);
+        return;
+      }
+      if (!isExplicitHttpUrl(dedicated)) {
+        setUrlError(INVALID_LOGIN_URL_MESSAGE);
+        return;
+      }
+    }
+
+    void onAdd({
+      displayName: trimmedName,
+      primaryUrl: normalized,
+      category,
+      sameAsWebsite,
+      dedicatedLoginUrl: dedicatedLoginUrl.trim(),
+    });
   }
 
   return (
-    <div className="modal-overlay" onClick={isDiscovering ? undefined : onCancel}>
+    <div className="modal-overlay" onClick={isSaving ? undefined : onCancel}>
       <div
         className="modal-dialog modal-dialog--frost"
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="modal-title">הוספת אתר חדש</h2>
+        <h2 className="modal-title">
+          {mode === 'edit' ? 'עריכת כתובת כניסה' : 'הוספת אתר חדש'}
+        </h2>
         <form onSubmit={handleSubmit}>
           <label className="modal-field">
             <span>שם להצגה</span>
@@ -75,7 +119,7 @@ export default function AddSiteModal({
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               autoFocus
-              disabled={isDiscovering}
+              disabled={isSaving}
             />
           </label>
           <label className="modal-field">
@@ -98,15 +142,45 @@ export default function AddSiteModal({
               }}
               placeholder="example.co.il או https://www…"
               dir="ltr"
-              disabled={isDiscovering}
+              disabled={isSaving}
             />
           </label>
+          <label className="modal-check">
+            <input
+              type="checkbox"
+              checked={sameAsWebsite}
+              disabled={isSaving}
+              onChange={(e) => {
+                setSameAsWebsite(e.target.checked);
+                if (urlError === EMPTY_LOGIN_URL_MESSAGE || urlError === INVALID_LOGIN_URL_MESSAGE) {
+                  setUrlError(null);
+                }
+              }}
+            />
+            <span>{SAME_AS_WEBSITE_LABEL}</span>
+          </label>
+          {!sameAsWebsite && (
+            <label className="modal-field">
+              <span>{LOGIN_URL_FIELD_LABEL}</span>
+              <input
+                type="url"
+                inputMode="url"
+                autoComplete="url"
+                value={dedicatedLoginUrl}
+                onChange={(e) => setDedicatedLoginUrl(e.target.value)}
+                placeholder="https://example.com/login"
+                dir="ltr"
+                disabled={isSaving}
+                required
+              />
+            </label>
+          )}
           <label className="modal-field">
             <span>קטגוריה</span>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as ServiceCategory)}
-              disabled={isDiscovering}
+              disabled={isSaving}
             >
               {categoryOptions.map((option) => (
                 <option key={option} value={option}>
@@ -115,43 +189,24 @@ export default function AddSiteModal({
               ))}
             </select>
           </label>
-          {(urlError || error) && !isDiscovering && !discoveryMessage && (
+          {(urlError || error) && (
             <p className="modal-field-error" role="alert">
               {urlError ?? error}
-            </p>
-          )}
-          {isDiscovering && (
-            <p className="modal-discovery-progress" role="status" aria-live="polite">
-              <span className="modal-loading-spinner" aria-hidden="true" />
-              מוסיף את האתר…
-            </p>
-          )}
-          {discoveryMessage && !isDiscovering && (
-            <p
-              className={
-                discoveryOutcome === 'success'
-                  ? 'modal-discovery-success'
-                  : 'modal-discovery-failure'
-              }
-              role="status"
-              aria-live="polite"
-            >
-              {discoveryMessage}
             </p>
           )}
           <div className="modal-actions">
             <button
               type="submit"
               className="modal-btn modal-btn-primary"
-              disabled={isDiscovering || Boolean(discoveryMessage)}
+              disabled={isSaving}
             >
-              {isDiscovering ? 'מוסיף…' : 'הוסף'}
+              {isSaving ? 'שומר…' : mode === 'edit' ? 'שמור' : 'הוסף'}
             </button>
             <button
               type="button"
               className="modal-btn modal-btn-secondary"
               onClick={onCancel}
-              disabled={isDiscovering}
+              disabled={isSaving}
             >
               ביטול
             </button>

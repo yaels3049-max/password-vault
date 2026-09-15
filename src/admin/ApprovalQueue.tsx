@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchAdminCategories,
   fetchPendingSubmissions,
-  promoteUserSubmissionWithDiscovery,
+  promoteUserSubmission,
   rejectUserSubmission,
+  updateGlobalRegistryRow,
   type AdminCategory,
   type AdminRegistryRow,
 } from './adminRegistryApi';
@@ -11,6 +12,13 @@ import { formatAdminDate, statusLabelHe } from './adminPresentation';
 import { adminRowToLogoService } from './adminLogoService';
 import IntegrationStatusPanel from './IntegrationStatusPanel';
 import { useServiceLogos } from '../useServiceLogos';
+import {
+  ADMIN_DIRECT_URL_LABEL,
+  ADMIN_PRIMARY_PAGE_LABEL,
+  defaultLoginEntryType,
+  resolveExplicitLoginEntry,
+  type ExplicitLoginEntryType,
+} from '../catalog/explicitLoginEntry';
 
 function PreviewIcon({
   row,
@@ -48,7 +56,9 @@ export default function ApprovalQueue() {
   const [success, setSuccess] = useState<string | null>(null);
   const [globalIdOverride, setGlobalIdOverride] = useState('');
   const [rejectReason, setRejectReason] = useState('');
-  const [discovering, setDiscovering] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [entryType, setEntryType] = useState<ExplicitLoginEntryType>('primary_page');
+  const [confirmedLoginUrl, setConfirmedLoginUrl] = useState('');
   const [showMoreDetails, setShowMoreDetails] = useState(false);
 
   const logoServices = useMemo(() => rows.map(adminRowToLogoService), [rows]);
@@ -88,6 +98,18 @@ export default function ApprovalQueue() {
     return 'משתמש';
   }
 
+  function selectSubmission(row: AdminRegistryRow) {
+    const nextType = defaultLoginEntryType(
+      row.login_url,
+      row.primary_url,
+      row.metadata?.loginEntryType,
+    );
+    setSelectedId(row.id);
+    setEntryType(nextType);
+    setConfirmedLoginUrl(nextType === 'direct_url' ? (row.login_url ?? '') : '');
+    setShowMoreDetails(false);
+  }
+
   async function handleApprove() {
     if (!selected) {
       return;
@@ -96,25 +118,33 @@ export default function ApprovalQueue() {
     setError(null);
     setSuccess(null);
 
+    let entry: ReturnType<typeof resolveExplicitLoginEntry>;
     try {
-      setDiscovering(true);
-      setSuccess('מאשר אתר ומחפש דף כניסה…');
+      entry = resolveExplicitLoginEntry({
+        websiteUrl: selected.primary_url,
+        sameAsWebsite: entryType === 'primary_page',
+        dedicatedLoginUrl: confirmedLoginUrl,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'יש לאשר כתובת כניסה.');
+      return;
+    }
 
-      const result = await promoteUserSubmissionWithDiscovery(
+    try {
+      setApproving(true);
+      const globalId = await promoteUserSubmission(
         selected.id,
         globalIdOverride.trim() || undefined,
       );
-
-      if (result.discoverySucceeded && result.loginUrl) {
-        setSuccess(
-          `אושר כאתר מובנה (${result.globalId}). דף כניסה: ${result.loginUrl}`,
-        );
-      } else {
-        setSuccess(
-          `אושר כאתר מובנה (${result.globalId}). ${result.discoveryMessage}`,
-        );
-      }
-
+      await updateGlobalRegistryRow(globalId, {
+        login_url: entry.loginUrl,
+        login_url_status: 'valid',
+        metadata: {
+          loginEntryType: entry.loginEntryType,
+          loginUrlSource: 'admin',
+        },
+      });
+      setSuccess(`אושר כאתר גלובלי (${globalId}).`);
       setSelectedId(null);
       setGlobalIdOverride('');
       setShowMoreDetails(false);
@@ -122,7 +152,7 @@ export default function ApprovalQueue() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'אישור נכשל.');
     } finally {
-      setDiscovering(false);
+      setApproving(false);
     }
   }
 
@@ -162,12 +192,12 @@ export default function ApprovalQueue() {
           {error}
         </p>
       )}
-      {discovering && (
+      {approving && (
         <p className="admin-muted" role="status">
-          מאשר ומחפש דף כניסה… (דורש הרחבת דפדפן)
+          מאשר…
         </p>
       )}
-      {success && !discovering && (
+      {success && !approving && (
         <p className="admin-success" role="status">
           {success}
         </p>
@@ -200,10 +230,7 @@ export default function ApprovalQueue() {
                   color: 'inherit',
                   textAlign: 'start',
                 }}
-                onClick={() => {
-                  setSelectedId(row.id);
-                  setShowMoreDetails(false);
-                }}
+                onClick={() => selectSubmission(row)}
               >
                 <PreviewIcon row={row} logoSrc={logos[row.id]} />
                 <div>
@@ -233,6 +260,30 @@ export default function ApprovalQueue() {
               {isSelected && (
                 <>
                   <label className="admin-field">
+                    <span>סוג כניסה לאישור</span>
+                    <select
+                      value={entryType}
+                      onChange={(e) =>
+                        setEntryType(e.target.value as ExplicitLoginEntryType)
+                      }
+                    >
+                      <option value="primary_page">{ADMIN_PRIMARY_PAGE_LABEL}</option>
+                      <option value="direct_url">{ADMIN_DIRECT_URL_LABEL}</option>
+                    </select>
+                  </label>
+                  {entryType === 'direct_url' && (
+                    <label className="admin-field">
+                      <span>כתובת כניסה</span>
+                      <input
+                        type="url"
+                        value={confirmedLoginUrl}
+                        onChange={(e) => setConfirmedLoginUrl(e.target.value)}
+                        placeholder="https://example.com/login"
+                        required
+                      />
+                    </label>
+                  )}
+                  <label className="admin-field">
                     <span>מזהה גלובלי (אופציונלי)</span>
                     <input
                       value={globalIdOverride}
@@ -252,7 +303,7 @@ export default function ApprovalQueue() {
                     <button
                       type="button"
                       className="admin-btn admin-btn-primary"
-                      disabled={discovering}
+                      disabled={approving}
                       onClick={() => void handleApprove()}
                     >
                       אשר

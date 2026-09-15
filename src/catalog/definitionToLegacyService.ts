@@ -65,6 +65,12 @@ export function definitionToLegacyService(definition: ServiceDefinition): Servic
   if (definition.loginFields) {
     service.loginFields = definition.loginFields;
   }
+  if (definition.storedLoginFieldsStatus !== undefined) {
+    service.storedLoginFieldsStatus = definition.storedLoginFieldsStatus;
+  }
+  if (definition.source) {
+    service.source = definition.source;
+  }
   if (definition.adapterId) {
     service.adapterId = definition.adapterId;
   }

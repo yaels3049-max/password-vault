@@ -6,6 +6,8 @@ PHASE=113
 ## Status
 STATUS: READY_FOR_MANAGER
 
+AMENDED: 2026-09-14 — **Non-blocking credential-schema clarification only.** D-113-8 and D-113-25 forbid **Phase 113** from adding credential field types or performing schema migration. They do not forbid Phase 102 from clarifying the existing `loginFields` object (`required`, `masked`, password role independent of label) or Phase 107 from configuring it. Phase 113 must not implement that change. Phase 113 does not own credential-schema definition. See **Credential schema non-blocking amendment** below.
+
 FINAL: 2026-07-14 — Operator-approved clarifications incorporated. Contract is **final** for Manager handoff.
 
 AMENDED: 2026-07-14 — **No dependency on Phase 112.** Phase 113 is a **User Experience** and **Login Assistance** phase. It does **not** fix or replace Phase 112; does **not** introduce Login Intelligence, website detection, or field detection; automatic assistance uses **currently available runtime implementation only** as Best Effort; **success or failure of automatic credential completion is not an acceptance criterion**.
@@ -34,7 +36,7 @@ AMENDED: 2026-07-14 — **Add-site discovery must stay hidden.** Operator: custo
 
 AMENDED: 2026-07-14 — **My-sites kebab Remove menu.** Operator screenshot: «הסר» popover is **clipped** by the container; trash icon + red text. Fix overflow/positioning so the full control is visible; label **blue** (not danger-red); **no trash icon**. Glossary: «הסר אתר» (אתרים). **D-113-24**.
 
-AMENDED: 2026-07-14 — **Credential Details modal redesign (UI only).** Operator full specification: modern compact modal for `ServiceProfileManagementModal` / credential details. Sticky header + X close; profile chips; inline copy/eye; secondary add-profile; delete in overflow; open/fill compact; unsaved-change guards. **No** data-model / encryption / autofill-engine / Phase 112 changes. **D-113-25**; AC-113-37…45. Full normative detail in section **Credential Details Modal Redesign** below.
+AMENDED: 2026-07-14 — **Credential Details modal redesign (UI only).** Operator full specification: modern compact modal for `ServiceProfileManagementModal` / credential details. Sticky header + X close; profile chips; inline copy/eye; secondary add-profile; delete in overflow; open/fill compact; unsaved-change guards. **No** data-model / encryption / autofill-engine / Phase 112 changes **in this phase**. **D-113-25**; AC-113-37…45. Full normative detail in section **Credential Details Modal Redesign** below.
 
 AMENDED: 2026-07-15 — **Replace shell background asset (operator image) + include Login.** Landscape Digital Home product screens use the **new** soft blue wave background (`team-Yuri/assets/digital-home-shell-wave-v2.png`). Scope: Digital Home, Manage/Add Sites (wide shells), **and Login / Auth entry**. Retire prior `digital-home-shell.jpg` as the visible product background. Pattern must remain perceptible (D-113-22). Admin console not required to adopt this asset in 113 (Phase 107). **D-113-26**; AC-113-33 / AC-113-46.
 
@@ -89,7 +91,7 @@ Phase 113 owns **Login Access UX, credential presentation/copy experience, suppo
 | **D-113-5: Auto success is not acceptance** | Operator; AC-113-19 amended | UAT must not require a successful autofill site. Require: open/copy/profile/password UX + graceful fallback when auto fails or is skipped + Manual Login Only behaviour. |
 | **D-113-6: Support levels (visible before open)** | AC-113-16, 17 | `Automatic Login Supported` \| `Automatic Login (Best Effort)` \| `Manual Login Only`. Manual → open + copy only; no auto attempt. Levels are UX signals; they do not require a working autofill engine. |
 | **D-113-7: Open URL order** | AC-113-1…3 | `loginUrl` if set → else Home/`primaryUrl` → else friendly message; **no** silent blank tab. New tab; Digital Home stays open; profile stays active (AC-113-4). |
-| **D-113-8: Preserve data model** | AC-113-18 | No profile/service/credential schema migration. No new credential field types. |
+| **D-113-8: Preserve data model** | AC-113-18 | No profile/service/credential schema migration **in Phase 113**. No new credential field types **as a Phase 113 deliverable**. **Amended 2026-09-14:** does not block Phase 102 / Phase 107 MVP Dynamic Credential Fields. Phase 113 still must not implement that change. |
 | **D-113-9: Profile selection UX** | AC-113-6…8 | One active profile, highlighted; switch refreshes credentials; never mix; copy uses active profile; single profile may auto-select. |
 | **D-113-10: Per-field copy** | AC-113-10, 11 | Dedicated Copy per field; explicit click; immediate non-blocking auto-dismiss confirmation; no `alert()`; no reload; never show password value in toast. |
 | **D-113-11: Password protection** | AC-113-12; Phase 106 | Hidden by default; reveal/hide; copy while hidden; profile switch re-hides. |
@@ -109,7 +111,7 @@ Phase 113 owns **Login Access UX, credential presentation/copy experience, suppo
 | **D-113-23: Lock chrome inside shell; hide identity chip** | Operator screenshot | On **Digital Home** and **Manage/Add Sites**, do not leave lock/access controls outside the decorated shell (“around” the background). Place «הגישה פתוחה» / «נעל» (or equivalent lock control) **inside** the inner rounded shell/grid area. **Remove** the user display chip showing full name + email on these screens (identity remains available via account flows elsewhere if needed — not as persistent Home/Manage chrome). Same treatment on both screens. |
 | **D-113-24: Remove-site menu not clipped; calm styling** | Operator screenshot | In «האתרים שלי», the ⋮ menu action «הסר» / «הסר אתר» must be **fully visible** (fix clip from `overflow: hidden` on shell/rows — flip/align menu inward, portal, or allow overflow for the menu). Text **blue** (same family as primary Manage actions), **not** red/danger. **No trash / 🗑 icon** — text only. **Amended by D-113-29:** remove must **persist** across app re-entry. |
 | **D-113-29: Remove-site durable across re-entry** | Operator UAT 2026-07-15 | «הסר אתר» from Manage/Add («האתרים שלי») must remove the site from Digital Home **and** remain removed after logout/login or full app reload. Root cause class: local `selectedIds` update succeeds while cloud `user_services` row remains (silent `removeUserServiceFromCloud` failure / early return without auth client), then `hydrateWorkspaceFromCloud` treats non-empty cloud membership as authoritative and **resurrects** tiles. **Required:** (1) Explicit cloud delete of `user_services` for that user+service must succeed when online/authenticated, or UI shows failure and does **not** claim success. (2) Do not swallow remove errors with success UI. (3) After successful remove, re-hydrate / re-login must not bring the site back. Cross-ref AC-104-14…16, AC-109-39 (explicit remove is allowed to delete cloud membership — anti-wipe must not block intentional remove). Registry rows stay untouched. |
-| **D-113-25: Credential Details UI redesign (presentation only)** | Operator UI Task 2026-07-14 | Redesign `ServiceProfileManagementModal` (credential details) to a modern compact credential-manager modal per the **Credential Details Modal Redesign** section. Reuse Digital Home / Heebo / shell visual language. **Forbidden:** DB/schema changes, encryption, profile cardinality rules, autofill/LI engine, new credential field types, notes field, silent data migration, unrelated screens. Preserve existing save/delete/add-profile/open/fill **logic**; change presentation and interaction only. **Amended by D-113-28** for freeze + header chrome. |
+| **D-113-25: Credential Details UI redesign (presentation only)** | Operator UI Task 2026-07-14 | Redesign `ServiceProfileManagementModal` (credential details) to a modern compact credential-manager modal per the **Credential Details Modal Redesign** section. Reuse Digital Home / Heebo / shell visual language. **Forbidden in Phase 113:** DB/schema changes, encryption, profile cardinality rules, autofill/LI engine, new credential field types, notes field, silent data migration, unrelated screens. Preserve existing save/delete/add-profile/open/fill **logic**; change presentation and interaction only. **Amended by D-113-28** for freeze + header chrome. **Amended 2026-09-14:** this freeze does not override Phase 102. Rendering an administrator-defined schema is not a Phase 113 task. |
 | **D-113-28: Credential Details usable + header layout** | Operator screenshot 2026-07-15 | **Blocking:** Opening/using «פרטי כניסה» must **not** freeze, hang, or lock the Hub (find/fix infinite re-render, broken focus trap, pointer-events dead zone, spinning await, uncontrolled ⋮ menu). **Remove** the header three-dot (⋮) control completely — it is empty/non-clickable; do not leave a dead affordance. Header left cluster (RTL): `[X]` then immediately `[הגישה פתוחה | נעל]` beside the X (lock chrome on the **left side of the modal**, **to the right of X** — not parked at the far opposite corner). Title remains centered/readable. If profile delete was only under ⋮, relocate to a **compact secondary** control (e.g. text under Save / in body) with existing confirm semantics — never equal visual weight to Save. |
 
 ### Normative execution sketch (login assist — unchanged)
@@ -245,6 +247,21 @@ Phase **112** is **not** listed as a dependency.
 7. **M9 — Shell −10%:** Narrow shared Home / Discover(Add) / Manage shell max-width by ~10% (D-113-27 / AC-113-47). Evidence: side-by-side Home vs Add same width; phone-like silhouette.
 8. **M10 (blocking) — Credential Details freeze + header:** Fix hang; remove ⋮; lock chip beside X (D-113-28 / AC-113-48…50). Evidence: interactive modal demo + screenshot of header cluster.
 9. **M11 (blocking) — Remove-site durability:** Fix resurrect-on-reentry (D-113-29 / AC-113-51). Evidence: remove → Digital Home empty of site → logout/login → still gone; cloud `user_services` row absent.
+
+## Credential schema non-blocking amendment (2026-09-14)
+
+Phase 102 owns the Service Registry credential schema. Phase 107 owns administrator configuration of global credential fields. This phase does not.
+
+D-113-8 and D-113-25 remain binding **on Phase 113 work**: do not ship a schema migration, a new field-type system, an encryption change, or an Autofill change under Phase 113.
+
+They are not a product-wide ban on the Phase 102 amendment that:
+
+- retains `loginFields`
+- allows a valid schema with no password-role field
+- separates label, masking (`masked`), and password/autofill role (`type`)
+- requires the credential form to render the configured global schema exactly
+
+That user-entry behavior is acceptance of Phase 102 (AC-102-17 … AC-102-35; AC-102-9 and AC-102-10 are the shorter forms of the earlier rules), not of Phase 113. Credential mode and `inputType` are not Phase 113 work. Do not implement them in a Phase 113 milestone. Phase 113 adds no credential-entry acceptance criteria.
 
 ## Architect Review
 ARCHITECT_REVIEW_STATUS: NOT_REVIEWED

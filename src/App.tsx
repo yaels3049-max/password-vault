@@ -15,35 +15,33 @@ import {
 } from './auth';
 
 import {
+  classifyAddCustomService,
   definitionsToLegacyServices,
-  discoverLoginForRegistryService,
-  isCustomServiceId,
   loadBuiltinCatalogDefinitions,
-  type CustomServiceDiscoveryResult,
 } from './catalog';
 
 import { isDevBuild } from './dev/devMode';
 
 import { preloadServiceLogos } from './logoCache';
 
-import { setRuntimeBuiltinServices, setRuntimeCategoryCatalog } from './mockServices';
+import { setRuntimeBuiltinServices, setRuntimeCategoryCatalog, type Service } from './mockServices';
 
 import { clearRegistryCatalogCache } from './registry/registryLoader';
 import { loadRegistryCategories } from './registry/categoryCatalog';
-import { recordLoginDiscoveryPipelineFailure } from './registry/loginUrlDiscovery';
 
 import type { ServiceDefinition } from './service/serviceModel';
 
 import { formatErrorChain } from './formatErrorChain';
 
 import {
+  CUSTOM_SERVICE_ALREADY_EXISTS_MESSAGE,
   deleteCustomServiceRegistryRow,
   DuplicateCustomServiceError,
   ensureKnownBuiltinRegistryRow,
   normalizeCustomServiceUrl,
   serviceUrlIdentityKey,
-  urlsReferToSameService,
   upsertCustomServiceRegistryRow,
+  type AddCustomServiceResult,
 } from './supabase/registryPersistence';
 
 import {
@@ -81,6 +79,9 @@ import {
 import { ProfileResolution } from './profile';
 
 import { AppVaultShell } from './trust';
+import DigitalHomeCredentialModal from './loginAssistance/DigitalHomeCredentialModal';
+import { offersCredentialManagementPanel, resolveCredentialEntry } from './service/credentialSchema';
+import { ensureDefaultProfileForService } from './vault/profileManagement';
 
 import './App.css';
 
@@ -94,8 +95,10 @@ type Screen = 'manage' | 'dashboard';
 const CUSTOM_SERVICE_CLOUD_FAIL_MESSAGE =
   'לא ניתן להוסיף את האתר כרגע. בדקו חיבור לרשת ונסו שוב.';
 
-const CUSTOM_SERVICE_DUPLICATE_MESSAGE =
-  'האתר כבר קיים ברשימת האתרים שלך.';
+const CUSTOM_SERVICE_DUPLICATE_MESSAGE = CUSTOM_SERVICE_ALREADY_EXISTS_MESSAGE;
+
+const CATALOG_NOT_READY_FOR_CUSTOM_ADD_MESSAGE =
+  'לא ניתן לבדוק כפילות מול קטלוג האתרים כרגע. נסו שוב.';
 
 
 
@@ -144,11 +147,23 @@ function mergeCustomDefinitions(
 /**
  * Collapse built-in + custom cards that share the same site URL so Digital Home
  * and Manage Services do not show duplicates (e.g. hapoalim + custom bank URL).
+ * Preference uses authoritative mapped `source`, never the id prefix.
  */
-function dedupeServicesByPrimaryUrl<T extends { id: string; url: string }>(
-  services: T[],
-  preferredIds: Set<string>,
-): T[] {
+function isUserCreatedRuntimeSource(
+  service: { source?: string },
+): boolean {
+  return service.source === 'user-created';
+}
+
+function isCatalogOrGlobalRuntimeSource(
+  service: { source?: string },
+): boolean {
+  return service.source !== undefined && service.source !== 'user-created';
+}
+
+function dedupeServicesByPrimaryUrl<
+  T extends { id: string; url: string; source?: string },
+>(services: T[], preferredIds: Set<string>): T[] {
   const byKey = new Map<string, T>();
 
   for (const service of services) {
@@ -168,15 +183,15 @@ function dedupeServicesByPrimaryUrl<T extends { id: string; url: string }>(
     }
 
     if (existingPreferred && candidatePreferred) {
-      // Both selected — keep catalog/built-in over a custom-* clone.
-      if (isCustomServiceId(existing.id) && !isCustomServiceId(service.id)) {
+      // Both selected — keep catalog/global over a user-created private row.
+      if (isUserCreatedRuntimeSource(existing) && isCatalogOrGlobalRuntimeSource(service)) {
         byKey.set(key, service);
       }
       continue;
     }
 
     if (!existingPreferred && !candidatePreferred) {
-      if (isCustomServiceId(existing.id) && !isCustomServiceId(service.id)) {
+      if (isUserCreatedRuntimeSource(existing) && isCatalogOrGlobalRuntimeSource(service)) {
         byKey.set(key, service);
       }
     }
@@ -212,6 +227,8 @@ function App() {
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
   const [vaultState, setVaultState] = useState<VaultState>(() => emptyVaultState());
+
+  const [homeCredentialService, setHomeCredentialService] = useState<Service | null>(null);
 
 
 
@@ -413,6 +430,14 @@ function App() {
   // selection (tile appeared in Discover but not in «האתרים שלי»).
   const vaultStateRef = useRef(vaultState);
   vaultStateRef.current = vaultState;
+  const catalogDefinitionsRef = useRef(catalogDefinitions);
+  catalogDefinitionsRef.current = catalogDefinitions;
+  const catalogHydratedRef = useRef(catalogHydrated);
+  catalogHydratedRef.current = catalogHydrated;
+  const catalogLoadingRef = useRef(catalogLoading);
+  catalogLoadingRef.current = catalogLoading;
+  const catalogErrorRef = useRef(catalogError);
+  catalogErrorRef.current = catalogError;
   const pruneInactiveRef = useRef(false);
   useEffect(() => {
     if (!isUnlocked || !catalogHydrated || catalogError || catalogLoading) {
@@ -493,6 +518,7 @@ function App() {
     lockVault();
     setIsUnlocked(false);
     setVaultState(emptyVaultState());
+    setHomeCredentialService(null);
     setCatalogDefinitions([]);
     setCatalogHydrated(false);
     setCatalogError(null);
@@ -712,51 +738,93 @@ function App() {
 
 
 
-  async function addCustomService(
-    definition: ServiceDefinition,
-  ): Promise<CustomServiceDiscoveryResult> {
+  async function snapshotCatalogForCustomAdd(): Promise<ServiceDefinition[]> {
+    const ready =
+      catalogHydratedRef.current &&
+      !catalogLoadingRef.current &&
+      !catalogErrorRef.current;
+    if (ready) {
+      return catalogDefinitionsRef.current;
+    }
+
+    try {
+      clearRegistryCatalogCache();
+      const definitions = await loadBuiltinCatalogDefinitions();
+      setRuntimeCategoryCatalog(await loadRegistryCategories());
+      setCatalogDefinitions(definitions);
+      setCatalogError(null);
+      setCatalogHydrated(true);
+      setCatalogLoading(false);
+      catalogDefinitionsRef.current = definitions;
+      catalogErrorRef.current = null;
+      catalogHydratedRef.current = true;
+      catalogLoadingRef.current = false;
+      return definitions;
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('[vault] Catalog snapshot for custom add failed:', error);
+      }
+      throw new Error(CATALOG_NOT_READY_FOR_CUSTOM_ADD_MESSAGE);
+    }
+  }
+
+  function displayNameForExistingCustom(
+    existingServiceId: string,
+    existingDisplayName: string | null,
+  ): string {
+    if (existingDisplayName?.trim()) {
+      return existingDisplayName.trim();
+    }
+    const fromVault = vaultStateRef.current.customServices.find(
+      (service) => service.id === existingServiceId,
+    );
+    if (fromVault?.displayName.trim()) {
+      return fromVault.displayName;
+    }
+    const fromCatalog = catalogDefinitionsRef.current.find(
+      (service) => service.id === existingServiceId,
+    );
+    if (fromCatalog?.displayName.trim()) {
+      return fromCatalog.displayName;
+    }
+    return 'האתר';
+  }
+
+  async function addCustomService(definition: ServiceDefinition): Promise<AddCustomServiceResult> {
     const normalizedUrl = normalizeCustomServiceUrl(definition.url);
-    const alreadyExistsLocally = customServices.some((existing) =>
-      urlsReferToSameService(existing.url, normalizedUrl),
-    );
-    if (alreadyExistsLocally) {
-      throw new Error(CUSTOM_SERVICE_DUPLICATE_MESSAGE);
+    const catalogSnapshot = await snapshotCatalogForCustomAdd();
+    const latestVault = vaultStateRef.current;
+    const classified = classifyAddCustomService({
+      normalizedUrl,
+      definitions: catalogSnapshot,
+      selectedIds: new Set(latestVault.selectedIds),
+      localCustomServices: latestVault.customServices,
+    });
+    if (classified) {
+      return classified;
     }
 
-    // If this URL is already in the Hub catalog (built-in / admin / approved),
-    // select that card — do NOT rewrite it as built_in via the custom-add path
-    // (that hid submissions from «אתרים בהוספה ע"י משתמשים»).
-    const catalogMatch = catalogDefinitions.find((existing) =>
-      urlsReferToSameService(existing.url, normalizedUrl),
-    );
-    if (catalogMatch && catalogMatch.source !== 'user-created') {
-      const nextState: VaultState = {
-        ...vaultState,
-        selectedIds: [...new Set([...selectedIds, catalogMatch.id])],
-      };
-      await persistVault(nextState, { awaitCloudSync: true });
-      setVaultState(nextState);
-      setSelectionError(null);
-      return {
-        definition: catalogMatch,
-        discovery: null,
-        outcome: {
-          status: 'success',
-          message: 'האתר כבר קיים בקטלוג והתווסף לאתרים שלי',
-        },
-      };
-    }
-    if (catalogMatch && catalogMatch.source === 'user-created') {
-      throw new Error(CUSTOM_SERVICE_DUPLICATE_MESSAGE);
-    }
-
-    // Phase 108: create user-owned service_registry row FIRST, then discovery.
-    // Always source_type=user + owner — admin approval queue (D-107-6).
+    // Explicit login entry only. Do not call Login Discovery (D-108-4 / D-108-7).
     try {
       await upsertCustomServiceRegistryRow(definition);
     } catch (error) {
       if (error instanceof DuplicateCustomServiceError) {
-        throw new Error(CUSTOM_SERVICE_DUPLICATE_MESSAGE);
+        const displayName = displayNameForExistingCustom(
+          error.existingServiceId,
+          error.existingDisplayName,
+        );
+        if (vaultStateRef.current.selectedIds.includes(error.existingServiceId)) {
+          return {
+            status: 'already_in_user_home',
+            existingServiceId: error.existingServiceId,
+            displayName,
+          };
+        }
+        return {
+          status: 'same_user_custom_duplicate',
+          existingServiceId: error.existingServiceId,
+          displayName,
+        };
       }
       if (import.meta.env.DEV) {
         console.warn('[vault] Custom service registry upsert failed:', error);
@@ -764,53 +832,17 @@ function App() {
       throw new Error(CUSTOM_SERVICE_CLOUD_FAIL_MESSAGE);
     }
 
-    let discoveryResult: CustomServiceDiscoveryResult;
-    try {
-      discoveryResult = await discoverLoginForRegistryService(definition, {
-        primaryUrl: definition.url,
-        force: true,
-        source: 'user',
-      });
-    } catch (error) {
-      if (import.meta.env.DEV) {
-        console.warn('[vault] Custom service login discovery failed:', error);
-      }
-      await recordLoginDiscoveryPipelineFailure(definition.id, 'user');
-      discoveryResult = {
-        definition,
-        discovery: null,
-        outcome: {
-          status: 'failure',
-          message: 'האתר נוסף. ייתכן שנצטרך לפתוח אותו דרך דף הבית.',
-        },
-      };
-    }
-
-    const finalDefinition = discoveryResult.definition;
-
-    // Best-effort: write discovered loginUrl onto the registry row even if the
-    // earlier persist path lagged (so catalog reload keeps the login URL).
-    if (finalDefinition.loginUrl) {
-      try {
-        await upsertCustomServiceRegistryRow(finalDefinition);
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          console.warn('[vault] Post-discovery registry loginUrl sync failed:', error);
-        }
-      }
-    }
-
+    const persistBase = vaultStateRef.current;
     const nextState: VaultState = {
-      ...vaultState,
-      customServices: [...customServices, finalDefinition],
-      selectedIds: [...new Set([...selectedIds, finalDefinition.id])],
+      ...persistBase,
+      customServices: [...persistBase.customServices, definition],
+      selectedIds: [...new Set([...persistBase.selectedIds, definition.id])],
     };
 
     // Persist-first: only commit the tile after persistVault succeeds (AC-104-14, AC-104-15).
     try {
       await persistVault(nextState, { awaitCloudSync: true });
     } catch (error) {
-      // Best-effort rollback to avoid a registry row without a tile.
       try {
         await deleteCustomServiceRegistryRow(definition.id);
       } catch (rollbackError) {
@@ -827,11 +859,40 @@ function App() {
     const refreshed = await loadBuiltinCatalogDefinitions();
     setRuntimeCategoryCatalog(await loadRegistryCategories());
     setCatalogDefinitions(refreshed);
-
-    return discoveryResult;
-
+    return { status: 'created' };
   }
 
+  async function updateCustomService(definition: ServiceDefinition): Promise<void> {
+    try {
+      await upsertCustomServiceRegistryRow(definition);
+    } catch (error) {
+      if (error instanceof DuplicateCustomServiceError) {
+        throw new Error(CUSTOM_SERVICE_DUPLICATE_MESSAGE);
+      }
+      if (import.meta.env.DEV) {
+        console.warn('[vault] Custom service registry update failed:', error);
+      }
+      throw new Error(CUSTOM_SERVICE_CLOUD_FAIL_MESSAGE);
+    }
+
+    const nextCustom = customServices.some((service) => service.id === definition.id)
+      ? customServices.map((service) =>
+          service.id === definition.id ? definition : service,
+        )
+      : [...customServices, definition];
+    const nextState: VaultState = {
+      ...vaultState,
+      customServices: nextCustom,
+    };
+
+    await persistVault(nextState, { awaitCloudSync: true });
+    setVaultState(nextState);
+    setSelectionError(null);
+    clearRegistryCatalogCache();
+    const refreshed = await loadBuiltinCatalogDefinitions();
+    setRuntimeCategoryCatalog(await loadRegistryCategories());
+    setCatalogDefinitions(refreshed);
+  }
 
 
   async function handleVaultStateChange(state: VaultState) {
@@ -840,6 +901,20 @@ function App() {
 
     await saveVaultState(state);
 
+  }
+
+  async function openHomeCredentialModal(service: Service) {
+    if (!offersCredentialManagementPanel(service)) {
+      return;
+    }
+    const entry = resolveCredentialEntry(service);
+    if (entry.kind === 'form') {
+      const ensured = ensureDefaultProfileForService(vaultState, service.id);
+      if (ensured !== vaultState) {
+        await handleVaultStateChange(ensured);
+      }
+    }
+    setHomeCredentialService(service);
   }
 
 
@@ -951,7 +1026,7 @@ function App() {
         >
 
           {(resolveProfile) => (
-
+            <>
             <Dashboard
 
               services={selectedServices}
@@ -988,8 +1063,23 @@ function App() {
 
               }}
 
+              onAddCredentials={(service) => {
+                void openHomeCredentialModal(service);
+              }}
+
             />
 
+            {homeCredentialService ? (
+              <DigitalHomeCredentialModal
+                service={homeCredentialService}
+                vaultState={vaultState}
+                vaultUnlocked={isUnlocked}
+                onLockVault={handleLockVault}
+                onVaultStateChange={handleVaultStateChange}
+                onClose={() => setHomeCredentialService(null)}
+              />
+            ) : null}
+            </>
           )}
 
         </ProfileResolution>
@@ -1017,6 +1107,7 @@ function App() {
         onAddService={addService}
         onRemoveService={removeService}
         onAddCustom={(definition) => addCustomService(definition)}
+        onUpdateCustom={(definition) => updateCustomService(definition)}
         onVaultStateChange={handleVaultStateChange}
         onRetryCatalog={() => void retryCatalogLoad()}
         onContinue={() => {

@@ -1,5 +1,8 @@
 # Architecture Phase 110
 
+## Amendment
+AMENDED: 2026-09-14 — **Phase 108 MVP.** Autofill consumes an explicitly stored `loginUrl` or configured login fields. It must not assume Phase 108 discovered or validated that URL by crawling. Missing `loginUrl` opens the primary URL and must not trigger discovery. Do not silently overwrite `loginUrl`. Discovery/rediscovery is not a Phase 110 or Phase 108 MVP responsibility. See `arch-phase108.md`.
+
 ## Phase Identifier
 PHASE=110
 
@@ -33,7 +36,7 @@ Phase 110 owns **standard-form autofill coverage and conservative field matching
 | **D-110-4: Standard-login gate** | PLAN standard definition | Autofill may run only when the page is treated as a **standard login**: single visible page; username/email/id + password; optional visible submit; no required iframe/modal/OTP/CAPTCHA/multi-step. If not standard → open site only; optional non-blocking health signal (Phase 112 may classify later). |
 | **D-110-5: Preserve Phase 103 pipeline** | AC-110-11, regression | **Do not** redesign `executeServiceFromTile` orchestration. Site adapters (`htzone`, `practice`, …) remain exclusive when `adapterId` is site-specific. Generic path remains default for others. |
 | **D-110-6: Open-first, never block** | AC-110-6…9 | No auto-submit. No fill of hidden/unrelated fields. Autofill failure must leave tab open. Friendly non-blocking indication / `metadataHealth` signal allowed; no engine stack traces to users. |
-| **D-110-7: Prerequisites for fill attempt** | PLAN execution rules | Attempt generic autofill when: extension available; `loginUrl` (or resolved open target that is the login entry) present; credentials complete for configured fields; standard-form gate passes. Missing `loginUrl` → open `primaryUrl` only (discovery remains Phase 108). |
+| **D-110-7: Prerequisites for fill attempt** | PLAN execution rules; arch-phase108 2026-09-14 | Attempt generic autofill when: extension available; explicitly stored `loginUrl` (or resolved open target that is the login entry) present; credentials complete for configured fields; standard-form gate passes. Missing `loginUrl` → open `primaryUrl` only. Do not start discovery. |
 | **D-110-8: No service-specific heuristics** | AC-110-11, AC-110-14 | No Shufersal/Clalit special cases in the generic engine. No per-site JS. Approved adapters only for non-generic paths. |
 | **D-110-9: Shufersal / Clalit regression** | AC-110-10 | Existing validated fill behavior must remain PASS after coverage expansion. Treat as mandatory UAT anchors. |
 | **D-110-10: Phase 112 compatibility** | AC-110-15 | Do not invent login-complexity classification, modal open/fill, OTP/CAPTCHA handling, or federated automation. Leave hooks/signals that 112 can consume (e.g. fill failed / not_standard). |
@@ -80,7 +83,7 @@ executeServiceFromTile (Phase 103 — unchanged orchestration)
 ## Technical Boundaries / Out of Scope
 - Multi-step, OTP, CAPTCHA, iframe, modal/popup login automation (Phase 112).
 - Bank/complex adapters beyond existing approved adapter architecture.
-- loginUrl discovery / rediscovery (Phase 108).
+- Automatic loginUrl discovery / rediscovery (removed from the MVP; not Phase 110).
 - Account auth / hydrate / vault (Phase 109).
 - URL canonicalization / identity (Phase 116).
 - Icon pipeline (Phase 111).

@@ -6,203 +6,222 @@ PHASE=102
 ## Status
 STATUS: READY_FOR_DEVELOPER
 
+The original Phase 102 delivery milestones in this artifact (schema seed, RLS, registry loader, discovery gate, discovery persist) are **historical**. They are not active requirements. Do not re-implement them.
+
+Automatic Login Discovery is **withdrawn from the MVP**. Historical AC-102-4, AC-102-5, D-102-7, and D-102-8 are not Developer work. Phase 108 is authoritative. Do not restore, redesign, or expand discovery.
+
+This revision is the only active Manager contract. It replaces the credential-field plan that did not include credential modes. Do not implement that earlier plan.
+
 ## Phase Goal
-Make the **service registry** the runtime source of catalog metadata (built-in Israeli catalog + user custom services), with **login URL discovery on demand** and **persisted login URL / loginFields cache** — without changing unified execution (Phase 103), registration UX (Phase 190), or vault read path (IndexedDB remains authoritative for unlock/credentials).
+Implement explicit credential configuration for global / catalog services, and render the result exactly when the user is asked for credentials.
+
+Three modes, stored as `metadata.credentialMode`:
+
+- `not_configured` — NOT_CONFIGURED
+- `credential_fields` — CREDENTIAL_FIELDS
+- `no_stored_credentials` — NO_STORED_CREDENTIALS
+
+If the key is absent, a valid non-empty `login_fields` array resolves to CREDENTIAL_FIELDS. Otherwise it resolves to NOT_CONFIGURED. An empty field list is never NO_STORED_CREDENTIALS.
+
+Retain `loginFields`. Do not create a second credential model. Field input types for the MVP are `text` and `number`. NUMBER values are lossless digit strings. Masking, input type, and password/autofill role stay separate. Custom services stay on the Username + Password render-time default. No Autofill expansion. No ciphertext migration or rewrite.
+
+The Phase 107 administrator controls are required companion work in this plan.
 
 ## Source References
-- `team-Yuri/arch-phase102.md`
-- `team-Yuri/PLAN.md` §6 — Service Registry
-- `team-Yuri/PLAN.md` §18 — Phase 102 acceptance criteria (AC-102-1 … AC-102-6)
 - `team-Yuri/PHASE.md` — `PHASE=102`
-- `team-Yuri/arch-phase101.md` — APPROVED; baseline `service_registry` table and Phase 101 dual-write
+- `team-Yuri/arch-phase102.md` — **MVP Dynamic Credential Fields** and **Credential modes and input types**; AC-102-7 through AC-102-36; D-102-27
+- `team-Yuri/arch-phase107.md` — **Global credential-field configuration** and **Credential mode configuration**; AC-107-21 through AC-107-29
+- `team-Yuri/PLAN.md` — section 8; changelog 5.42 through 5.46
+- CEO approval 2026-09-14
 
-## Architecture Summary (Phase 102 constraints)
-- **Runtime catalog** loads from Supabase `service_registry`, not `builtinCatalog.ts` in production.
-- **Built-in seed** via SQL migration (12 production services from `builtinCatalog.ts`; **exclude** dev-only `hub-practice-login`).
-- **User custom services** create user-scoped registry rows (`owner_user_id = auth.uid()`, `source_type = user`).
-- **Login URL cache:** discovery runs only when `login_url` is null OR `login_url_status = invalid`; persist discovered URL + `login_fields` when confidence rules pass.
-- **Global built-in cache updates** via SECURITY DEFINER RPC (Phase 101 denied direct client UPDATE on global registry).
-- **User-owned rows:** client UPDATE allowed under RLS for `login_url`, `login_fields`, `login_url_status`.
-- Phase 100 `isDevBuild()` boundary unchanged — practice service injected client-side only in dev.
+## Architecture Summary
+Mode and field list must agree:
 
-## Acceptance / Gating Criteria
-- AC-102-1: Registry entries include `primaryUrl`, `loginUrl`, category, icon metadata
-- AC-102-2: Built-in Israeli catalog loaded from registry, not application source code
-- AC-102-3: Custom services create user-scoped registry references
-- AC-102-4: Login discovery runs only when `loginUrl` is missing or marked invalid
-- AC-102-5: Discovered `loginUrl` persisted to registry cache
-- AC-102-6: `loginFields` schema stored on registry entry when known
+- CREDENTIAL_FIELDS requires at least one valid active field.
+- NO_STORED_CREDENTIALS must not contain active fields. Null, omitted, or `[]` is consistent only together with this explicit mode.
+- NOT_CONFIGURED must not generate Username + Password, and must not leave an active field list in place.
+- A save that would store a contradictory pair is rejected. An already stored contradiction is configuration-invalid. Do not silently reinterpret it as another mode.
+
+`inputType` is `text` or `number` on the existing field object. Omitted means `text`. It does not replace `type`. `type` remains the password/autofill role only. `masked` is independent of both. A NUMBER field is stored as the exact digit string inside the existing encrypted credential map. `0017` must remain `0017`.
+
+Global service means `owner_user_id` is null. Custom service means `source_type = user`.
+
+NO_STORED_CREDENTIALS is a complete configuration: no credential form, no empty credential record, the service may still be added and opened, and Digital Home does not perform Google, Microsoft, or other external-provider authentication.
 
 ## Ordered Milestones
 
 | Order | Milestone | Description | Acceptance Signal |
 |---:|---|---|---|
-| 1 | Schema delta + seed migration | Extend `service_registry` (`owner_user_id`, `login_url_status`); seed 12 production built-in rows from `builtinCatalog.ts` | Delta applied; seeded global rows visible; practice service not seeded |
-| 2 | RLS delta + login URL cache RPC | Replace Phase 101 select-only registry policy; add user-owned CRUD policies; deploy `persist_discovered_login_url` SECURITY DEFINER function | User A cannot read user B custom rows; RPC updates global built-in login URL when null/invalid only |
-| 3 | Registry loader client | Fetch registry from Supabase; map rows → `ServiceDefinition` / legacy `Service`; dev-only practice injection | Production catalog loads from DB; `catalogLoader.ts` no longer reads `BUILTIN_CATALOG_DEFINITIONS` at runtime |
-| 4 | Custom service registry upsert | On custom service create, upsert user-scoped `service_registry` row + existing vault/`user_services` dual-write | Custom add creates `source_type=user` row with `owner_user_id = auth.uid()` |
-| 5 | Discovery gate + persist | Gate discovery on `login_url` / `login_url_status`; persist via RPC (global) or direct UPDATE (user row); reuse `shouldPersistDiscoveredLoginUrl()` | Discovery skipped when URL valid; persisted URL + fields visible in Supabase after successful discovery |
-| 6 | Verification steps & evidence | Operator doc, verification script, build + functional E2E proof | `npm run build` passes; script proves seed count, RLS, RPC, custom row, discovery persist |
+| 1 | M1 Mode and field rules | Persist and resolve the three modes. Reject contradictory saves. Stop inventing a global schema. Preserve NUMBER strings and `required` / `masked` / `inputType`. | AC-102-25, AC-102-27, AC-102-29, AC-102-31, AC-102-36. A no-password schema survives load. `npm run build` passes. |
+| 2 | M2 Administrator controls | Explicit mode choice and structured fields, including TEXT, NUMBER, and an independent mask. Not raw JSON. | AC-107-21 through AC-107-29. Operator can save both credential fixtures and an explicit no-stored-credentials service. Contradictory saves are rejected. |
+| 3 | M3 User credential entry | Render by resolved mode. Exact fields when configured. Incomplete or invalid configuration shows no invented form. No-stored-credentials shows no form and does not create a credential record. | AC-102-17 through AC-102-24 and AC-102-26 through AC-102-35. |
+| 4 | M4 Evidence and security packet | Record tests, build, and the security-review packet. Not a product-feature milestone. | `dev-phase102.md` complete. MVP release remains blocked until the security owner reviews the gated boundaries. |
+
+Do not start a discovery-removal milestone. That is Phase 108.
 
 ## Detailed Development Plan
 
-### M1 — Schema delta + seed migration
-Deliver ordered SQL migrations under `supabase/migrations/`:
+### M1 — Mode and field rules
 
-**Schema delta** — extend `service_registry`:
-- `owner_user_id uuid null references public.users(id) on delete cascade` — NULL = global (built-in/admin)
-- `login_url_status text not null default 'unknown'` with CHECK in (`unknown`, `valid`, `invalid`)
-- Partial index on `owner_user_id` where not null
+Authorized now. No new credential table. No ciphertext rewrite. No backfill or nulling of existing `login_fields` except an explicit confirmed mode transition defined below.
 
-**Seed migration** — insert all **12 production** built-in entries from `src/catalog/builtinCatalog.ts`:
-- **Exclude** `hub-practice-login` (dev-only; D-102-3)
-- Preserve existing service ids (`hapoalim`, `leumi`, `shufersal`, `clalit`, `htzone`, etc.) for vault compatibility
-- Field mapping:
-  - `url` → `primary_url`
-  - `loginUrl` → `login_url`
-  - `loginFields` → `login_fields` (jsonb)
-  - `adapterId` → `adapter_id`
-  - `category` → `category_id`
-  - `displayName` → `display_name`
-  - `icon` → `icon`; favicon URL → `metadata.faviconSiteUrl`
-  - `source_type` = `built_in`, `service_status` = `active`
-- Set `login_url_status = valid` where `login_url` is present; `unknown` where null
-- Use `ON CONFLICT (id) DO UPDATE` for idempotent re-apply
+Do not use `persist_discovered_login_url` to publish credential schemas or modes. If a database check outside that RPC rejects a valid no-password schema, stop and record the blocker. Do not ship a migration that relaxes that check until the security owner has reviewed it.
 
-### M2 — RLS delta + RPC for login URL cache
-Replace Phase 101 `service_registry_select_authenticated` with visibility policy (D-102-5):
-- SELECT allowed when `(owner_user_id IS NULL OR owner_user_id = auth.uid())` AND `service_status = 'active'`
+Resolution:
 
-Add user-owned CRUD policies (D-102-6):
-- INSERT/UPDATE/DELETE only where `owner_user_id = auth.uid()` AND `source_type = 'user'`
-- Global rows (`owner_user_id IS NULL`) remain non-writable by client except via RPC
+- `metadata.credentialMode` is `not_configured`, `credential_fields`, or `no_stored_credentials`.
+- Absent or unrecognized key plus a valid non-empty field list means CREDENTIAL_FIELDS.
+- Absent or unrecognized key otherwise means NOT_CONFIGURED.
+- Never infer `no_stored_credentials` from an empty array.
 
-Deploy SECURITY DEFINER RPC `persist_discovered_login_url`:
-```sql
-persist_discovered_login_url(
-  p_service_id text,
-  p_login_url text,
-  p_login_fields jsonb default null
-) returns void
-```
-Requirements:
-- Requires authenticated session (`auth.uid()` not null)
-- Updates **only** global built-in row matching `p_service_id` where `owner_user_id IS NULL` AND `source_type = 'built_in'`
-- Allowed only when `login_url IS NULL` OR `login_url_status = 'invalid'`
-- Sets `login_url`, optional `login_fields`, `login_url_status = valid`, `updated_at = now()`
-- Must not allow arbitrary row updates or user-owned row modification
+Save rules:
 
-Grant EXECUTE to `authenticated`.
+- Reject CREDENTIAL_FIELDS unless `login_fields` is a valid non-empty array.
+- Reject NO_STORED_CREDENTIALS if the saved row would still contain a valid non-empty field list. A confirmed choice of this mode may clear the active field list to null. It must not write Username + Password and must not delete ciphertext.
+- Reject a NOT_CONFIGURED save that would leave a valid field list active or would write `DEFAULT_LOGIN_FIELDS`. A confirmed return to NOT_CONFIGURED may clear the active field list to null. It must not invent Username + Password and must not delete ciphertext.
+- A stored contradictory row is configuration-invalid on read. Do not auto-rewrite its mode.
 
-### M3 — Registry loader client
-Implement client modules per `arch-phase102.md`:
+Client rules:
 
-| Module | Responsibility |
-|--------|----------------|
-| `src/registry/registryLoader.ts` | Fetch registry rows; return validated `ServiceDefinition[]` |
-| `src/registry/registryMapper.ts` | Row ↔ `ServiceDefinition` mapping (AC-102-1 field table) |
-| `src/catalog/catalogLoader.ts` | Delegate to registry loader; inject `hub-practice-login` only when `isDevBuild()` |
+- `src/service/serviceModel.ts` — a present schema with zero `type: password` fields is valid. Preserve `required`, `masked`, and `inputType`. NUMBER is not a numeric type in the credential map.
+- `src/registry/registryMapper.ts` — do not discard a schema because it has no password-role field. Do not drop `required`, `masked`, or `inputType`. Round-trip `metadata.credentialMode`.
+- Global credential entry must not receive `DEFAULT_LOGIN_FIELDS` when the resolved mode is not CREDENTIAL_FIELDS.
+- Custom service with no valid schema: resolve Username + Password only at render time. Do not write that default into `login_fields`. Do not add a credential-mode control.
+- `src/admin/adminRegistryApi.ts` — do not rewrite an omitted or empty field list to `DEFAULT_LOGIN_FIELDS`.
+- Publishing a mode or schema change increments existing `metadata_version`. That is metadata only.
 
-Behavior:
-- When Supabase configured and authenticated: load catalog from `service_registry` query (global + own user rows)
-- **Production:** do not read `BUILTIN_CATALOG_DEFINITIONS` at runtime (AC-102-2)
-- **Dev:** inject practice service after fetch (same Phase 100 behavior)
-- **Offline fallback (D-102-12):** if fetch fails, use in-memory/session cache OR surface error — do **not** silently revert to `builtinCatalog.ts` in production
+Do not edit Autofill heuristics, adapters, Login Intelligence, vault crypto, or authentication. Residual discovery must not create, replace, or enrich `login_fields` or `credentialMode`. Do not delete the discovery engine.
 
-Mapping must produce: `primaryUrl`, `loginUrl`, category, icon metadata, `loginFields`, `adapterId`.
+### M2 — Administrator controls
 
-### M4 — Custom service registry upsert
-Extend custom service creation flow:
-- On successful custom service create (existing Manage Services / Add Site flow):
-  - Ensure anonymous auth session (Phase 101 bootstrap)
-  - Upsert `service_registry` row: `source_type = user`, `owner_user_id = auth.uid()`, stable `id`, `primary_url`, category, icon/metadata
-  - Continue Phase 101 dual-write to vault IndexedDB and `user_services`
-- User-scoped row uses same `id` referenced in `user_services.service_id`
-- Vault blob may still contain custom definition during transition; registry is preferred source on load when Supabase configured
+Depends on M1.
 
-### M5 — Discovery gate + persist
-Implement `src/registry/loginUrlDiscovery.ts` (or equivalent) integrating with existing `customServiceDiscovery.ts`:
+Primary surface: admin global service create/edit (`src/admin/RegistryAdmin.tsx` and `src/admin/adminRegistryApi.ts`). Raw JSON is not the primary method. It may remain only behind «פרטים נוספים».
 
-**Gate (AC-102-4):** run discovery only when:
-- `login_url IS NULL` OR `login_url_status = 'invalid'`
-- Do **not** re-run when `login_url_status = valid` and URL present
+The editor offers three distinct choices:
 
-**Confidence gate:** reuse `shouldPersistDiscoveredLoginUrl()` before persist (exclude `common-path`, exclude `low` confidence).
+- Credentials required — structured field editor. Persist `credential_fields` only with a valid field list.
+- No credentials stored by Digital Home — persist `no_stored_credentials` and no active fields. Copy may say authentication continues on the external website.
+- Not configured — the incomplete state. Do not persist this by clearing fields alone.
 
-**Persist (AC-102-5, AC-102-6):**
-- **Global built-in row:** call `persist_discovered_login_url` RPC
-- **User-owned row:** direct client UPDATE under RLS (`login_url`, `login_fields`, `login_url_status = valid`)
-- Update vault/local definition after successful registry persist (existing custom service flow)
+For each field when credentials are required: label, order, required, `inputType` (`text` or `number`), and masked. Mask and input type are separate. Neither sets `type: password`. Password/autofill role stays the existing advanced control. Label edits must not regenerate `id`.
 
-**Invalid marking (minimal scope):** document mechanism to set `login_url_status = invalid` (dev flag or execution failure hook acceptable; full deprecation UX deferred).
+Before change, remove, or reuse of a `field.id`, warn that existing stored values may no longer match, and require confirmation. The warning must not show credential values. Confirmation does not copy values to a new id.
 
-Wire discovery into custom service add flow and any built-in open path that triggers on-demand discovery when URL missing/invalid.
+A confirmed switch to NO_STORED_CREDENTIALS or NOT_CONFIGURED that clears an active field list must say that the field definition will be cleared and that stored user values are not migrated. It must not display those values.
 
-### M6 — Verification steps & evidence
+Admin still cannot query `encrypted_credentials`, decrypt vault blobs, or display credential values.
 
-**Operator documentation:**
-- Add `docs/MIGRATION_PHASE_102.md` OR §102 addendum to `docs/MIGRATION_PHASE_101.md`
-- Include: migration apply order, RPC purpose, verification commands, offline fallback behavior
+### M3 — User credential entry
 
-**Verification script:** `scripts/verifyPhase102Registry.mjs` (or equivalent) proving:
-1. Seeded built-in count = 12 (exclude practice)
-2. Sample built-in row has `primary_url`, category, icon metadata
-3. User A creates custom registry row; user B cannot SELECT it
-4. RPC updates global row when `login_url` null/invalid; rejects when already valid
-5. User row direct UPDATE persists `login_url` + `login_fields`
+Depends on M2.
 
-**Functional E2E (manual or scripted):**
-1. Apply Phase 102 migrations
-2. `npm run build` — must pass
-3. `npm run dev` (or preview) → unlock vault
-4. Manage Services — catalog shows banks/health/shopping from registry (not TS builtin)
-5. Add custom site URL — user registry row created in Supabase
-6. Trigger discovery for service with missing login URL — URL + fields persisted once
-7. Re-trigger discovery for same service with valid URL — discovery skipped
-8. Confirm vault unlock and credential save still work (Phase 101 regression)
+**CREDENTIAL_FIELDS.** When the user is asked to enter credentials, the form must:
+
+1. Load that service's schema, not a shared default.
+2. Render exactly that number of fields.
+3. Render them in administrator-defined order.
+4. Display each administrator-defined label.
+5. Bind each value to that field's stable `id`.
+6. Honor required/optional, `inputType`, and masking.
+7. Not substitute Username + Password.
+
+Fixtures:
+
+- ID Number (`inputType: number`, not masked), then Last 4 digits of card (`inputType: number`, masked, not `type: password`). Exactly those two labels. Saved last-4 value `0017` reopens as `0017`.
+- Customer Number, ID Number, Password. Exactly three fields, in that order.
+- Username (`text`, not masked) and Password (`text`, masked). Exactly those two fields because they were configured. This is not the custom default and not a fallback.
+
+A required field must be non-empty before save. An optional field may be empty and must be omitted from the saved map. A NUMBER field rejects a non-digit entry and must not coerce the value through a numeric conversion. Save writes current schema field ids only and must not attach an old value to a new id. This serialization change is inside the security gate.
+
+**NOT_CONFIGURED and configuration-invalid.** Test null or omitted fields with no mode, `[]` with no `no_stored_credentials` mode, an invalid field list, and a contradictory stored pair. Each shows configuration-incomplete. None show Username + Password. None accept new input. None write ciphertext. None become NO_STORED_CREDENTIALS. Copy, which may be tightened without changing behavior:
+
+- «לא ניתן להזין פרטי כניסה — שדות הכניסה לאתר זה עדיין לא הוגדרו.»
+- When a credential blob already exists and can be known without displaying decrypted values: «אם כבר נשמרו פרטים, הם נשמרים ולא מוצגים כאן.»
+
+**NO_STORED_CREDENTIALS.** No credential-entry form. No Username + Password. Do not create an empty credential record. The user can add the service and open it through the existing login-entry path. Do not click or complete Google, Microsoft, or any other external authentication control.
+
+**Custom service** with no valid schema: render Username (`id: username`, label «שם משתמש») and Password (`id: password`, label «סיסמה», masked, password-role). Do not persist that default because the form opened. Do not add a mode designer. If the custom row already has a valid schema, render that schema.
+
+Known surfaces: `src/ServiceProfileManagementModal.tsx`, `src/CredentialModal.tsx`, and `src/loginAssistance/LoginAssistancePanel.tsx` wherever they present credential fields for entry or copy. Do not change Autofill fill heuristics.
+
+### M4 — Evidence and security packet
+
+No new product behavior. Record evidence in `dev-phase102.md`.
+
+MVP release of validation and save-serialization changes is **blocked** until the security owner confirms:
+
+- every field value, including a digit string, still uses the existing whole-payload encryption path
+- a schema id change cannot attach an existing value to a different `field.id`
+- relaxing the password-type check did not skip encryption or create a plaintext side channel
+- NUMBER values are not stored in an unprotected numeric column
+
+That review must not become a vault, KDF, encryption-format, or authentication redesign. Do not claim MVP release before that review is attached.
+
+## Acceptance / Gating Criteria
+
+Active: AC-102-7 through AC-102-36, and companion AC-107-21 through AC-107-29.
+
+AC-102-9 passes only if AC-102-17, AC-102-18, and AC-102-19 pass when the resolved mode is CREDENTIAL_FIELDS. AC-102-10 passes only if the incomplete and invalid fixtures pass. AC-102-36 is mandatory for mode/field consistency.
+
+Withdrawn from this plan: AC-102-4 and AC-102-5.
+
+AC-107-7 remains: admin cannot view credential plaintext.
+
+## Functional Testability Criteria
+
+- Page/screen the user can open: Admin global website edit; Manage Services credential details; Add Site for a custom service; open for a no-stored-credentials service.
+- User-visible behavior: an explicit two-field numeric schema shows exactly those labels, and `0017` survives save. An explicit no-stored-credentials service shows no credential form and still opens. A global service that was never configured shows the incomplete state, not Username + Password, and not the no-stored-credentials behavior.
+- Command-line flow: `npm run build`.
+- API endpoint / request: none new. Admin save writes `metadata.credentialMode` and `login_fields` together, and increments `metadata_version`. It must not write `encrypted_credentials` from the admin console.
+- Minimal end-to-end flow:
+  1. As admin, save a global service as credentials required, with ID Number (number, not masked) and Last 4 digits of card (number, masked, not password-role). Reload. Mode, order, labels, and types are unchanged.
+  2. As a user, enter `0017` in the last-4 field and save. Reopen. The value is `0017`. Exactly two fields are shown.
+  3. As admin, try to save credentials required with no fields. The save is rejected.
+  4. As admin, set no credentials stored. Confirm the warning if fields would be cleared. Reload. Mode is `no_stored_credentials` and there is no active field list. The user sees no credential form, can keep the service, and can open it. Digital Home does not perform external login.
+  5. As admin, try to save no-stored-credentials while an active field list is also submitted. The save is rejected.
+  6. Global service with no mode and no fields, and one with `[]` and no mode. Both are incomplete. Neither is no-stored-credentials.
+  7. Create a custom service. Credential entry is Username + Password. Opening that form does not write `login_fields` or `credentialMode`.
+- Expected observable result: AC-102-25 through AC-102-36 and AC-107-27 through AC-107-29 are visible without raw JSON as the primary admin method.
 
 ## Required Developer Evidence
-- `team-Yuri/dev-phase102.md` including:
-  - Files changed list
-  - Migration files + apply method + seed count confirmation
-  - RLS isolation proof (user A vs user B custom rows)
-  - RPC proof (allowed update when null/invalid; denied when valid)
-  - Registry loader proof (production path does not use `BUILTIN_CATALOG_DEFINITIONS`)
-  - Custom service upsert proof (Supabase row with `owner_user_id`, `source_type=user`)
-  - Discovery gate + persist proof (skip when valid; persist when missing)
-  - Documentation update
-  - `npm run build` output
-  - Tests + lint results, or NOT AVAILABLE with reason
 
-## Out of Scope (must not be implemented)
-- Unified execution refactor (Phase 103)
-- Registration/login UX (Phase 190)
-- Admin platform / registry curation UI (Phase 107)
-- Admin approval workflow (`PendingReview` → `ApprovedGlobal`)
-- Deprecation UX for `service_status = deprecated`
-- Multi-device registry sync read path or conflict resolution
-- Removing `builtinCatalog.ts` from repo (may remain as seed reference)
-- Cloud read path for vault credentials (IndexedDB authoritative)
-- `service_role` key in client
+Write `team-Yuri/dev-phase102.md`. Include:
+
+- Files changed, and an explicit list of files not changed (Autofill heuristics, adapters, vault crypto, authentication, discovery engine deletion, custom-service mode designer).
+- Proof of the three modes, including that an empty field list did not become `no_stored_credentials`.
+- Proof that contradictory saves were rejected.
+- Proof that `0017` was stored and reread as `0017`.
+- Screenshots or recorded steps for the two-field fixture, the incomplete state, no-stored-credentials open, and the custom default.
+- Proof that `metadata_version` increments on mode or schema publish and that ciphertext was not rewritten.
+- `npm run build` result.
+- Security packet: validation and serialization paths changed, confirmation that encryption still wraps the whole credential map including digit strings, and the statement that MVP release is waiting on security-owner review.
+- If a database check blocked a valid schema, the exact object and the fact that no migration was shipped.
+
+## Out of Scope
+
+- New credential table or parallel schema.
+- Credential-data migration, ciphertext rewrite, or a backfill of `credentialMode` onto existing rows.
+- End-user schema designer or custom-service credential mode.
+- Autofill heuristic, adapter, or Login Intelligence changes.
+- Clicking or completing external identity-provider controls.
+- Vault, KDF, encryption format, authentication.
+- Restoring or expanding Automatic Login Discovery. Deleting the discovery engine. Phase 108 login-entry work.
+- Phase 111 icon discovery.
+- Phase 113 visual redesign.
+- Unpublishing catalog services that lack a schema.
 
 ## Risks / Open Questions
-- **Offline / fetch failure:** Developer must document chosen fallback (cache vs error) and verify no silent production revert to TS catalog.
-- **Existing vault custom services:** May exist only in IndexedDB until next save; document transition behavior.
-- **RPC security:** Function must guard against updating user-owned or non-built-in rows; include negative test in verification script.
-- **Service id stability:** Seed must preserve ids from Phase 100/101 vaults; any id change breaks `selectedIds`.
+
+- `getLoginFields` is shared with execution and assistance. Credential-entry paths must not use the username+password fallback for a global service whose resolved mode is not CREDENTIAL_FIELDS. Do not edit fill heuristics to compensate.
+- Clearing an active field list on a confirmed mode change must not delete ciphertext and must not be done silently.
+- Save-replaces-the-map can drop unused keys. That must not remap an old id onto a new id. Security review covers this.
 
 ## Manager Review
-MANAGER_REVIEW_STATUS: APPROVED
+MANAGER_REVIEW_STATUS: NOT_REVIEWED
 
 ### Review Notes
-- Phase identifier aligned (`PHASE=102`); developer artifact complete with migrations, RLS/RPC evidence, registry loader proof, custom upsert, discovery gate/persist, documentation, and build output.
-- **Operator confirmation + independent verification:** All 4 Phase 102 SQL migrations applied; `node scripts/verifyPhase102Registry.mjs` **PASS** (13 built-in seed, RLS isolation, RPC allow/deny, custom row + user UPDATE).
-- **M1/M2:** Schema delta (`owner_user_id`, `login_url_status`), 13 production built-in seeds (excludes `hub-practice-login`; matches `builtinCatalog.ts` — manager plan “12” was understated), visibility RLS + user CRUD, `persist_discovered_login_url` SECURITY DEFINER with null/invalid guard.
-- **M3:** `loadBuiltinCatalogDefinitions()` → Supabase fetch; `getBuiltinCatalogDefinitions()` throws; dev practice injected client-side only; offline shows error UI (no silent TS catalog fallback).
-- **M4/M5:** `upsertCustomServiceRegistryRow()` on custom create; discovery gated via `shouldRunLoginUrlDiscovery()`; RPC for global built-in, direct UPDATE for user rows; wired in custom add + Dashboard open paths.
-- AC-102-1 through AC-102-6 satisfied. Scope compliant — no Phase 103 execution refactor, no auth UX, no vault cloud read, no `service_role` in client.
-- Unit tests/lint NOT AVAILABLE per project; acceptable.
-- Minor artifact gap: `dev-phase102.md` still lists verification as “PENDING OPERATOR APPLY” in two sections; superseded by operator apply + script PASS (non-blocking).
+Active plan is the 2026-09-14 credential-mode revision. The earlier credential-field plan without modes is withdrawn. Developer may implement M1 through M3. Manager will not approve MVP release until the security packet is reviewed by the security owner.
 
 ### Required Corrections
-_None._
+None yet. Awaiting Developer evidence in `dev-phase102.md`.

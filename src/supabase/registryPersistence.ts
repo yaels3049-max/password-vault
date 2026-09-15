@@ -12,13 +12,60 @@ import {
 /** Raised when a user already owns a custom service with the same normalized primary URL. */
 export class DuplicateCustomServiceError extends Error {
   readonly existingServiceId: string;
+  readonly existingDisplayName: string | null;
 
-  constructor(existingServiceId: string) {
+  constructor(existingServiceId: string, existingDisplayName?: string | null) {
     super('Custom service already exists for this user + primary URL');
     this.name = 'DuplicateCustomServiceError';
     this.existingServiceId = existingServiceId;
+    this.existingDisplayName = existingDisplayName?.trim() || null;
   }
 }
+
+/** User-facing copy for custom *edit* URL conflict only — not Custom Add outcomes. */
+export const CUSTOM_SERVICE_ALREADY_EXISTS_MESSAGE =
+  'האתר כבר קיים ברשימת האתרים שלך.';
+
+/** Catalog display name only — never the user-entered custom form name. */
+export function catalogServiceAlreadyInHomeMessage(serviceName: string): string {
+  return `${serviceName} כבר נמצא בבית הדיגיטלי שלך.`;
+}
+
+export function catalogServiceAvailableTitle(serviceName: string): string {
+  return `${serviceName} כבר זמין להוספה`;
+}
+
+export const CATALOG_SERVICE_AVAILABLE_PROMPT =
+  'רוצה להוסיף אותו לבית הדיגיטלי שלך?';
+export const CATALOG_SERVICE_ADD_HOME_LABEL = 'הוסף לבית הדיגיטלי';
+export const CATALOG_SERVICE_NOT_NOW_LABEL = 'לא עכשיו';
+export const CATALOG_SERVICE_ALREADY_IN_HOME_DISMISS_LABEL = 'סגור';
+
+/** Same product copy as already-in-home — do not mention «מותאם אישית». */
+export function sameUserCustomDuplicateMessage(serviceName: string): string {
+  return catalogServiceAlreadyInHomeMessage(serviceName);
+}
+
+export type AddCustomServiceResult =
+  | { status: 'created' }
+  | {
+      status: 'catalog_service_available';
+      existingServiceId: string;
+      /** Authoritative catalog ServiceDefinition.displayName. */
+      displayName: string;
+    }
+  | {
+      status: 'already_in_user_home';
+      existingServiceId: string;
+      /** Authoritative catalog ServiceDefinition.displayName. */
+      displayName: string;
+    }
+  | {
+      status: 'same_user_custom_duplicate';
+      existingServiceId: string;
+      /** Authoritative existing custom ServiceDefinition.displayName. */
+      displayName: string;
+    };
 
 export function normalizeCustomServiceUrl(rawUrl: string): string {
   try {
@@ -123,7 +170,7 @@ export async function upsertCustomServiceRegistryRow(
   const normalizedUrl = normalizeCustomServiceUrl(definition.url);
   const { data: existingRows, error: lookupError } = await supabase
     .from('service_registry')
-    .select('id, primary_url')
+    .select('id, primary_url, display_name')
     .eq('owner_user_id', userId)
     .eq('source_type', 'user');
 
@@ -138,7 +185,10 @@ export async function upsertCustomServiceRegistryRow(
   );
 
   if (duplicate) {
-    throw new DuplicateCustomServiceError(String(duplicate.id));
+    throw new DuplicateCustomServiceError(
+      String(duplicate.id),
+      typeof duplicate.display_name === 'string' ? duplicate.display_name : null,
+    );
   }
 
   const row = serviceDefinitionToRegistryInsert(definition, userId);

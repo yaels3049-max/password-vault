@@ -13,10 +13,22 @@ export type ServiceCategory = string;
 
 export type LoginFieldType = 'text' | 'password';
 
+/** Entry check only. Omitted means text. Not the password/autofill role. */
+export type CredentialInputType = 'text' | 'number';
+
 export interface LoginField {
   id: string;
   label: string;
   type: LoginFieldType;
+  /** Absent on a stored field means required. */
+  required?: boolean;
+  /** Absent means masked only when type is password. Independent of password role and inputType. */
+  masked?: boolean;
+  /**
+   * Entry check only. Omitted means text.
+   * NUMBER values stay digit strings in the credential map. Never a numeric column.
+   */
+  inputType?: CredentialInputType;
 }
 
 /** Provenance of a service definition. */
@@ -52,6 +64,12 @@ export interface ServiceDefinition {
 
   /** Ordered login field schema; vault credential keys. */
   loginFields?: LoginField[];
+
+  /**
+   * Client-only load note. Not persisted. Lets a contradictory stored pair
+   * stay configuration-invalid after an invalid field list is omitted.
+   */
+  storedLoginFieldsStatus?: 'valid' | 'missing' | 'empty' | 'invalid';
 
   /** UX grouping. */
   category?: ServiceCategory;
@@ -146,7 +164,6 @@ function validateLoginFields(
 
   const fields: LoginField[] = [];
   const seenIds = new Set<string>();
-  let passwordCount = 0;
 
   for (const [index, entry] of loginFields.entries()) {
     if (!isPlainObject(entry)) {
@@ -157,7 +174,7 @@ function validateLoginFields(
       continue;
     }
 
-    const { id, label, type } = entry;
+    const { id, label } = entry;
 
     if (!isNonEmptyString(id)) {
       issues.push({
@@ -184,6 +201,8 @@ function validateLoginFields(
       continue;
     }
 
+    const type = entry.type === undefined ? 'text' : entry.type;
+
     if (type !== 'text' && type !== 'password') {
       issues.push({
         field: `loginFields[${index}].type`,
@@ -192,18 +211,45 @@ function validateLoginFields(
       continue;
     }
 
-    if (type === 'password') {
-      passwordCount += 1;
+    if (entry.required !== undefined && typeof entry.required !== 'boolean') {
+      issues.push({
+        field: `loginFields[${index}].required`,
+        message: 'required must be a boolean when provided',
+      });
+      continue;
     }
 
-    fields.push({ id, label, type });
-  }
+    if (entry.masked !== undefined && typeof entry.masked !== 'boolean') {
+      issues.push({
+        field: `loginFields[${index}].masked`,
+        message: 'masked must be a boolean when provided',
+      });
+      continue;
+    }
 
-  if (fields.length > 0 && passwordCount === 0) {
-    issues.push({
-      field: 'loginFields',
-      message: 'At least one password-type field is required when loginFields is present',
-    });
+    if (
+      entry.inputType !== undefined &&
+      entry.inputType !== 'text' &&
+      entry.inputType !== 'number'
+    ) {
+      issues.push({
+        field: `loginFields[${index}].inputType`,
+        message: 'inputType must be "text" or "number" when provided',
+      });
+      continue;
+    }
+
+    const field: LoginField = { id, label, type };
+    if (typeof entry.required === 'boolean') {
+      field.required = entry.required;
+    }
+    if (typeof entry.masked === 'boolean') {
+      field.masked = entry.masked;
+    }
+    if (entry.inputType === 'text' || entry.inputType === 'number') {
+      field.inputType = entry.inputType;
+    }
+    fields.push(field);
   }
 
   return { fields: issues.length === 0 ? fields : undefined, issues };
@@ -330,6 +376,14 @@ export function validateServiceDefinition(
   }
   if (loginFields !== undefined) {
     definition.loginFields = loginFields;
+  }
+  if (
+    input.storedLoginFieldsStatus === 'valid' ||
+    input.storedLoginFieldsStatus === 'missing' ||
+    input.storedLoginFieldsStatus === 'empty' ||
+    input.storedLoginFieldsStatus === 'invalid'
+  ) {
+    definition.storedLoginFieldsStatus = input.storedLoginFieldsStatus;
   }
   if (category !== undefined) {
     definition.category = category as ServiceCategory;

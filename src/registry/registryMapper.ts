@@ -1,7 +1,8 @@
-import type { LoginField, ServiceCategory } from '../service/serviceModel';
+import { classifyStoredLoginFields } from '../service/credentialSchema';
 import {
   SERVICE_SCHEMA_VERSION,
   validateServiceDefinition,
+  type ServiceCategory,
   type ServiceDefinition,
   type ServiceSource,
 } from '../service/serviceModel';
@@ -31,32 +32,15 @@ export interface ServiceRegistryRow {
   owner_user_id: string | null;
 }
 
-function isLoginFieldArray(value: unknown): value is LoginField[] {
-  if (!Array.isArray(value)) {
-    return false;
+function mapStoredLoginFields(value: unknown) {
+  const classified = classifyStoredLoginFields(value);
+  if (classified.status === 'valid') {
+    return classified.fields;
   }
-
-  return value.every(
-    (entry) =>
-      typeof entry === 'object' &&
-      entry !== null &&
-      typeof (entry as LoginField).id === 'string' &&
-      typeof (entry as LoginField).label === 'string' &&
-      ((entry as LoginField).type === 'text' || (entry as LoginField).type === 'password'),
-  );
-}
-
-/** Ignore invalid cached login_fields (e.g. verify-script artifacts); discovery can refill. */
-function sanitizeLoginFields(value: unknown): LoginField[] | undefined {
-  if (!isLoginFieldArray(value) || value.length === 0) {
-    return undefined;
+  if (classified.status === 'empty') {
+    return [];
   }
-
-  if (!value.some((field) => field.type === 'password')) {
-    return undefined;
-  }
-
-  return value;
+  return undefined;
 }
 
 function mapSourceType(sourceType: string): ServiceSource {
@@ -88,8 +72,10 @@ export function registryRowToServiceDefinition(row: ServiceRegistryRow): Service
     candidate.loginUrl = row.login_url;
   }
 
-  const loginFields = sanitizeLoginFields(row.login_fields);
-  if (loginFields) {
+  const storedSchema = classifyStoredLoginFields(row.login_fields);
+  const loginFields = mapStoredLoginFields(row.login_fields);
+  candidate.storedLoginFieldsStatus = storedSchema.status;
+  if (loginFields !== undefined) {
     candidate.loginFields = loginFields;
   }
 
@@ -140,11 +126,12 @@ export function serviceDefinitionToRegistryInsert(
     source_type: 'user',
     service_status: 'pending_review',
     metadata: {
-      loginUrlDiscoveryOutcome: loginUrl ? 'succeeded' : 'never_run',
-      loginUrlDiscoveryAttempted: Boolean(loginUrl),
       ...(definition.metadata ?? {}),
+      loginUrlSource: 'user',
+      loginEntryType:
+        definition.metadata?.loginEntryType === 'direct_url' ? 'direct_url' : 'primary_page',
     },
-    login_url_status: loginUrlStatus,
+    login_url_status: loginUrl ? 'valid' : loginUrlStatus,
     owner_user_id: ownerUserId,
   };
 }

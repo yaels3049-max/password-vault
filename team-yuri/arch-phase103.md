@@ -1,5 +1,8 @@
 # Architecture Phase 103
 
+## Amendment
+AMENDED: 2026-09-14 — **Phase 108 MVP.** Login URL is explicitly configured. Tile open still must not run discovery. The prior statement that discovery remains on custom-service add / admin refresh is withdrawn. Missing `loginUrl` opens the primary URL and must not start discovery. See `arch-phase108.md`.
+
 ## Phase Identifier
 PHASE=103
 
@@ -39,7 +42,7 @@ Phase 103 owns **execution orchestration and autofill gating** only. Registry me
 | **D-103-8: Unified orchestration order** | Reconciles PLAN §7 with AC-103-6 | **(1)** Resolve `openUrl`. **(2)** If site-specific `adapterId` → adapter path. **(3)** Else default pipeline: open tab, then generic autofill if D-103-5 true. **(4)** Return deterministic `ServiceExecutionResult`. |
 | **D-103-9: Single open authority** | AC-103-9; avoid double tabs | For generic path: extension `POC_GENERIC_FILL` opens the tab **or** Hub `window.open` fallback — never both on success. For open-only: Hub `window.open` once. |
 | **D-103-10: Remove extension POC host allowlist** | Phase 102 tech debt; AC-103-8 | Delete `GENERIC_REAL_SITE_ALLOWED_HOSTS` gating. Replace with **URL safety policy**: allow `https:` for real sites; allow `http:` only for localhost / 127.0.0.1 (practice demo); reject dangerous protocols. User-initiated tile click is the trust boundary. |
-| **D-103-11: No tile-click discovery** | Phase 102 boundary; PLAN §18 | `discoverLogin`, `discoverAndPersistLoginUrl`, and extension discovery tabs are **not** invoked from `Dashboard.handleServiceOpen`. Discovery remains on custom-service add / admin flows only. |
+| **D-103-11: No tile-click discovery** | Phase 102 boundary; PLAN §18; arch-phase108 2026-09-14 | `discoverLogin`, `discoverAndPersistLoginUrl`, and extension discovery tabs are **not** invoked from `Dashboard.handleServiceOpen`. Automatic Login Discovery is not an MVP path on add or admin flows either. |
 | **D-103-12: Non-blocking metadata health signal (minimal)** | PLAN §18 stale-metadata note | On autofill failure or obvious navigation mismatch, execution may emit an internal signal (e.g. `metadataHealth: 'fill_failed'`) for future Phase 109 UX. **Must not** block open, run discovery inline, or show engine errors to users. User messaging stays Hebrew, non-technical (existing copy patterns). |
 | **D-103-13: Narrow `builtinCatalogOverlay`** | Phase 102 interim | After Phase 103, overlay may merge **presentation-only** gaps (icon, category, favicon metadata) — **not** `adapterId`, `loginUrl`, or `loginFields` for execution. Registry (+ seed migrations) is execution authority. |
 | **D-103-14: Extension message contract unchanged** | Minimize bridge churn | Hub continues `POC_GENERIC_FILL` with `{ url, loginFields, credentials }`. HTZone `POC_FILL_IL` and practice `POC_FILL_DEMO` unchanged. Bump extension `manifest.json` version on background changes. |

@@ -12,7 +12,6 @@ export {
 } from './serviceModel';
 
 export {
-  inferServiceSource,
   legacyServicesToDefinitions,
   legacyServiceToDefinition,
 } from './legacyCatalogMap';

@@ -429,6 +429,14 @@
   color: #64748b;
 }
 
+.la-empty--notice {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #1e293b;
+}
+
 .la-fields {
   display: flex;
   flex-direction: column;
@@ -879,6 +887,19 @@
   margin: 0 0 1.25rem;
   font-size: 0.9375rem;
   color: #6b7280;
+}
+
+.modal-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  font-size: 0.95rem;
+}
+
+.modal-check input {
+  width: auto;
+  margin: 0;
 }
 
 .modal-field {
@@ -2105,6 +2126,50 @@
   color: #047857;
 }
 
+.sm-catalog-offer {
+  /* Extra usable width so RTL titles wrap before orphaning «שלך». */
+  max-width: min(28rem, calc(100vw - 2rem));
+  width: 100%;
+}
+
+.sm-catalog-offer-title {
+  margin-bottom: 0.65rem;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+  /* Prefer balanced wraps / avoid short last-line orphans when supported. */
+  text-wrap: pretty;
+}
+
+.sm-catalog-offer-prompt {
+  margin: 0 0 1.25rem;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.45;
+  color: #1e293b;
+}
+
+.sm-catalog-offer-prompt + .modal-actions {
+  margin-top: 0;
+}
+
+.sm-catalog-offer .modal-subtitle {
+  margin: 0 0 1rem;
+  color: #334155;
+  line-height: 1.45;
+}
+
+/* Informational dismiss — compact, centered; do not inherit full-width flex. */
+.sm-catalog-offer-dismiss {
+  justify-content: center;
+}
+
+.sm-catalog-offer-dismiss .modal-btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 2.75rem;
+  padding-inline: 1.5rem;
+}
+
 .sm-section {
   margin-bottom: 2rem;
   padding: 1.25rem 1.5rem;
@@ -2610,6 +2675,17 @@
   font-size: 0.75rem;
   line-height: 1.2;
   white-space: nowrap;
+}
+
+.sm-manage-status {
+  display: inline-block;
+  padding: 0.2rem 0.15rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: #64748b;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
 }
 
 /* Kebab (⋮) secondary-actions menu — keeps destructive actions from competing with ניהול. */

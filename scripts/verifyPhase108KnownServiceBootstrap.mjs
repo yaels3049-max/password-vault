@@ -131,7 +131,7 @@ function main() {
   );
   assert(
     app.includes('upsertCustomServiceRegistryRow') &&
-      app.includes("catalogMatch.source !== 'user-created'") &&
+      app.includes('classifyAddCustomService') &&
       !/async function addCustomService[\s\S]*?resolveKnownBuiltinByUrl/.test(app),
     'addCustomService must keep non-catalog URLs as user submissions (not known-builtin coerce)',
   );

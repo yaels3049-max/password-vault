@@ -7,6 +7,17 @@ import type { AccessProfile } from './profile/accessProfileModel';
 import type { LoginField, Service } from './mockServices';
 import { runtimeCategoryLabels } from './mockServices';
 import {
+  INCOMPLETE_SCHEMA_MESSAGE,
+  NO_STORED_CREDENTIALS_MESSAGE,
+  STORED_DETAILS_RETAINED_MESSAGE,
+  allowsCredentialProfileManagement,
+  fieldInputType,
+  isFieldMasked,
+  isFieldRequired,
+  resolveCredentialEntry,
+  serializeCredentialValues,
+} from './service/credentialSchema';
+import {
   HubCredentialInput,
   isFirstTimeSecurityTipDismissed,
   TRUST_COPY,
@@ -16,7 +27,6 @@ import { useServiceLogos } from './useServiceLogos';
 
 interface ServiceProfileManagementModalProps {
   service: Service;
-  loginFields: LoginField[];
   profiles: AccessProfile[];
   credentials: Record<string, Credential>;
   onSaveCredential: (profileId: string, credential: Credential) => Promise<void>;
@@ -75,7 +85,6 @@ function copyAriaLabel(field: LoginField): string {
 
 export default function ServiceProfileManagementModal({
   service,
-  loginFields,
   profiles,
   credentials,
   onSaveCredential,
@@ -126,6 +135,13 @@ export default function ServiceProfileManagementModal({
   );
   const dirtyRef = useRef(false);
 
+  const entry = resolveCredentialEntry(service);
+  const loginFields = entry.kind === 'form' ? entry.fields : [];
+  const schemaIncomplete = entry.kind === 'incomplete';
+  const noStoredCredentials = entry.kind === 'no-stored-credentials';
+  const showCredentialForm = allowsCredentialProfileManagement(entry);
+  const showProfileManagement = allowsCredentialProfileManagement(entry);
+
   const isMultiProfile = sortedProfiles.length > 1;
   const selectedProfile =
     sortedProfiles.find((profile) => profile.id === selectedProfileId) ?? null;
@@ -136,10 +152,16 @@ export default function ServiceProfileManagementModal({
   const selectedHasCredentials = selectedProfile
     ? hasCompleteCredentials(credentials[selectedProfile.id], loginFields)
     : false;
+  const hasRetainedCredentialBlob = sortedProfiles.some((profile) => {
+    const credential = credentials[profile.id];
+    return Boolean(credential && Object.values(credential).some((value) => Boolean(value?.trim())));
+  });
   const canDeleteProfile = sortedProfiles.length > 1;
-  const fieldsComplete = loginFields.every(
-    (field) => credentialValues[field.id]?.trim(),
-  );
+  const fieldsComplete =
+    !schemaIncomplete &&
+    loginFields.every(
+      (field) => !isFieldRequired(field) || Boolean(credentialValues[field.id]?.trim()),
+    );
   const categoryLabel =
     runtimeCategoryLabels[service.category] ?? service.category ?? '';
 
@@ -174,6 +196,12 @@ export default function ServiceProfileManagementModal({
       setSelectedProfileId(fallback);
     }
   }, [sortedProfiles, selectedProfileId]);
+
+  useEffect(() => {
+    if (noStoredCredentials) {
+      onClose();
+    }
+  }, [noStoredCredentials, onClose]);
 
   // Load credentials only when the selected profile changes — not on every parent
   // credentials/loginFields identity (that caused freeze / wiped typing).
@@ -277,20 +305,19 @@ export default function ServiceProfileManagementModal({
   }
 
   async function handleSaveCredentials() {
-    if (!selectedProfile || saving || !dirty || !fieldsComplete) return;
+    if (!selectedProfile || saving || !dirty || !fieldsComplete || !showCredentialForm) return;
 
-    const credential: Credential = {};
-    for (const field of loginFields) {
-      credential[field.id] =
-        field.type === 'password'
-          ? credentialValues[field.id]
-          : credentialValues[field.id].trim();
+    const serialized = serializeCredentialValues(loginFields, credentialValues);
+    if (!serialized.ok) {
+      setStatusTone('err');
+      setStatusMessage(serialized.message ?? 'לא ניתן לשמור את הפרטים.');
+      return;
     }
 
     setSaving(true);
     setStatusMessage(null);
     try {
-      await onSaveCredential(selectedProfile.id, credential);
+      await onSaveCredential(selectedProfile.id, serialized.credential);
       setBaselineValues({ ...credentialValues });
       setStatusTone('ok');
       setStatusMessage(MSG_SAVE_OK);
@@ -340,6 +367,7 @@ export default function ServiceProfileManagementModal({
 
   function handleAddProfile(e: React.FormEvent) {
     e.preventDefault();
+    if (!showProfileManagement) return;
     const trimmed = newProfileName.trim();
     if (!trimmed) return;
     onAddProfile(trimmed);
@@ -438,7 +466,7 @@ export default function ServiceProfileManagementModal({
             </div>
           </div>
 
-          {showCompactSecurity && (
+          {showCompactSecurity && showProfileManagement && (
             <div className="cd-security" role="note">
               <p>המידע שלכם מוגן — פרטי הכניסה נשמרים מוצפנים בכספת.</p>
               <button
@@ -451,7 +479,7 @@ export default function ServiceProfileManagementModal({
             </div>
           )}
 
-          {selectedProfile && (
+          {showProfileManagement && selectedProfile && (
             <div className="cd-profiles" role="tablist" aria-label="פרופילים">
               {isMultiProfile ? (
                 sortedProfiles.map((profile) => (
@@ -477,7 +505,7 @@ export default function ServiceProfileManagementModal({
             </div>
           )}
 
-          {selectedProfile && isRenaming && (
+          {showProfileManagement && selectedProfile && isRenaming && (
             <form className="cd-rename" onSubmit={handleRenameSubmit} autoComplete="off">
               <input
                 type="text"
@@ -518,14 +546,29 @@ export default function ServiceProfileManagementModal({
             </p>
           )}
 
-          {selectedProfile && (
+          {schemaIncomplete && (
+            <div className="cd-fields" role="status">
+              <p className="cd-empty">{INCOMPLETE_SCHEMA_MESSAGE}</p>
+              {hasRetainedCredentialBlob ? (
+                <p className="cd-empty">{STORED_DETAILS_RETAINED_MESSAGE}</p>
+              ) : null}
+            </div>
+          )}
+
+          {noStoredCredentials && (
+            <div className="cd-fields" role="status">
+              <p className="cd-empty">{NO_STORED_CREDENTIALS_MESSAGE}</p>
+            </div>
+          )}
+
+          {showCredentialForm && selectedProfile && (
             <div className="cd-fields">
               {!selectedHasCredentials && !dirty && (
                 <p className="cd-empty">{MSG_EMPTY_PROFILE}</p>
               )}
 
               {loginFields.map((field) => {
-                const isPassword = field.type === 'password';
+                const masked = isFieldMasked(field);
                 return (
                   <label key={field.id} className="cd-field">
                     <span className="cd-field-label">{field.label}</span>
@@ -534,7 +577,9 @@ export default function ServiceProfileManagementModal({
                         serviceId={service.id}
                         fieldId={field.id}
                         fieldType={field.type}
-                        revealAsText={isPassword && passwordVisible}
+                        digitString={fieldInputType(field) === 'number'}
+                        maskDisplay={masked && field.type !== 'password'}
+                        revealAsText={masked && passwordVisible}
                         value={credentialValues[field.id] ?? ''}
                         onChange={(e) =>
                           handleCredentialChange(field.id, e.target.value)
@@ -542,7 +587,7 @@ export default function ServiceProfileManagementModal({
                         disabled={saving}
                         className="cd-field-input"
                       />
-                      {isPassword && (
+                      {masked && (
                         <button
                           type="button"
                           className="cd-icon-btn"
@@ -604,7 +649,7 @@ export default function ServiceProfileManagementModal({
                     שינוי שם פרופיל
                   </button>
                 )}
-                {selectedHasCredentials && (
+                {selectedHasCredentials && !schemaIncomplete && (
                   <button
                     type="button"
                     className="cd-secondary-btn cd-secondary-btn--danger"
@@ -628,6 +673,7 @@ export default function ServiceProfileManagementModal({
             </div>
           )}
 
+          {showProfileManagement && (
           <div className="cd-add">
             {!showAddProfile ? (
               <button
@@ -667,6 +713,7 @@ export default function ServiceProfileManagementModal({
               </form>
             )}
           </div>
+          )}
         </div>
 
         {discardPrompt && (

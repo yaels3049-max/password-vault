@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <title>Phase 104 — catalog offer dialog preview</title>
+  <style>
+    body {
+      font-family: Assistant, "Segoe UI", Tahoma, sans-serif;
+      background: #e2e8f0;
+      padding: 1.5rem;
+      margin: 0;
+    }
+    h1 { font-size: 1rem; color: #334155; }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .viewport {
+      border: 1px dashed #94a3b8;
+      padding: 0.75rem;
+      background: #f8fafc;
+    }
+    .viewport label {
+      display: block;
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-bottom: 0.5rem;
+    }
+    .modal-dialog {
+      width: 100%;
+      max-width: min(28rem, calc(100vw - 2rem));
+      padding: 1.5rem;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+      box-sizing: border-box;
+    }
+    .modal-title {
+      margin: 0 0 0.65rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      line-height: 1.45;
+      overflow-wrap: break-word;
+      text-wrap: pretty;
+    }
+    .sm-catalog-offer-prompt {
+      margin: 0 0 1.25rem;
+      font-size: 1rem;
+      font-weight: 500;
+      line-height: 1.45;
+      color: #1e293b;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 0.75rem;
+    }
+    .modal-btn {
+      flex: 1;
+      min-height: 2.75rem;
+      padding: 0.625rem 1rem;
+      border: 0;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 1rem;
+    }
+    .modal-btn-primary { background: #2563eb; color: #fff; }
+    .modal-btn-secondary { background: #f3f4f6; color: #374151; }
+    .w-narrow { width: 280px; }
+    .w-mid { width: 360px; }
+    .w-wide { width: 420px; }
+  </style>
+</head>
+<body>
+  <h1>CATALOG_SERVICE_AVAILABLE — visual hierarchy only</h1>
+  <div class="row">
+    <div class="viewport w-narrow">
+      <label>280px · Zoom</label>
+      <div class="modal-dialog" dir="rtl">
+        <h2 class="modal-title">Zoom כבר זמין להוספה</h2>
+        <p class="sm-catalog-offer-prompt">רוצה להוסיף אותו לבית הדיגיטלי שלך?</p>
+        <div class="modal-actions">
+          <button type="button" class="modal-btn modal-btn-primary">הוסף לבית הדיגיטלי</button>
+          <button type="button" class="modal-btn modal-btn-secondary">לא עכשיו</button>
+        </div>
+      </div>
+    </div>
+    <div class="viewport w-mid">
+      <label>360px · בנק הפועלים</label>
+      <div class="modal-dialog" dir="rtl">
+        <h2 class="modal-title">בנק הפועלים כבר זמין להוספה</h2>
+        <p class="sm-catalog-offer-prompt">רוצה להוסיף אותו לבית הדיגיטלי שלך?</p>
+        <div class="modal-actions">
+          <button type="button" class="modal-btn modal-btn-primary">הוסף לבית הדיגיטלי</button>
+          <button type="button" class="modal-btn modal-btn-secondary">לא עכשיו</button>
+        </div>
+      </div>
+    </div>
+    <div class="viewport w-wide">
+      <label>420px · long</label>
+      <div class="modal-dialog" dir="rtl">
+        <h2 class="modal-title">שירות בדיקה ארוך במיוחד לאימות גלישת טקסט בעברית כבר זמין להוספה</h2>
+        <p class="sm-catalog-offer-prompt">רוצה להוסיף אותו לבית הדיגיטלי שלך?</p>
+        <div class="modal-actions">
+          <button type="button" class="modal-btn modal-btn-primary">הוסף לבית הדיגיטלי</button>
+          <button type="button" class="modal-btn modal-btn-secondary">לא עכשיו</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

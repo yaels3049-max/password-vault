@@ -97,6 +97,13 @@ interface HubCredentialInputProps
   fieldType: 'text' | 'password';
   /** When true, password fields render as plain text while keeping PM-hardening. */
   revealAsText?: boolean;
+  /** Visual mask only. Does not change password role or autocomplete. */
+  maskDisplay?: boolean;
+  /**
+   * Digit-string entry. Never uses HTML type=number, which would drop leading zeros.
+   * The value stays a string; 0017 must remain 0017.
+   */
+  digitString?: boolean;
 }
 
 /**
@@ -109,12 +116,14 @@ export default function HubCredentialInput({
   fieldId,
   fieldType,
   revealAsText = false,
+  maskDisplay = false,
+  digitString = false,
   onFocus,
   ...rest
 }: HubCredentialInputProps) {
   const isPassword = isHubCredentialPasswordField(fieldType);
-  const inputType =
-    isPassword && revealAsText ? 'text' : fieldType;
+  const visuallyMasked = !revealAsText && (fieldType === 'password' || maskDisplay);
+  const inputType = visuallyMasked ? 'password' : 'text';
 
   return (
     <input
@@ -123,7 +132,7 @@ export default function HubCredentialInput({
       type={inputType}
       name={hubCredentialFieldName(serviceId, fieldId, fieldType)}
       autoComplete={hubCredentialAutoComplete(fieldId, fieldType)}
-      inputMode={hubCredentialInputMode(fieldId, fieldType)}
+      inputMode={digitString ? 'numeric' : hubCredentialInputMode(fieldId, fieldType)}
       spellCheck={isPassword ? false : undefined}
       {...(isPassword
         ? {

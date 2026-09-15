@@ -2,11 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AccessProfile } from '../profile';
 import { preselectedProfileId, profilesForService } from '../profile';
 import type { Credential } from '../credentials';
-import { getLoginFields, type Service } from '../mockServices';
+import type { Service } from '../mockServices';
+import { isFieldMasked, resolveCredentialEntry } from '../service/credentialSchema';
 import {
   attemptExistingAutomaticCompletion,
   openAssistanceUrl,
 } from './assistanceActions';
+import { resolveDigitalHomeLaunchKind } from './credentialsGate';
 import { copyCredentialField } from './copyField';
 import {
   computeFloatingPanelPosition,
@@ -19,6 +21,7 @@ import {
 } from './supportLevel';
 import {
   LABEL_ASSISTANCE,
+  LABEL_ADD_CREDENTIALS,
   LABEL_CLOSE,
   LABEL_COPY,
   LABEL_HIDE_PASSWORD,
@@ -28,7 +31,9 @@ import {
   MSG_COPIED,
   MSG_COPY_FAILED,
   MSG_MANUAL_ONLY,
-  MSG_NO_CREDENTIALS,
+  MSG_MISSING_USER_CREDENTIALS_LAUNCH,
+  MSG_NO_STORED_CREDENTIALS_LAUNCH,
+  MSG_NOT_CONFIGURED_LAUNCH,
 } from './messages';
 
 const COPY_CONFIRM_MS = 2200;
@@ -45,6 +50,8 @@ export interface LoginAssistancePanelProps {
   onClose: () => void;
   /** Bubble non-blocking status to Digital Home banner (optional). */
   onStatus?: (message: string, tone?: 'info' | 'warn' | 'success') => void;
+  /** Open existing credential editor (missing-user-credentials only). */
+  onAddCredentials?: (service: Service) => void;
 }
 
 export default function LoginAssistancePanel({
@@ -55,12 +62,20 @@ export default function LoginAssistancePanel({
   logoSrc = null,
   onClose,
   onStatus,
+  onAddCredentials,
 }: LoginAssistancePanelProps) {
   const profiles = profilesForService(accessProfiles, service.id);
   const level = resolveLoginAssistanceLevel(service);
   const allowAuto = allowsAutomaticCompletionAttempt(level);
-  const loginFields = getLoginFields(service);
-  const showProfileChips = profiles.length > 1;
+  const launchKind = resolveDigitalHomeLaunchKind(
+    service,
+    accessProfiles,
+    credentialsByProfileId,
+  );
+  const entry = resolveCredentialEntry(service);
+  const loginFields = launchKind === 'credentials' && entry.kind === 'form' ? entry.fields : [];
+  const showCredentialUi = launchKind === 'credentials';
+  const showProfileChips = showCredentialUi && profiles.length > 1;
 
   const panelRef = useRef<HTMLElement | null>(null);
   const [coords, setCoords] = useState<FloatingPanelCoords>(() =>
@@ -116,7 +131,7 @@ export default function LoginAssistancePanel({
       window.removeEventListener('resize', reposition);
       window.removeEventListener('scroll', reposition, true);
     };
-  }, [anchorRect, service.id, showProfileChips, panelStatus, passwordVisible]);
+  }, [anchorRect, service.id, showProfileChips, panelStatus, passwordVisible, launchKind]);
 
   // Close on Escape; click-outside closes without blocking copy/open.
   useEffect(() => {
@@ -208,6 +223,7 @@ export default function LoginAssistancePanel({
       aria-label={LABEL_ASSISTANCE}
       data-login-assistance="true"
       data-support-level={level}
+      data-launch-kind={launchKind}
       data-floating="true"
       style={{
         top: coords.top,
@@ -245,15 +261,15 @@ export default function LoginAssistancePanel({
         </button>
       </header>
 
-      {!allowAuto && (
+      {!allowAuto && showCredentialUi && (
         <p className="la-manual-hint" role="status">
           {MSG_MANUAL_ONLY}
         </p>
       )}
 
-      {profiles.length === 0 && (
-        <p className="la-empty">
-          {MSG_NO_CREDENTIALS}
+      {showCredentialUi && profiles.length === 0 && (
+        <p className="la-empty la-empty--notice">
+          {MSG_MISSING_USER_CREDENTIALS_LAUNCH}
         </p>
       )}
 
@@ -277,11 +293,24 @@ export default function LoginAssistancePanel({
         </div>
       )}
 
+      {launchKind === 'not-configured' ? (
+        <div className="la-fields" role="status">
+          <p className="la-empty la-empty--notice">{MSG_NOT_CONFIGURED_LAUNCH}</p>
+        </div>
+      ) : launchKind === 'no-stored-credentials' ? (
+        <div className="la-fields" role="status">
+          <p className="la-empty la-empty--notice">{MSG_NO_STORED_CREDENTIALS_LAUNCH}</p>
+        </div>
+      ) : launchKind === 'missing-user-credentials' ? (
+        <div className="la-fields" role="status">
+          <p className="la-empty la-empty--notice">{MSG_MISSING_USER_CREDENTIALS_LAUNCH}</p>
+        </div>
+      ) : (
       <div className="la-fields">
         {loginFields.map((field) => {
           const value = activeCredential[field.id] ?? '';
-          const isPassword = field.type === 'password';
-          const inputType = isPassword && !passwordVisible ? 'password' : 'text';
+          const masked = isFieldMasked(field);
+          const inputType = masked && !passwordVisible ? 'password' : 'text';
           const copied = copyFlashFieldId === field.id;
           const eyeLabel = passwordVisible ? LABEL_HIDE_PASSWORD : LABEL_SHOW_PASSWORD;
 
@@ -300,7 +329,7 @@ export default function LoginAssistancePanel({
                   autoComplete="off"
                   spellCheck={false}
                 />
-                {isPassword && (
+                {masked && (
                   <button
                     type="button"
                     className="la-icon-btn"
@@ -327,12 +356,22 @@ export default function LoginAssistancePanel({
           );
         })}
       </div>
+      )}
 
       <div className="la-actions">
         <button type="button" className="la-primary-btn" onClick={handleOpenSite}>
           {LABEL_OPEN_SITE}
         </button>
-        {allowAuto && (
+        {launchKind === 'missing-user-credentials' && onAddCredentials && (
+          <button
+            type="button"
+            className="la-secondary-btn"
+            onClick={() => onAddCredentials(service)}
+          >
+            {LABEL_ADD_CREDENTIALS}
+          </button>
+        )}
+        {allowAuto && showCredentialUi && (
           <button
             type="button"
             className="la-secondary-btn la-secondary-btn--auto"

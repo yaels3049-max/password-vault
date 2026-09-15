@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  adminBulkRefreshLoginUrls,
-  adminTriggerLoginRediscovery,
   adminUpdateLoginUrl,
-  createGlobalRegistryRowWithDiscovery,
+  createGlobalRegistryRow,
   disableGlobalRegistryRow,
   fetchAdminCategories,
   fetchAllRegistryRowsForAdmin,
   fetchRegistryRowForAdmin,
   markGlobalLoginUrlInvalid,
-  parseLoginFieldsJson,
   updateGlobalRegistryRow,
   updateUserOwnedRegistryRow,
   updateIconMetadata,
@@ -19,7 +16,6 @@ import {
   adminOverrideLoginIntelligence,
   type AdminCategory,
   type AdminRegistryRow,
-  type BulkLoginUrlRefreshReport,
   type GlobalRegistryInput,
 } from './adminRegistryApi';
 import {
@@ -35,8 +31,34 @@ import IntegrationStatusPanel from './IntegrationStatusPanel';
 import LoginIntelligencePanel from './LoginIntelligencePanel';
 import LoginUrlRefresh from './LoginUrlRefresh';
 import UrlFieldWithCopy from './UrlFieldWithCopy';
+import CredentialFieldsEditor, {
+  editorFieldsFromStored,
+  editorFieldsToStored,
+  type EditorCredentialField,
+} from './CredentialFieldsEditor';
 import { adminRowToLogoService } from './adminLogoService';
 import { useServiceLogos } from '../useServiceLogos';
+import {
+  ADMIN_DIRECT_URL_LABEL,
+  ADMIN_PRIMARY_PAGE_LABEL,
+  EMPTY_LOGIN_URL_MESSAGE,
+  INVALID_LOGIN_URL_MESSAGE,
+  defaultLoginEntryType,
+  isExplicitHttpUrl,
+  resolveExplicitLoginEntry,
+  type ExplicitLoginEntryType,
+} from '../catalog/explicitLoginEntry';
+import {
+  ADMIN_MODE_CREDENTIAL_FIELDS_LABEL,
+  ADMIN_MODE_NO_STORED_LABEL,
+  ADMIN_MODE_NOT_CONFIGURED_LABEL,
+  ADMIN_NO_STORED_HINT,
+  ADMIN_SCHEMA_NOT_CONFIGURED,
+  MODE_CLEAR_WARNING,
+  classifyStoredLoginFields,
+  readStoredCredentialMode,
+  type CredentialMode,
+} from '../service/credentialSchema';
 
 const EMPTY_FORM: GlobalRegistryInput = {
   display_name: '',
@@ -95,10 +117,11 @@ export default function RegistryAdmin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [discovering, setDiscovering] = useState(false);
-  const [bulkRunning, setBulkRunning] = useState(false);
-  const [forceBulkOverwrite, setForceBulkOverwrite] = useState(false);
-  const [bulkReport, setBulkReport] = useState<BulkLoginUrlRefreshReport | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [loginEntryType, setLoginEntryType] = useState<ExplicitLoginEntryType>('primary_page');
+  const [credentialFields, setCredentialFields] = useState<EditorCredentialField[]>([]);
+  const [credentialMode, setCredentialMode] = useState<CredentialMode>('not_configured');
+  const [configurationTouched, setConfigurationTouched] = useState(false);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
 
   const [search, setSearch] = useState('');
@@ -186,6 +209,10 @@ export default function RegistryAdmin() {
     setSelectedId(null);
     setSelectedRow(null);
     setShowMoreDetails(false);
+    setLoginEntryType('primary_page');
+    setCredentialFields([]);
+    setCredentialMode('not_configured');
+    setConfigurationTouched(false);
     setForm(emptyCreateForm(categories));
   }
 
@@ -193,19 +220,55 @@ export default function RegistryAdmin() {
     setIsCreating(false);
     setSelectedId(row.id);
     setShowMoreDetails(false);
+    const entryType = defaultLoginEntryType(
+      row.login_url,
+      row.primary_url,
+      row.metadata?.loginEntryType,
+    );
+    setLoginEntryType(entryType);
+    const storedSchema = classifyStoredLoginFields(row.login_fields);
+    const storedMode = readStoredCredentialMode(row.metadata);
+    setCredentialFields(
+      storedSchema.status === 'valid' ? editorFieldsFromStored(storedSchema.fields) : [],
+    );
+    setCredentialMode(
+      storedMode === 'credential_fields' ||
+        storedMode === 'no_stored_credentials' ||
+        storedMode === 'not_configured'
+        ? storedMode
+        : storedSchema.status === 'valid'
+          ? 'credential_fields'
+          : 'not_configured',
+    );
+    setConfigurationTouched(false);
     setForm({
       id: row.id,
       display_name: row.display_name,
       primary_url: row.primary_url,
-      login_url: row.login_url,
+      login_url: entryType === 'direct_url' ? (row.login_url ?? '') : row.primary_url,
       category_id: row.category_id,
       icon: row.icon,
       adapter_id: row.adapter_id,
       source_type: row.source_type as GlobalRegistryInput['source_type'],
       service_status: row.service_status as GlobalRegistryInput['service_status'],
-      login_url_status: row.login_url_status,
+      login_url_status: 'valid',
       metadata: row.metadata ?? {},
     });
+  }
+
+  function handleCredentialModeChange(next: CredentialMode) {
+    if (
+      (next === 'no_stored_credentials' || next === 'not_configured') &&
+      credentialFields.length > 0 &&
+      !window.confirm(MODE_CLEAR_WARNING)
+    ) {
+      return;
+    }
+    if (next === 'no_stored_credentials' || next === 'not_configured') {
+      setCredentialFields([]);
+    }
+    setCredentialMode(next);
+    setConfigurationTouched(true);
   }
 
   function cancelEdit() {
@@ -214,6 +277,15 @@ export default function RegistryAdmin() {
     setSelectedRow(null);
     setShowMoreDetails(false);
     setForm(EMPTY_FORM);
+    setLoginEntryType('primary_page');
+  }
+
+  function resolvedAdminEntry() {
+    return resolveExplicitLoginEntry({
+      websiteUrl: form.primary_url,
+      sameAsWebsite: loginEntryType === 'primary_page',
+      dedicatedLoginUrl: form.login_url,
+    });
   }
 
   async function handleSave(event: React.FormEvent) {
@@ -221,43 +293,94 @@ export default function RegistryAdmin() {
     setError(null);
     setSuccess(null);
 
+    let entry: ReturnType<typeof resolveExplicitLoginEntry>;
     try {
-      if (isCreating) {
-        setDiscovering(true);
-        setSuccess('שומר אתר ומחפש דף כניסה…');
-
-        const result = await createGlobalRegistryRowWithDiscovery(form);
-        setIsCreating(false);
-        setSelectedId(result.serviceId);
-
-        if (result.discoverySucceeded && result.loginUrl) {
-          setSuccess(`האתר נוצר. נמצא דף כניסה: ${result.loginUrl}`);
-        } else {
-          setSuccess(
-            `האתר נוצר (מזהה: ${result.serviceId}). ${result.discoveryMessage}`,
-          );
+      if (loginEntryType === 'direct_url') {
+        const dedicated = form.login_url?.trim() ?? '';
+        if (!dedicated) {
+          throw new Error(EMPTY_LOGIN_URL_MESSAGE);
         }
+        if (!isExplicitHttpUrl(dedicated)) {
+          throw new Error(INVALID_LOGIN_URL_MESSAGE);
+        }
+      }
+      entry = resolvedAdminEntry();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'שמירה נכשלה.');
+      return;
+    }
+
+    const publishConfiguration = isCreating || configurationTouched;
+    let fieldsForSave = credentialFields;
+    if (
+      publishConfiguration &&
+      (credentialMode === 'no_stored_credentials' || credentialMode === 'not_configured') &&
+      credentialFields.length > 0
+    ) {
+      if (!window.confirm(MODE_CLEAR_WARNING)) {
+        return;
+      }
+      fieldsForSave = [];
+      setCredentialFields([]);
+    }
+    const storedFields = editorFieldsToStored(fieldsForSave);
+    if (credentialMode === 'credential_fields' && storedFields.some((field) => !field.label)) {
+      setError('יש להזין תווית לכל שדה כניסה.');
+      return;
+    }
+
+    const metadata: Record<string, unknown> = {
+      ...(form.metadata ?? {}),
+      loginEntryType: entry.loginEntryType,
+      loginUrlSource: isCreating || selectedRow?.owner_user_id == null ? 'admin' : 'user',
+    };
+    if (publishConfiguration && (isCreating || selectedRow?.owner_user_id == null)) {
+      metadata.credentialMode = credentialMode;
+    }
+
+    try {
+      setSaving(true);
+      if (isCreating) {
+        const serviceId = await createGlobalRegistryRow({
+          ...form,
+          login_url: entry.loginUrl,
+          login_url_status: 'valid',
+          login_fields: credentialMode === 'credential_fields' ? storedFields : null,
+          credential_mode: credentialMode,
+          metadata,
+        });
+        setIsCreating(false);
+        setSelectedId(serviceId);
+        setSuccess('האתר נוצר.');
       } else if (selectedId) {
         if (selectedRow?.owner_user_id != null) {
           await updateUserOwnedRegistryRow(selectedId, {
             display_name: form.display_name,
             primary_url: form.primary_url,
-            login_url: form.login_url,
+            login_url: entry.loginUrl,
             category_id: form.category_id,
             service_status: form.service_status,
+            metadata,
           });
           setSuccess('הגשת המשתמש עודכנה.');
         } else {
           await updateGlobalRegistryRow(selectedId, {
             display_name: form.display_name,
             primary_url: form.primary_url,
-            login_url: form.login_url,
+            login_url: entry.loginUrl,
             category_id: form.category_id,
             icon: form.icon,
             adapter_id: form.adapter_id || null,
             source_type: form.source_type,
             service_status: form.service_status,
-            metadata: form.metadata,
+            login_url_status: 'valid',
+            metadata,
+            ...(configurationTouched
+              ? {
+                  login_fields: credentialMode === 'credential_fields' ? storedFields : null,
+                  credential_mode: credentialMode,
+                }
+              : {}),
           });
           setSuccess('האתר עודכן.');
         }
@@ -267,37 +390,7 @@ export default function RegistryAdmin() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'שמירה נכשלה.');
     } finally {
-      setDiscovering(false);
-    }
-  }
-
-  async function handleBulkRefresh() {
-    if (
-      !window.confirm(
-        forceBulkOverwrite
-          ? 'לרענן כתובות כניסה לכל האתרים הפעילים, כולל כתובות שערך מנהל?'
-          : 'לרענן כתובות כניסה לכל האתרים הפעילים (מדלג על עריכות מנהל)?',
-      )
-    ) {
-      return;
-    }
-
-    setError(null);
-    setSuccess(null);
-    setBulkRunning(true);
-    setBulkReport(null);
-
-    try {
-      const report = await adminBulkRefreshLoginUrls(forceBulkOverwrite);
-      setBulkReport(report);
-      setSuccess(
-        `רענון מרוכז הושלם: ${report.succeeded.length} הצליחו, ${report.failed.length} נכשלו, ${report.skipped.length} דולגו.`,
-      );
-      await reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'רענון מרוכז נכשל.');
-    } finally {
-      setBulkRunning(false);
+      setSaving(false);
     }
   }
 
@@ -340,12 +433,7 @@ export default function RegistryAdmin() {
           {error}
         </p>
       )}
-      {discovering && (
-        <p className="admin-muted" role="status">
-          מחפש דף כניסה… (דורש הרחבת דפדפן)
-        </p>
-      )}
-      {success && !discovering && (
+      {success && (
         <p className="admin-success" role="status">
           {success}
         </p>
@@ -355,33 +443,7 @@ export default function RegistryAdmin() {
         <button type="button" className="admin-btn admin-btn-primary" onClick={startCreate}>
           אתר חדש
         </button>
-        <button
-          type="button"
-          className="admin-btn admin-btn-secondary"
-          disabled={bulkRunning || loading}
-          onClick={() => void handleBulkRefresh()}
-        >
-          {bulkRunning ? 'מרענן כתובות כניסה…' : 'רענון כניסה מרוכז'}
-        </button>
-        <label className="admin-chip">
-          <input
-            type="checkbox"
-            checked={forceBulkOverwrite}
-            onChange={(e) => setForceBulkOverwrite(e.target.checked)}
-            disabled={bulkRunning}
-          />{' '}
-          דרוס עריכות מנהל
-        </label>
       </div>
-
-      {bulkReport && (
-        <details className="admin-details" style={{ marginBottom: '0.75rem' }}>
-          <summary>דוח רענון מרוכז</summary>
-          <pre className="admin-pre" aria-label="דוח רענון מרוכז">
-            {JSON.stringify(bulkReport, null, 2)}
-          </pre>
-        </details>
-      )}
 
       <div className="admin-filters" role="search">
         <input
@@ -504,13 +566,63 @@ export default function RegistryAdmin() {
                   required
                   placeholder="https://www.example.co.il"
                 />
-                <UrlFieldWithCopy
-                  label="כתובת כניסה (אופציונלי)"
-                  value={form.login_url ?? ''}
-                  onChange={(value) => setForm({ ...form, login_url: value })}
-                  placeholder="ריק = ייעשה שימוש בכתובת הבית"
-                  hint="אם כתובת הכניסה ריקה, הבית הדיגיטלי יפתח את כתובת הבית."
-                />
+                <label className="admin-field">
+                  <span>סוג כניסה</span>
+                  <select
+                    value={loginEntryType}
+                    onChange={(e) =>
+                      setLoginEntryType(e.target.value as ExplicitLoginEntryType)
+                    }
+                  >
+                    <option value="primary_page">{ADMIN_PRIMARY_PAGE_LABEL}</option>
+                    <option value="direct_url">{ADMIN_DIRECT_URL_LABEL}</option>
+                  </select>
+                </label>
+                {loginEntryType === 'direct_url' ? (
+                  <UrlFieldWithCopy
+                    label="כתובת כניסה"
+                    value={form.login_url ?? ''}
+                    onChange={(value) => setForm({ ...form, login_url: value })}
+                    required
+                    placeholder="https://example.com/login"
+                  />
+                ) : (
+                  <p className="admin-field-hint">
+                    כניסה מדף הבית תישמר ככתובת הבית.
+                  </p>
+                )}
+                {!isUserOwnedRow && (
+                  <>
+                    <label className="admin-field">
+                      <span>פרטי כניסה</span>
+                      <select
+                        value={credentialMode}
+                        onChange={(event) =>
+                          handleCredentialModeChange(event.target.value as CredentialMode)
+                        }
+                      >
+                        <option value="not_configured">{ADMIN_MODE_NOT_CONFIGURED_LABEL}</option>
+                        <option value="credential_fields">{ADMIN_MODE_CREDENTIAL_FIELDS_LABEL}</option>
+                        <option value="no_stored_credentials">{ADMIN_MODE_NO_STORED_LABEL}</option>
+                      </select>
+                    </label>
+                    {credentialMode === 'no_stored_credentials' ? (
+                      <p className="admin-field-hint">{ADMIN_NO_STORED_HINT}</p>
+                    ) : null}
+                    {credentialMode === 'not_configured' ? (
+                      <p className="admin-field-hint">{ADMIN_SCHEMA_NOT_CONFIGURED}</p>
+                    ) : null}
+                    {credentialMode === 'credential_fields' ? (
+                      <CredentialFieldsEditor
+                        fields={credentialFields}
+                        onChange={(next) => {
+                          setCredentialFields(next);
+                          setConfigurationTouched(true);
+                        }}
+                      />
+                    ) : null}
+                  </>
+                )}
                 <label className="admin-field">
                   <span>קטגוריה</span>
                   <select
@@ -558,7 +670,7 @@ export default function RegistryAdmin() {
                 <button
                   type="submit"
                   className="admin-btn admin-btn-primary"
-                  disabled={discovering}
+                    disabled={saving}
                 >
                   שמור
                 </button>
@@ -627,14 +739,8 @@ export default function RegistryAdmin() {
                 <div className="admin-collapse-body">
                   <LoginUrlRefresh
                     row={selectedRow}
-                    onManualSave={async (loginUrl, loginFieldsJson) => {
-                      const loginFields = parseLoginFieldsJson(loginFieldsJson);
-                      await adminUpdateLoginUrl(
-                        selectedRow.id,
-                        loginUrl,
-                        loginFields,
-                        'valid',
-                      );
+                    onManualSave={async (loginUrl) => {
+                      await adminUpdateLoginUrl(selectedRow.id, loginUrl, null, 'valid');
                       setSuccess('כתובת הכניסה עודכנה.');
                       await reload();
                     }}
@@ -642,12 +748,6 @@ export default function RegistryAdmin() {
                       await markGlobalLoginUrlInvalid(selectedRow.id);
                       setSuccess('כתובת הכניסה סומנה כלא תקינה.');
                       await reload();
-                    }}
-                    onRediscover={async () => {
-                      const result = await adminTriggerLoginRediscovery(selectedRow.id);
-                      setSuccess(result.message);
-                      await reload();
-                      return result.message;
                     }}
                   />
                 </div>
@@ -723,6 +823,12 @@ export default function RegistryAdmin() {
               <div>
                 <dt>login_url_status</dt>
                 <dd>{selectedRow.login_url_status ?? '—'}</dd>
+              </div>
+              <div>
+                <dt>login_fields</dt>
+                <dd>
+                  <pre className="admin-pre">{JSON.stringify(selectedRow.login_fields ?? null, null, 2)}</pre>
+                </dd>
               </div>
               <div>
                 <dt>metadata_version</dt>

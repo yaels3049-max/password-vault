@@ -4,6 +4,11 @@ import {
   validateServiceDefinition,
   type ServiceDefinition,
 } from '../service/serviceModel';
+import {
+  resolveExplicitLoginEntry,
+  stampExplicitLoginMetadata,
+  type ExplicitLoginUrlSource,
+} from './explicitLoginEntry';
 
 const CUSTOM_SERVICE_ID_PREFIX = 'custom-';
 
@@ -78,6 +83,14 @@ export interface CreateCustomServiceInput {
   displayName: string;
   primaryUrl: string;
   category: ServiceCategory;
+  /** When true, login URL is the website URL (`primary_page`). Default true. */
+  sameAsWebsite?: boolean;
+  /** Required when `sameAsWebsite` is false. Not guessed. */
+  dedicatedLoginUrl?: string | null;
+  /** Preserve id on edit. Omitted on create. */
+  id?: string;
+  metadata?: Record<string, unknown>;
+  loginUrlSource?: ExplicitLoginUrlSource;
 }
 
 export function createCustomServiceDefinition(
@@ -93,15 +106,31 @@ export function createCustomServiceDefinition(
     throw new Error(urlValidation.message);
   }
 
+  const sameAsWebsite = input.sameAsWebsite !== false;
+  const entry = resolveExplicitLoginEntry({
+    websiteUrl: urlValidation.normalizedUrl,
+    sameAsWebsite,
+    dedicatedLoginUrl: input.dedicatedLoginUrl,
+  });
+  const loginUrlSource = input.loginUrlSource ?? 'user';
+
   const candidate: ServiceDefinition = {
     schemaVersion: SERVICE_SCHEMA_VERSION,
-    id: generateCustomServiceId(),
+    id: input.id?.trim() || generateCustomServiceId(),
     displayName,
     url: urlValidation.normalizedUrl,
+    loginUrl: entry.loginUrl,
     icon: '🔗',
     category: input.category,
     source: 'user-created',
-    metadata: { faviconSiteUrl: urlValidation.normalizedUrl },
+    metadata: stampExplicitLoginMetadata(
+      {
+        ...(input.metadata ?? {}),
+        faviconSiteUrl: urlValidation.normalizedUrl,
+      },
+      loginUrlSource,
+      entry.loginEntryType,
+    ),
   };
 
   const result = validateServiceDefinition(candidate);

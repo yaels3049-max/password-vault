@@ -1,6 +1,10 @@
 # Phase 102 — Service registry migration
 
-Phase 102 makes `service_registry` the runtime catalog source (built-in Israeli services + user custom services), with login URL discovery cache and RLS isolation.
+**2026-09-14 (credential modes):** Global services also store `metadata.credentialMode`: `not_configured`, `credential_fields`, or `no_stored_credentials`. An empty `login_fields` array is not `no_stored_credentials`. A contradictory mode/field save is rejected. Field `inputType` is `text` or `number`; a number value is a digit string (`0017` stays `0017`) inside the existing encrypted credential map. No migration was shipped for this revision.
+
+**2026-09-14:** Credential fields are an explicit administrator schema on `login_fields`. A valid schema may have no password-role field. A missing, empty, or invalid global schema is not rewritten to Username + Password. Custom services with no schema use Username + Password only when the credential form is rendered. Automatic Login Discovery is not an approved schema writer. Historical discovery sections below are not the active contract.
+
+Phase 102 makes `service_registry` the runtime catalog source (built-in Israeli services + user custom services), with RLS isolation.
 
 **Prerequisite:** Phase 101 migrations applied and verified.
 

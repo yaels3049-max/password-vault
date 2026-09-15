@@ -1,5 +1,8 @@
 # Architecture Phase 111
 
+## Amendment
+AMENDED: 2026-09-14 — **Phase 108 MVP.** Phase 108 no longer owns login-URL discovery. Phase 111 icon discovery (`src/serviceAssets/discovery.ts`) remains and must not be removed or coupled to login-entry changes. See `arch-phase108.md`.
+
 ## Phase Identifier
 PHASE=111
 
@@ -19,7 +22,7 @@ Deliver **Service Assets and Icon Management** as an **additive** capability: St
 2. **Admin file upload** when no usable site icon (e.g. Clalit) — becomes active managed asset and wins over auto.
 3. Optional discovery/backfill into Storage over time — never blank the UI waiting for it.
 
-Phase 111 owns asset discovery/validation/normalization/lifecycle, Supabase Storage binaries, registry **metadata references only**, **Admin file upload / preview / replace**, approve/refresh/restore, duplicate prevention, fallbacks, and consistent rendering. It does not own login discovery (108), autofill (110), complex login (112), URL identity (113), or credential crypto (109).
+Phase 111 owns asset discovery/validation/normalization/lifecycle, Supabase Storage binaries, registry **metadata references only**, **Admin file upload / preview / replace**, approve/refresh/restore, duplicate prevention, fallbacks, and consistent rendering. It does not own login entry management (108), autofill (110), complex login (112), URL identity (113), or credential crypto (109).
 
 ## Source References
 - `team-Yuri/PHASE.md` — `PHASE=111`
@@ -38,7 +41,7 @@ Phase 111 owns asset discovery/validation/normalization/lifecycle, Supabase Stor
 |---|---|---|
 | **D-111-1: Binaries in object storage, not `service_registry`** | AC-111-2 | Store image bytes in **Supabase Storage**. Registry / related tables hold only references + metadata (`assetId`, type, status, source, version, path/key, checksum, timestamps). Never Base64-blob icons into registry JSON as the primary store. |
 | **D-111-2: Extensible asset-type model** | PLAN supported types | Schema and APIs are **asset-type aware** (`favicon` \| `apple_touch_icon` \| `app_icon` initially; room for logo/banner/thumbnail later) without redesign. Phase 111 delivers **icon family** end-to-end; unused types may be stubbed in enum only. |
-| **D-111-3: Deterministic discovery order** | AC-111-3, AC-111-7 | On create/refresh (non-blocking): (1) admin-approved existing, (2) existing managed active asset, (3) apple-touch-icon, (4) favicon, (5) OG image only if square-ish / suitable, (6) generated fallback. Discovery failure **never** blocks service create (same spirit as login discovery). |
+| **D-111-3: Deterministic discovery order** | AC-111-3, AC-111-7 | On create/refresh (non-blocking): (1) admin-approved existing, (2) existing managed active asset, (3) apple-touch-icon, (4) favicon, (5) OG image only if square-ish / suitable, (6) generated fallback. Icon discovery failure **never** blocks service create. This is not login-URL discovery. |
 | **D-111-4: Validate before store** | AC-111-4, security | Reject unsupported MIME/format, oversize, unreadable decode, unsafe URL/protocol, unsafe redirect chains. SVG only if explicitly sanitized (default Phase 111: **PNG/WebP/JPEG/ICO**; SVG deferred or sanitizer-gated). |
 | **D-111-5: Normalize to managed sizes** | AC-111-4, AC-111-5 | Produce consistent square outputs (at least **32 / 64 / 128**; 256 optional). Preserve transparency where possible. Published bytes are immutable until a new version replaces them. |
 | **D-111-6: Paint cascade (managed first, legacy preserved)** | AC-111-5, AC-111-12, AC-111-17 | Render resolver **MUST** be layered: (1) if an **active** managed Storage asset URL exists → use it; (2) else use the **pre-111 presentation path** (`metadata.faviconSiteUrl` → Google/high-res favicon helper and/or prior `resolveServiceLogo` / `logoCache` behavior); (3) else emoji / deterministic fallback. **Forbidden:** returning null/blank for all services solely because `service_assets` is empty. Managed-only paint is invalid until icons are preserved or backfilled. |
@@ -93,7 +96,7 @@ create or refresh(service)
 |-------|------|
 | **111** | Managed icons/assets, Storage, metadata, admin asset ops, render consistency |
 | **102 / 107** | Registry shell / admin chrome that **calls** 111 APIs |
-| **108** | Login URL discovery — unrelated pipeline |
+| **108** | Explicit login entry and browser integration — unrelated to icon discovery |
 | **110** | Autofill — must ignore assets |
 | **112+** | Future logo/banner types may extend 111 model only |
 
@@ -111,7 +114,7 @@ create or refresh(service)
 - Hebrew-friendly admin/user messages on upload/discovery failure.
 
 ## Technical Boundaries / Out of Scope
-- Redesigning login discovery, autofill, or execution.
+- Redesigning explicit login entry, autofill, or execution. Do not restore Automatic Login Discovery.
 - Full logo/banner/screenshot product surfaces (schema may allow types; product UI can stay icons-only).
 - AI-generated icons / style transfer.
 - CDN redesign outside Supabase Storage (unless Manager documents mirror).

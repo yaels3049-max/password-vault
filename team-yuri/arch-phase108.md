@@ -4,262 +4,438 @@
 PHASE=108
 
 ## Status
-STATUS: APPROVED_WITH_DEFERRED_U27
+STATUS: READY_FOR_MANAGER
 
-## Amendment
-AMENDED: 2026-07-12 — **Consumer false-positive gate** (Zap business `/login`, modal-on-primary, Mizrahi-class). Adds D-108-14 … D-108-17 and AC-108-18 … AC-108-20.
+Implementation must not start until the CEO accepts this revision. Do not hand this phase to the Developer from this document alone.
 
-AMENDED: 2026-07-12 (evening) — **True-positive preservation / anti-over-rejection** after M9 broke previously successful discoveries. Revises D-108-14…16, adds **D-108-18**, **AC-108-21**, milestone **M10**. Reject only with **positive evidence** of wrong audience or modal-only surface; do not blank-reject ordinary consumer `/login` pages.
-
-AMENDED: 2026-07-12 (night) — **M10 live failure / process correction.** Developer claimed M10 COMPLETE on static fixtures while operator live add/rediscover still leaves `login_url=NULL` for previously successful sites (admin + custom). Adds **D-108-19**, **D-108-20**, milestone **M11**. Static fixtures are necessary but **not sufficient**. Live U22 is a hard gate. Architect rejects M10 “COMPLETE” until live evidence passes.
-
-AMENDED: 2026-07-13 — **Trusted-auth priority / Bank Hapoalim-class over-reject (M12).** Live rediscovery finds a consumer auth URL (e.g. `https://login.bankhapoalim.co.il/ng-portals/auth/he/login`) but persists `login_url=NULL` with `needs_review`, `rejectedLoginUrl` set, reason “Consumer login is modal-based; alternate portal candidate rejected.”, `loginIntelligenceHint=alternate_audience_portal`, `phase112Deferred=true`. Root cause: audience gate lets **homepage modal** and/or **weak alternate-audience wording** veto a **trusted consumer auth host** on the same brand; SPA path tokens like `ng-portals` and retail Hebrew like `כניסת לקוחות` are treated as portal evidence. Adds **D-108-21 … D-108-23**, **AC-108-22**, milestone **M12**. Zap-class reject stays mandatory. Phase 112 must **not** own “found navigable consumer URL but gate blanked it.”
-
-AMENDED: 2026-07-13 (evening) — **Trusted-auth host probe / KSP-class discovery gap (M13).** Operator live KSP rediscovery: `method=common-path`, `loginUrl=https://ksp.co.il/login` (dead page), `confidence=low`, `outcome=needs_review`, `rejectedLoginUrl=null`, `success=false`. Real consumer login is `https://auth.ksp.co.il/login?...` but was **never found** as a link on `primaryUrl`. M12 gate accept is insufficient when discovery never candidates the auth host. Adds **D-108-24**, **D-108-25**, **AC-108-23**, milestone **M13**. Same-brand trusted-auth hosts must be **probed** when DOM/link discovery yields no high-confidence consumer URL; low-confidence inventing of same-origin `/login` must not win over a validated auth-host probe. Zap REJECT and discovery boundary (no credentials/fill/submit) unchanged.
-
-AMENDED: 2026-07-13 (night) — **Validated common-path persist / GitHub-class (M13 expanded).** Operator live GitHub rediscovery: `loginUrl=https://github.com/login` (correct consumer login page), `method=common-path`, `confidence=low`, `outcome=needs_review`, `success=false`. Persist policy currently blank-rejects **all** `common-path` / `confidence=low` — correct for dead KSP invents, **wrong** for real same-origin `/login` pages. Adds **D-108-26**, expands **AC-108-23**. Validate then persist: same-origin `/login` with login-page evidence + audience pass must store `login_url`; only **unvalidated** / unreachable / non-login common-path stays `needs_review` / NULL.
-
-AMENDED: 2026-07-13 (late) — **Federated / parent IdP accept (M14) + M13 KSP persist unfinished.** Operator: after M13, GitHub ACCEPTs; Trello finds correct `https://id.atlassian.com/login?application=trello--direct-signup&continue=https://trello.com/auth/atlassian/callback` but outcome `needs_review` / not persisted (cross-registrable IdP vs `trello.com`). KSP probe now lists `auth.ksp.co.il/login` and `/signin` in `topCandidates` (score 8, confidence low) but `loginUrl=null`, `reason=login_entry_not_found` — **M13 U24 not done** (validate+persist probed same-brand auth hosts). Adds **D-108-27**, **AC-108-24**, milestone **M14**. Federated IdP ACCEPT when trusted IdP host + return/continue/callback ties to primary brand. Zap REJECT unchanged.
-
-AMENDED: 2026-07-14 — **Live candidate page validation + sibling-TLD brand (M15).** Operator: **M13 complete** (KSP ACCEPT **and** Zap NULL — dual gate preserved). PayPal: `topCandidates` include correct `https://www.paypal.com/login` (score 25) plus weak `auth.paypal.com/*` invents; result `loginUrl=null`, `no_login_page_found` — scored by path **without** opening the page. Zoom: `https://zoom.us/signin` found high-confidence from `zoom.com` but rejected as modal/portal (`zoom.com`≠`zoom.us`). Adds **D-108-28**, **D-108-29**, **AC-108-25**, milestone **M15**. Live-validate reachable + ≥1 identity field; sibling-TLD same SLD. **Hard dual gate unchanged:** Zap `login_url` must stay **NULL** (never `sa.zap…` / business-interface `/login`). **Identity-field presence alone must NOT accept alternate-audience portals** — Zap’s business login also has form fields; audience gate (D-108-15) runs and wins over field validation. Claiming M15 COMPLETE without live Zap NULL + PayPal/Zoom PASS is a process failure (same lesson as M13 KSP↔Zap).
-
-AMENDED: 2026-07-14 (operator closeout) — **M15 accepted with PayPal deferred (U27).** After repeated discovery churn, operator live green set is: **Zap NULL + KSP non-NULL + Zoom non-NULL**; **PayPal `login_url` empty again** (earlier live success regressed). Further heuristic churn risks re-breaking Zap/KSP/Zoom. Adds **D-108-31**. Operator prioritizes advancing the program; PayPal auto-discovery deferred to a later Phase 108 follow-up (**M16** or reopen U27) — **not** Phase 112. Interim: catalog seed / admin `loginUrl=https://www.paypal.com/login` with `loginUrlSource=admin|catalog_seed`. Freeze discovery-gate churn unless a later milestone explicitly reopens PayPal.
-
-AMENDED: 2026-07-14 — **User-invisible discovery session (add custom site).** Operator: on «הוסף» for a custom site, a browser tab visibly opens and closes. `tabs.create({ active: false })` in the **user's current window** still flashes in the tab strip. **D-108-32 / AC-108-26:** DiscoveryExecutor sessions must not produce a user-visible tab flicker in the Hub window. Prefer a dedicated unfocused/minimized discovery window (or equivalent non-strip-visible technique); never steal focus from Manage/Add Sites; always close on completion. Gate heuristics freeze (D-108-31) unchanged — this is **tab isolation UX**, not discovery scoring.
-
-AMENDED: 2026-07-14 — **D-108-32 Windows regression reverse.** Minimized/unfocused `windows.create` popup caused worse UX on Windows: OS focus left Hub (window went behind other apps); user had to return manually. **Operator preference: restore prior behavior** — `tabs.create({ active: false })` in the Hub window + refocus Hub tab on finish. Acceptable: brief tab-strip flash. **Forbidden:** focus-stealing discovery windows. True strip-invisibility remains a future hardening only if it keeps Hub OS-focused.
+## Title
+Phase 108 — Browser Integration and Explicit Login Entry Management
 
 ## Phase Goal
-Deliver **Browser Integration and Login Discovery**: Chrome and Edge extension support via a **browser integration abstraction**, production packaging strategy, graceful Hub degradation without extension — and a **unified login-entry discovery pipeline** that enriches `service_registry` with a **confident consumer** `loginUrl` (or safely leaves it `NULL` with Phase 112 deferral metadata) on custom-service add and admin refresh — **without** autofill, credentials, form submit, or execution-path changes (AC-108-10, discovery boundary).
+Deliver two independent capabilities:
 
-Phase 108 owns **browser host integration**, **DiscoveryExecutor** behavior, **loginUrl metadata persistence rules**, **evidence-based false-positive rejection**, **true-positive preservation**, **discovery deferral signals**, and **bulk refresh orchestration**. It does not own admin console chrome (107 UI), standard autofill coverage (110), **authoritative** complex login classification / modal interaction (112), full URL canonicalization (113), or credential lifecycle (109).
+1. **Browser Integration** — a stable Hub contract for Chrome and Edge (availability probe, messaging, open-URL/tab helpers) and graceful Hub behavior when the extension is absent.
+2. **Explicit Login Entry Management** — a human-owned login entry point for each service. The administrator owns global/catalog login entries. The user owns login entries for private custom services.
+
+Automatic Login Discovery is not a Phase 108 responsibility and is not an MVP capability.
+
+## Architectural Purpose
+Phase 108 exists so Digital Home can open a service at a login entry that a person configured, and so execution/autofill can use the browser through one abstraction. It does not exist to find, infer, crawl, rank, or replace that entry.
+
+Browser Integration and Explicit Login Entry Management do not depend on each other. Removing or never invoking discovery must not disable the browser abstraction. Configuring a login entry must not require the extension.
+
+## Scope
+
+In scope:
+
+- Browser host abstraction used by Hub feature code (`src/browserIntegration/`, `src/execution/extensionBridge.ts`).
+- Chrome and Edge as production browser hosts sharing that abstraction.
+- Graceful open-URL behavior when the extension is unavailable.
+- Explicit create/edit of login entry data for global catalog services (administrator) and user-created custom services (user).
+- Deterministic open behavior when a dedicated login URL is absent: use the primary/website URL. No search fallback.
+- Ownership isolation between global catalog login metadata and user-owned custom-service login metadata.
+- Persistence of core login-entry fields on `service_registry` without discovery writes.
+
+Out of scope for this revision's implementation authority: this document does not authorize code deletion, migrations, or runtime changes. Those follow only after CEO acceptance and a Manager plan.
+
+## Architectural Principles
+
+- A login entry point is explicit. A person provides it, or explicitly chooses that the website URL is the login entry.
+- The system must not crawl, infer, guess, rank, or automatically replace a login URL.
+- Creation, update, URL change, a missing login URL, and validation failure must not start discovery.
+- Global and user-owned login metadata are isolated. Neither silently replaces the other.
+- Browser Integration remains valid with zero discovery messages and zero discovery tabs.
+- Existing stored `login_url` values are retained. Removal of discovery does not null them.
+- Credential data and authentication are untouched by this phase revision.
+
+## Architecture History
+Automatic Login Discovery was an approved responsibility of the previous Phase 108 architecture (DiscoveryExecutor, audience gates, probes, rediscovery, bulk refresh, discovery metadata). It was removed from the MVP baseline after product-scope reassessment (2026-09-14). The previous implementation must not be treated as the approved architecture for any future Login Discovery. If Automatic Login Discovery is reconsidered, it requires a new architectural review and must not automatically reuse the previous implementation. Historical changelog rows in `team-yuri/PLAN.md` that describe discovery milestones remain historical. They are not active requirements.
 
 ## Source References
-- `team-Yuri/PHASE.md` — `PHASE=108`
-- `team-Yuri/PLAN.md` §13 — Browser Compatibility; §18 — Phase 108 (AC-108-1 … AC-108-25)
-- `team-Yuri/arch-phase102.md` — `service_registry`, `login_url_status`, `persist_discovered_login_url` RPC
-- `team-Yuri/arch-phase103.md` — execution pipeline (**read-only** this phase)
-- `team-Yuri/arch-phase107.md` — admin registry UI consumes Phase 108 discovery APIs
-- `src/execution/extensionBridge.ts` — current Chrome-coupled messaging (to abstract)
-- `src/discovery/execution/` — `discoverLogin`, `extensionTabDiscoveryExecutor`
-- `src/registry/loginUrlDiscovery.ts` — `discoverAndPersistLoginUrl`
-- `src/registry/loginDiscoveryMetadata.ts` — Phase 108 metadata patch helper
-- `src/catalog/customServiceDiscovery.ts` — `discoverLoginForRegistryService` shared pipeline
-- `extension/` — MV3 extension (background, discovery, autofill modules)
-- `scripts/verifyPhase108CustomDiscovery.mjs` — partial static gate (extend in M8)
+- Prior Phase 108 contract in this file (discovery baseline, superseded).
+- Read-only dependency audit of the current implementation (2026-09-14). Evidence files cited in Engineering Change Boundary.
+- `team-yuri/PLAN.md` Phase 108 section (to be kept aligned with this contract).
+- `src/browserIntegration/`, `src/execution/extensionBridge.ts`, `src/execution/serviceExecution.ts`, `src/service/legacyService.ts` `getServiceOpenUrl`.
+- `service_registry.login_url`, `login_url_status`, `metadata` as implemented. Do not infer a second store.
 
 ## Architectural Decisions
 
 | Decision | Rationale | Consequence |
 |---|---|---|
-| **D-108-1: Browser Integration Abstraction (required)** | AC-108-3, PLAN §13 | Introduce stable Hub contract between execution/discovery and browser hosts: **extension availability probe**, **sendMessage envelope**, **openUrl/tab helpers**. Chrome and Edge implement same interface; Hub modules (`extensionBridge`, discovery executor) call abstraction — **not** raw `chrome.*` scattered in feature code. Edge uses Chromium `chrome` namespace today; abstraction documents host adapter pattern for future Firefox eval. |
-| **D-108-2: Chrome + Edge production targets** | AC-108-1, AC-108-2 | Verify extension on **current Chrome stable** and **Edge stable** (Chromium). Document store packaging differences in `docs/MIGRATION_PHASE_108.md` (AC-108-4): manifest, icons, store listing, `externally_connectable` origins for production Hub URL. Shared extension **core**; separate store artifacts/branding if required. |
-| **D-108-3: Graceful Hub degradation** | AC-108-5 | When extension unavailable: Digital Home **open-URL-only** (`window.open`) with friendly Hebrew guidance (existing pattern); custom-service **creation succeeds** with `primary_url` + `login_url_status` reflecting missing discovery (AC-108-8, AC-108-9). No broken technical errors; no blocked add flow. |
-| **D-108-4: Single discovery pipeline** | AC-108-6 … AC-108-10 | **One** production discovery entry: `discoverLoginForRegistryService` → `discoverAndPersistLoginUrl` → `discoverLogin` → active `DiscoveryExecutor`. User custom add (**App.tsx**), admin create/rediscovery (**adminRegistryApi**), and bulk refresh **must** use this path — no parallel harness (`runLoginDiscoverySession`) in production flows. **Ordering:** upsert `service_registry` row **before** discovery (create-then-discover). |
-| **D-108-5: Discovery boundary (strict)** | AC-108-10, AC-108-18…22, PLAN non-goals | Discovery identifies a **consumer** login entry from `primaryUrl` when evidence supports it. **Forbidden:** credential use, autofill, form submit, CAPTCHA/OTP, adapter execution, multi-step login intelligence, persisting alternate-audience portals, inventing navigable URLs when the **only** consumer path is modal-on-primary. Responsibility ends at `loginUrl` persistence **or** evidence-based `NULL` + Phase 112 deferral metadata. **Must not** over-reject ordinary consumer login pages or same-brand trusted auth hosts (AC-108-21, AC-108-22). |
-| **D-108-6: DiscoveryExecutor tab isolation** | AC-108-16, AC-108-26 | Production executor: **extension-owned** isolated session for DOM inspection (`HUB_LOGIN_ENTRY_DISCOVERY`). Session **must close** on success, failure, timeout, or cancel. Discovery sessions are **never** reused for Digital Home execution opens. Execution tabs use `executeServiceFromTile` / `openUrlInNewTab` — separate lifecycle. Document timeout budget in Manager plan. |
-| **D-108-32: Discovery focus — Hub must stay frontmost (revised)** | AC-108-26; operator regression | **Priority:** do not steal OS/browser focus from the Hub during custom-site add. **Current normative approach (after Windows UAT):** `chrome.tabs.create({ url, active: false })` in the **same Hub window**, close on finish, **refocus Hub tab**. Brief inactive tab-strip flash is acceptable. **Do not** use minimized/unfocused `windows.create` popups that push Hub behind other apps. Never activate the discovery tab. Future “fully invisible” techniques only if Hub remains the focused OS window. Do **not** change audience/scoring gates (D-108-31 freeze). |
-| **D-108-7: Registry metadata contract** | AC-108-7, AC-108-8 | Persist on `service_registry`: `primary_url` (always on create); `login_url` when confident; `login_url_status` (normative set below); `login_fields` when discovered; `metadata` patch via `buildDiscoveryMetadataPatch`: `loginUrlSource`, `loginUrlConfidence`, `loginUrlLastDiscoveredAt`, `loginUrlLastCheckedAt`, `loginUrlDiscoveryError`, `discoveryMethod`, `lastDiscoveryOutcome`. Map legacy Phase 102 `unknown`/`valid`/`invalid` to expanded statuses where needed (migration). |
-| **D-108-8: login_url_status (normative)** | AC-108-8 | Allowed values: `valid`, `missing`, `stale`, `failed`, `needs_review`, plus transitional `unknown`/`invalid` from Phase 102 until migrated. **missing** — no loginUrl after discovery attempt; **failed** — discovery error; **stale** — admin-marked or heuristic; **needs_review** — low confidence candidate. Service creation **never blocked** solely by status. |
-| **D-108-9: loginUrlSource + admin override** | AC-108-15, AC-108-11 | `metadata.loginUrlSource`: `auto` \| `admin` \| `user` \| `unknown`. **Admin manual edit** sets `loginUrlSource=admin` and `login_url_status=valid`. Automated rediscovery/bulk refresh **must not overwrite** `admin` URLs unless operator passes **explicit force/approve** flag (admin UI checkbox or dedicated action). |
-| **D-108-10: Admin discovery operations (API layer)** | AC-108-11 … AC-108-14 | Phase 108 delivers **engine + API** (in `adminRegistryApi` / registry layer): single-service rediscovery, **bulk refresh** with rate limit + partial failure report. Phase 107 admin **UI** wires buttons to these APIs — 108 owns semantics, idempotency, and metadata rules. Bulk refresh: queue global + eligible user rows; skip `loginUrlSource=admin` unless forced; concurrency cap; per-row error collection; non-blocking UI. |
-| **D-108-11: Custom service create flow** | AC-108-6 … AC-108-9 | On user add: normalize URL (Phase 116 rules **where already available** — no new canonicalization engine); upsert registry row; attempt discovery with `source:user`, `force:true`; persist metadata; link `user_services` + vault selection per Phase 104 persist-first rules. Failure → friendly message; service remains created with `primary_url`. |
-| **D-108-12: No execution regression** | Phase 103 | **Do not** modify `executeServiceFromTile` orchestration, autofill engine, or tile open behavior except routing messaging through abstraction layer with identical outcomes. Re-run `verifyPhase103Execution.mjs` as regression gate. |
-| **D-108-13: Extension discovery message contract** | AC-108-1, AC-108-2 | Normative message: `HUB_LOGIN_ENTRY_DISCOVERY` with `{ primaryUrl }` → `{ ok, discovery \| reason }`. Background opens tab, injects/runs `discoverLoginEntry` engine, closes tab. Hub extension version aligned with manifest (bump documented in migration guide). |
-| **D-108-14: Dual-objective gate (revised)** | AC-108-18…22 | **Two objectives, equal weight:** (1) never persist a **wrong** login page; (2) **preserve true positives** — ordinary consumer login pages and same-brand trusted auth hosts that discovery found must still persist. **Reject only with positive evidence** of alternate audience (portal wording/URL/title) **or** modal-only consumer login with **no** separate consumer navigable candidate (including trusted auth). Keyword/`/login` path alone is never enough to **accept a portal**, and also never enough by itself to **reject a same-origin / trusted-auth consumer candidate** that has a dedicated login form / strong link evidence. Weak uncertainty (e.g. homepage also has a login button) must **not** blank all navigable results. |
-| **D-108-15: Reject alternate-audience portals** | AC-108-18, AC-108-22 | Candidates with **strong positive** business/merchant/partner/admin/vendor signals must be rejected (Zap `sa.zap.co.il/.../login` — “כניסה לממשק העסק”). Persist: `login_url=NULL`, `rejectedLoginUrl`, `phase112Deferred`, `loginIntelligenceHint=alternate_audience_portal`. Clear auto false-positives on rediscovery (never clear `loginUrlSource=admin`). **Do not** treat “portal sibling link somewhere on the page” as a veto of a stronger same-origin **consumer** candidate. **Do not** treat same-brand trusted auth hosts as portals without strong positive evidence on that candidate (D-108-21…23). |
-| **D-108-16: Modal-on-primary is selective (revised)** | AC-108-19, AC-108-21, AC-108-22 | Apply modal-only → `NULL` **only when** consumer login is modal/overlay on `primaryUrl` **and** there is **no** separate validated consumer navigable login URL (including same-brand **trusted auth hosts** — D-108-21). A modal **trigger** on the homepage must **not** veto an otherwise valid navigable consumer `/login` (or equivalent) candidate, and must **not** short-circuit evaluation before trusted-auth accept. When modal-only: `loginEntryType=modal`, `usesModal=true`, `phase112Deferred=true`, `loginIntelligenceHint=modal_on_primary`. |
-| **D-108-17: Complex navigable surfaces (Mizrahi-class)** | AC-108-20, Phase 112 boundary | If a **consumer** navigable login page exists but login still needs an extra floating step: Phase 108 **may store** that navigable consumer URL when audience is consumer; set `loginIntelligenceHint=complex_login_surface` / `phase112Deferred=true`. Do **not** NULL it merely because a modal step exists on the correct consumer page. Phase 108 does not open/fill the modal. |
-| **D-108-18: True-positive regression gate** | AC-108-21, AC-108-22 | M9–M12 changes must not wipe previously successful consumer discoveries. Required regression set: at least **Shufersal**, **Clalit**, **HTZone**, plus **Bank Hapoalim-class trusted-auth ACCEPT** and **Zap REJECT**. After **live** rediscovery/add, `login_url` must remain non-NULL and consumer-valid unless the live site genuinely changed. Static fixtures must include **accept** cases, not only reject cases — and must not be used alone to claim COMPLETE. |
-| **D-108-19: Live path is the authority** | AC-108-21, AC-108-22 | Production discovery for custom add and admin rediscovery runs through the **extension** (`HUB_LOGIN_ENTRY_DISCOVERY` → bundled `login-entry-discovery.js`). Hub/JSDOM fixture passes are **not** proof of live behavior. After every discovery-engine change: (1) `npm run build` / `build:extension-discovery`, (2) **reload the side-loaded extension**, (3) re-run Hub, (4) execute live U22 / U23. Claiming M10–M12 done without live dual-gate evidence is a process failure. |
-| **D-108-20: Operator-visible discovery outcome** | AC-108-8, AC-108-21 | After every custom add / admin rediscovery, the operator must be able to see **why** `login_url` is NULL or set — at minimum in admin Integration Status / discovery metadata: `loginUrlDiscoveryOutcome`, `loginUrlDiscoveryError` / reason, `discoveryMethod`, `loginUrlConfidence`, `rejectedLoginUrl`, `phase112Deferred`, `loginIntelligenceHint`. Developer debugging must capture the raw extension discovery payload for failed live U22/U23 rows before further gate tuning. Blind “fixed again” without this evidence is not acceptable. |
-| **D-108-21: Trusted consumer auth host priority** | AC-108-22 | Same-brand trusted auth subdomain (`login`, `auth`, `signin`, `secure`, `e-services`, `services`, `online`, and equivalents already in discovery keywords) that yields a consumer navigable login URL **ACCEPT** unless the **candidate itself** has **strong positive** alternate-audience evidence. Evaluation order: (1) strong positive alternate-audience on **this** candidate → reject candidate; (2) else if trusted auth (or dedicated consumer login path) on same brand → **accept**, even when `primaryHasModalLoginTrigger`; (3) else apply cross-subdomain / modal rules. Homepage modal must never run as a blanket veto **before** step (2). |
-| **D-108-22: Narrow weak alternate-audience wording** | AC-108-18, AC-108-22 | Alternate-audience wording must not treat retail Israeli banking/consumer phrases as B2B by default. **Remove or narrow** bare `כניסת לקוחות` as a standalone reject token (too common for retail customers). Keep strong business tokens: `לקוחות עסקיים`, `ממשק העסק`, `כניסה לממשק העסק`, `business interface`, seller/merchant/partner/admin/b2b markers. Label/title wording alone must not veto a D-108-21 trusted-auth candidate without strong positive evidence on the candidate URL/host. |
-| **D-108-23: Application-shell path tokens are not portals** | AC-108-18, AC-108-22 | Path segments such as `portal`, `portals`, `ng-portals` **alone** are **not** alternate-audience evidence (Bank Hapoalim SPA shells). Require business/audience markers on host, path, query, or strong wording. Do not map “found trusted-auth URL + blanked” to `loginIntelligenceHint=alternate_audience_portal` / Phase 112 deferral — that is a gate failure, not a complex-login deferral. |
-| **D-108-24: Same-brand trusted-auth host probe** | AC-108-23 | When link/DOM discovery on `primaryUrl` does **not** yield a **high-confidence** consumer navigable `loginUrl`, Phase 108 **must probe** constructed candidates on the **same registrable brand** using existing `AUTH_SUBDOMAIN_PREFIXES` (priority at least: `auth`, `login`, `secure`, `e-services`, then remaining prefixes). Probe paths: `/login` and other existing common login path fallbacks as needed. Each probe: open/inspect in DiscoveryExecutor (or fetch equivalent already used by discovery), require **login-page evidence** (credential form / strong login markers) + pass audience gate (D-108-21). First validated probe **ACCEPT** and persist. Cap concurrency/timeout so bulk refresh stays rate-limited (AC-108-14). **Do not** invent cross-brand hosts. **Do not** probe alternate-audience prefixes (`sa`, `seller`, …). |
-| **D-108-25: Common-path must not beat validated auth probe** | AC-108-20, AC-108-23 | Same-origin `common-path` guesses such as `{primary}/login` with `confidence=low` must **not** be preferred over a validated same-brand trusted-auth probe. Do **not** persist **unvalidated** low-confidence common-path when it fails reachability or lacks login-page evidence (KSP `https://ksp.co.il/login` is a canonical anti-pattern). Metadata may record the weak guess for operators, but `login_url` persistence requires validated evidence. |
-| **D-108-26: Validated same-origin common-path may persist** | AC-108-23 | Persist policy **must not** blank-reject solely because `method=common-path` or initial `confidence=low`. When a same-origin (or same-brand) candidate such as `https://github.com/login` is **validated** as a consumer login page (login-page evidence + audience gate accept + not portal), Phase 108 **must persist** it and may upgrade confidence/method metadata accordingly. Canonical ACCEPT: GitHub. Canonical REJECT of invent: dead KSP `ksp.co.il/login` without login evidence. **Same rule applies to validated same-brand trusted-auth probe candidates** (e.g. `auth.ksp.co.il/login` in `topCandidates`): must persist after validation — listing in `topCandidates` with `loginUrl=null` / `login_entry_not_found` is **M13 incomplete**. |
-| **D-108-27: Federated / parent IdP with brand-return evidence** | AC-108-24 | When a candidate login URL is on a **different registrable domain** than `primaryUrl` but is a **trusted IdP host** (`id`, `login`, `auth`, `accounts`, `sso`, `identity`, or equivalents already used as auth prefixes) **and** query/path shows **positive return-to-primary evidence** (`continue`, `callback`, `return`, `return_url`, `redirect_uri`, `redirect_url`, `next`, `RelayState`, `application` value containing the primary brand label, etc. pointing at the primary registrable domain), Phase 108 **must ACCEPT** and persist that IdP login URL after audience checks (not a B2B portal). Canonical ACCEPT: Trello → `https://id.atlassian.com/login?...&continue=https://trello.com/...`. Do **not** reject solely because `application` contains `signup` when the host is IdP login and continue/callback binds the primary brand. Do **not** accept arbitrary cross-domain URLs without brand-return evidence. Do **not** probe invent federated hosts blindly — only accept when discovered (link/redirect) or equivalently evidenced. Zap-class `sa.*` without brand-return to consumer primary remains REJECT. |
-| **D-108-28: Live candidate page validation (reachable + identity field)** | AC-108-25, AC-108-18 | Scoring a URL by path/link alone is **not** sufficient to ACCEPT or to conclude `no_login_page_found` when candidates exist. For ranked candidates (including `common-path` and trusted-auth probes), DiscoveryExecutor **must** open/inspect the candidate page (isolated discovery tab; close reliably) and require: (1) **reachable** login surface (HTTP success / stable document — not soft-404 marketing stub without form); (2) **≥1 consumer identity input** visible or present in DOM suitable for login (email / username / phone / equivalent — reuse Phase 110 field heuristics **read-only**). Password field preferred but not mandatory when identity-only step is the entry page. **Forbidden:** autofill, typing credentials, submit. On pass of reachability+fields: still run **audience gate** — **field presence does NOT override** strong alternate-audience evidence (Zap business `/login` / `sa.zap…` / “ממשק העסק” still REJECT / NULL). On audience reject: keep `login_url=NULL`, record `rejectedLoginUrl`. On validation fail: drop candidate, try next. Canonical ACCEPT: PayPal `https://www.paypal.com/login`. Canonical DROP: dead invents. Canonical REJECT despite fields: Zap portal. Cap validation to top N candidates for rate limits. |
-| **D-108-29: Sibling-TLD / same SLD brand family** | AC-108-25 | Hosts that share the same second-level label under different public suffixes (e.g. `zoom.com` ↔ `zoom.us`) **must be treated as same brand** for `isCrossSubdomainCandidate` / audience / modal gates when the candidate path is a consumer sign-in (`/signin`, `/login`, `/sign-in`, …) with strong link or validated page evidence. Canonical ACCEPT: Zoom primary `https://www.zoom.com/` → persist `https://zoom.us/signin`. Do **not** classify as `alternate_audience_portal` solely for sibling-TLD. Do **not** treat unrelated shared labels as siblings without shared-SLD + login-path/validation evidence. Sibling-TLD must **not** weaken Zap dual gate. |
-| **D-108-30: M15 dual-gate hard regression (Zap NULL)** | AC-108-18, AC-108-21, AC-108-25 | Operator history: discovery fixes repeatedly over-accepted Zap (wrong `/login` or business portal) while chasing true positives. **M15 ACCEPT for PayPal/Zoom is invalid unless live Zap rediscovery still yields `login_url=NULL`** (U19). Static Zap REJECT fixture PASS alone is insufficient. Same bar that closed M13: **KSP non-NULL + Zap NULL**. Order of evaluation for every candidate: (1) strong alternate-audience → reject; (2) live validate reachability+identity; (3) sibling-TLD / trusted-auth / federated rules; (4) persist only consumer-validated. |
-| **D-108-31: PayPal auto-discovery deferred; freeze gate churn** | AC-108-25 (deferred U27), operator priority | Operator 2026-07-14 closeout: live **Zap NULL + KSP + Zoom** green; **PayPal auto `login_url` empty** after churn that previously succeeded then regressed. **Stop further Phase 108 discovery-heuristic churn** for PayPal now — risk of re-breaking Zap/KSP/Zoom outweighs benefit. **Defer U27** to future Phase 108 milestone (**M16**) when scheduled; until then use **catalog seed / admin** `https://www.paypal.com/login`. Do **not** move PayPal to Phase 112. Do **not** claim full AC-108-25 without documenting U27 deferred. M15 may close as **accepted with deferred U27**. |
+| **D-108-1: Browser Integration Abstraction (retained)** | Execution, autofill, adapters, and login assistance already call the Hub browser contract. | `src/browserIntegration/` and `src/execution/extensionBridge.ts` remain. Feature code does not scatter raw `chrome.*`. Chrome and Edge share the Chromium host adapter. Discovery is not a client of this contract in the MVP. |
+| **D-108-2: Chrome + Edge production targets (retained)** | Existing packaging commitment. | Extension remains the host for execution/autofill messages. Store packaging differences stay documented for operators. No discovery message is required for packaging. |
+| **D-108-3: Graceful Hub degradation (retained)** | AC-108-11. | When the extension is unavailable, Digital Home still opens the configured entry with `window.open` / `openUrlInNewTab` and friendly Hebrew guidance. Service create/edit succeeds without the extension. |
+| **D-108-4: No Automatic Login Discovery (normative)** | MVP product decision, final. | Create, update, approval/promote, open, background, retry, and bulk paths must not call a discovery engine, open a discovery tab, or replace `login_url` from inferred candidates. |
+| **D-108-5: Human-owned login entry** | Administrator is authoritative for global catalog rows. The creating user is authoritative for that user's private custom row. | Automatic logic must not overwrite a stored login entry. There is no `force` overwrite flag in the MVP. |
+| **D-108-6: Two login entry types only** | Phase 112's read of discovery `loginEntryType` (`navigable` / `modal` / `unknown`) is a soft seed, not a hard dependency. `classifyLoginIntelligence` does not invent `loginUrl` and operates without those hints. | Active values are `direct_url` and `primary_page` only. Discovery classifications are not active requirements. |
+| **D-108-7: Explicit same-as-website default for custom services** | Users currently cannot enter a login URL; add always discovered. MVP must not leave a hole that discovery used to fill. | Custom add defaults "Login page is the same as the website URL" to enabled. Enabled writes `loginUrl` equal to the website URL and `loginEntryType=primary_page`. Disabled requires a separate Login URL and `loginEntryType=direct_url`. |
+| **D-108-8: Global login entry is administrator input** | Admin create/edit already has Primary URL and optional Login URL fields, but create then overwrites via discovery. | Create and edit persist the administrator's values and stop. If the administrator chooses `primary_page`, persist `loginUrl` equal to Primary URL. If `direct_url`, Login URL is required. |
+| **D-108-9: Missing dedicated URL is a deterministic open fallback, not a trigger** | `getServiceOpenUrl` already uses `loginUrl ?? url`. | New writes must not leave a "please discover" gap: `primary_page` stores the primary URL as `loginUrl`. Legacy rows with null `login_url` open the primary URL and must not start discovery. No search fallback. |
+| **D-108-10: Ownership isolation** | User and global rows already differ by `owner_user_id`. Discovery persist could write both. | A user-created save updates only that user's row. A global save updates only `owner_user_id IS NULL` rows. Global metadata never overwrites a user-owned row. A user save never updates global catalog login fields. |
+| **D-108-11: `loginUrlSource` is ownership, not a discovery method** | Today `auto` / `catalog_seed` / `unknown` interact with overwrite gates that exist only because discovery writes. | Active writes: `admin` or `user` only. Do not write `auto`, `discovered`, or `unknown`. |
+| **D-108-12: Approval does not discover** | `promoteUserSubmissionWithDiscovery` always runs discovery after promote. | Promote/approve must not call discovery. The administrator sets the global login entry explicitly. The approval UI may prefill from the user-owned row's already stored explicit fields for the administrator to confirm or edit. Saving the global row must not mutate the user-owned row. |
+| **D-108-13: Stop writing discovery metadata; do not delete columns yet** | Live rows may contain discovery keys. Nulling `login_url` would change open and autofill. | Classified in Data / State. No migration in this architecture task. Cleanup is a later candidate after implementation no longer reads or writes those keys. |
+| **D-108-14: Phase 112 does not require discovery seeds** | Verified soft dependency only (`signalsFromDiscoveryMetadata`). | Phase 108 must not write `phase112Deferred`, `loginIntelligenceHint`, discovery `usesModal`, or discovery `loginEntryType`. Phase 112 classifies from its own signals. Missing discovery hints are not a defect. |
+| **D-108-15: No execution-pipeline redesign** | Open and autofill already consume stored `loginUrl`. | Do not change `executeServiceFromTile` orchestration except to guarantee it never calls discovery. Open URL remains the explicit login entry, else primary URL for legacy nulls. |
+| **D-108-16: Build must not require the discovery bundle** | `package.json` `build` runs `build:extension-discovery` first. | Engineering must detach that step when the bundle is no longer produced. This document does not perform that change. |
 
-### Normative discovery persist flow
+### Superseded decisions
+D-108-4 through D-108-32 of the previous discovery contract (single discovery pipeline, DiscoveryExecutor, audience gates, probes, bulk refresh, PayPal deferral, discovery tab focus) are **withdrawn**. They are not amended. They are not active. Do not implement M16 or any discovery follow-up under this phase number.
 
-```text
-primaryUrl (+ existing registry row)
-→ discoverLogin(primaryUrl)           // DiscoveryExecutor: links/DOM first
-→ if no high-confidence consumer URL: trusted-auth host probe (D-108-24)
-→ LIVE-VALIDATE top candidates (D-108-28): reachable + ≥1 identity field
-→ audience gate ALWAYS after/with validation — fields never override portal reject (D-108-15, D-108-30)
-→ evidence-based audience + surface gates (D-108-14…30)
-  including federated IdP (D-108-27) and sibling-TLD same brand (D-108-29)
-→ shouldPersistDiscoveredLoginUrl()   // reject only on positive bad evidence or weak common-path
-→ on success: login_url + login_fields + login_url_status=valid + metadata patch
-→ on reject/defer (evidence-based): login_url = NULL (clear auto false-positive only) + needs_review|missing
-     + metadata: rejectedLoginUrl?, loginEntryType?, usesModal?, phase112Deferred, loginIntelligenceHint, reason
-→ never blocks registry row / user_services creation
-→ never clear a good auto login_url solely because a weak modal heuristic fired
-→ never blank a same-brand trusted-auth consumer URL solely because homepage has a modal (D-108-21)
-```
+## Browser Integration responsibilities
 
-### Normative consumer validation (Phase 108) — revised
+Retained:
 
-```text
-For each candidate (ranked):
-  → Strong positive alternate-audience evidence on THIS candidate?  YES → reject candidate (keep evaluating others)
-       **FIRST / wins over field validation** — Zap business login has fields too (D-108-15, D-108-30)
-       (sa/seller/b2b host, business path/query, strong business wording — NOT bare כניסת לקוחות,
-        NOT path token portals/ng-portals alone)
-  → LIVE-VALIDATE (D-108-28): reachable + ≥1 identity field? NO → drop candidate
-  → Same-brand trusted auth / dedicated path / sibling-TLD signin / federated IdP brand-return?
-       YES → ACCEPT (persist) if audience still clean
-  → Modal-only on primary AND no remaining consumer navigable candidate?
-       YES → NULL + modal_on_primary deferral
-  → Otherwise keep pre-M9 persist heuristics — do not invent new blanket NULLs
-```
+- Probe extension availability.
+- Send extension messages used by execution, generic autofill, adapters, and login assistance.
+- Open a URL in a new tab, or fall back to a window open when the extension is absent.
+- Chrome and Edge host adapter.
+- Extension background handling for non-discovery messages (`POC_GENERIC_FILL`, `POC_GENERIC_DETECT`, `POC_IDENTITY_FIRST_FILL`, adapter fill messages, practice fill).
 
-### Normative bulk refresh flow
+Not a Browser Integration responsibility:
 
-```text
-Admin triggers bulk refresh (optional forceAdminOverwrite flag)
-→ Load eligible services (skip loginUrlSource=admin unless force)
-→ Rate-limited queue (e.g. N concurrent, delay between batches)
-→ Per row: discoverAndPersistLoginUrl({ force, source: auto })
-→ Aggregate report: succeeded / failed / skipped (admin override)
-→ UI shows partial failures; registry cache invalidated
-```
+- `HUB_LOGIN_ENTRY_DISCOVERY`
+- `HUB_DISCOVERY_FETCH_HTML`
+- Discovery tabs, discovery windows, discovery injection retries
+- Any executor whose purpose is to inspect third-party DOM to find a login URL
 
-### Phase boundary map
+Browser Integration must keep working if those discovery messages are absent.
 
-| Phase | Owns |
-|-------|------|
-| **108** | Browser abstraction, discovery executor, consumer `loginUrl` (or NULL), false-positive rejection, Phase 112 deferral metadata, bulk refresh |
-| **107** | Admin UI surfaces that **call** 108 APIs |
-| **110** | Generic autofill using validated navigable `loginUrl` |
-| **112** | Modal / complex login classification and interaction (consumes 108 deferral signals) |
-| **113** | URL canonicalization / identity |
+## Global / Catalog Login Entry behavior
 
-## Constraints / Non-Negotiables
-- Discovery never uses credentials, autofills, or submits forms (AC-108-10).
-- Service creation succeeds even when discovery fails (AC-108-9).
-- Admin manual `loginUrl` not silently overwritten (AC-108-15).
-- Discovery tabs isolated from execution tabs (AC-108-16).
-- **Never persist non-consumer portal login URLs** (AC-108-18) — Zap-class business `/login` is a hard reject **for that candidate**.
-- **Never invent navigable `loginUrl` when the only consumer path is modal-on-primary** (AC-108-19).
-- **Reject with positive evidence only** — do not blank-reject ordinary consumer login pages (AC-108-20 revised, AC-108-21).
-- **Trusted auth host priority** — same-brand `login.*` / auth hosts must persist despite homepage modal or weak portal wording (AC-108-22 / D-108-21…23).
-- **Live candidate validation** — open candidate pages; require reachable + ≥1 identity field; **fields never override Zap/portal reject** (AC-108-25 / D-108-28 / D-108-30).
-- **Sibling-TLD brand** — `zoom.com`↔`zoom.us` class same-brand for login discovery (AC-108-25 / D-108-29).
-- **Dual gate hard** — PayPal/Zoom ACCEPT without live Zap `login_url=NULL` is **not** M15 complete (D-108-30).
-- **True-positive regression required** after any false-positive gate change (AC-108-21 … AC-108-25).
-- No `service_role` in client.
-- Build passes (AC-108-17).
-- Hebrew friendly user/admin messages on discovery failure.
+The administrator is authoritative for `owner_user_id IS NULL` services.
 
-## Technical Boundaries / Out of Scope
-- Standard autofill expansion (Phase 110).
-- Opening/filling modal overlays, OTP/CAPTCHA/iframe login intelligence, and authoritative `loginComplexity` (Phase 112) — Phase 108 only **defers** via metadata when the surface is genuinely modal-only or complex **after** a correct consumer URL decision. Blanking a found trusted-auth consumer URL is **in scope for Phase 108 to fix**, not to defer. Same-brand auth host missing from homepage links is fixed by **trusted-auth probe** (D-108-24 / M13), not by Phase 112.
-- Full URL canonicalization engine (Phase 116) — use existing helpers only.
-- Credential lifecycle UX (Phase 109).
-- Firefox/Safari store shipping (evaluation only per PLAN §13).
-- Service-specific execution adapters changes.
-- Admin category CRUD / approval queue UI (Phase 107).
-- Hard-coded per-site allowlists as the primary solution (heuristics + audience gates + trusted-auth probes are required; curated exceptions only via admin `loginUrlSource=admin` / catalog seed as interim until probe works).
+The administrator must be able to maintain:
 
-## Dependencies and Interfaces
+- Service name
+- Primary URL (required)
+- Login URL
+- Login Entry Type (`direct_url` or `primary_page`)
 
-### Upstream (must be complete)
+Rules:
 
-| Phase | Provides |
-|-------|----------|
-| 102 | `service_registry`, discovery RPC, catalog load |
-| 104 | Custom service add entry, persist-first selection |
-| 107 | Admin UI hooks for manual edit + refresh triggers (may be in progress) |
+- Create persists the administrator's values and returns. It must not search for a login page afterward.
+- Edit persists the administrator's values and returns. Changing Primary URL or Login URL must not start discovery.
+- `primary_page`: persist `loginUrl` equal to Primary URL, `loginEntryType=primary_page`, `loginUrlSource=admin`, `login_url_status=valid`.
+- `direct_url`: Login URL is required, must be a valid URL under existing admin URL rules, `loginEntryType=direct_url`, `loginUrlSource=admin`, `login_url_status=valid`. It may differ from Primary URL.
+- Validation failure rejects the save. It must not fall back to discovery.
+- No rediscovery control. No bulk login refresh. No "discover login" control.
+- An empty dedicated Login URL is not a discovery signal. For new saves, the administrator chooses `primary_page` instead of leaving the entry unspecified.
+- Existing rows with null `login_url` remain openable via Primary URL until an administrator saves an explicit entry. Do not backfill them by crawling.
 
-### Hub modules (Developer — target ownership)
+## Custom Service Login Entry behavior
 
-| Module | Responsibility |
-|--------|----------------|
-| New `src/browserIntegration/` (or extend `src/extension/`) | Abstraction interface + Chrome/Edge host adapters |
-| `src/execution/extensionBridge.ts` | Refactor to use abstraction; execution messaging unchanged semantically |
-| `src/discovery/execution/` | `DiscoveryExecutor` registry; `extensionTabDiscoveryExecutor` tab lifecycle |
-| `src/registry/loginUrlDiscovery.ts` | Persist rules, admin/global RPC paths, bulk refresh queue |
-| `src/registry/loginDiscoveryMetadata.ts` | Metadata patch contract (extend if needed) |
-| `src/catalog/customServiceDiscovery.ts` | Shared `discoverLoginForRegistryService` |
-| `src/admin/adminRegistryApi.ts` | Wire rediscovery + bulk refresh to 108 engine (API) |
-| `extension/background.js` | `HUB_LOGIN_ENTRY_DISCOVERY` handler; reliable tab close |
-| `extension/discovery/login-entry-discovery.js` | DOM discovery engine (no fill/submit) |
-| `supabase/migrations/*_phase108_*` | Optional `login_url_status` check expansion; metadata indexes |
-| `scripts/verifyPhase108BrowserIntegration.mjs` | **New** — abstraction, no direct chrome in Hub feature code |
-| `scripts/verifyPhase108CustomDiscovery.mjs` | Extend for bulk refresh + admin override guards |
-| `docs/MIGRATION_PHASE_108.md` | Chrome + Edge packaging, operator test matrix |
+The creating user is authoritative for that private service (`owner_user_id` set, `source_type=user`).
 
-### Extension ↔ Hub message surface (normative)
+The add and edit interaction must include:
 
-| Message | Direction | Purpose |
-|---------|-----------|---------|
-| `HUB_LOGIN_ENTRY_DISCOVERY` | Hub → Extension | Run login entry discovery for `primaryUrl` |
-| `HUB_GENERIC_AUTOFILL` / adapter messages | Hub → Extension | **Execution only** (Phase 103) — not discovery |
+- Website URL (required, existing HTTPS primary-URL validation)
+- Control: "Login page is the same as the website URL"
+- Default: enabled
+
+If enabled:
+
+- `loginUrl` = website URL
+- `loginEntryType` = `primary_page`
+- `loginUrlSource` = `user`
+- `login_url_status` = `valid`
+
+If disabled:
+
+- The user must provide a separate Login URL before save.
+- `loginEntryType` = `direct_url`
+- `loginUrlSource` = `user`
+- `login_url_status` = `valid`
+- Example: website `https://example.com`, control off, login URL `https://example.com/login`
+
+The system must not guess a missing Login URL. Service creation still succeeds when the user completes the explicit fields, including when the extension is absent. There is no discovery failure message.
+
+Edit of a custom service must allow the same choice. Edit must not call discovery. When opening edit for an existing row: if `loginUrl` is null or equal to the website URL, the control defaults to enabled; if `loginUrl` differs, the control defaults to off and shows the stored Login URL. Saving applies the same persist rules. Do not crawl to decide the default.
+
+## Login URL ownership
+
+| Record | Owner | Who may write `login_url` / `loginUrlSource` / `loginEntryType` |
+|---|---|---|
+| Global / catalog (`owner_user_id IS NULL`) | Administrator / Global Catalog | Administrator saves only |
+| User-created custom (`owner_user_id` = that user) | That user | That user, or an administrator editing that submission through the admin user-row editor without copying the write onto other rows |
+
+A user-created save must never modify global Service Registry login metadata.
+
+A global save must never silently replace user-owned custom-service login metadata.
+
+Promotion to the global catalog creates or updates a **global** row under administrator authority. It must not run discovery. Prefill from the user row is allowed only as administrator-confirmed input on the global row. It must not rewrite the user-owned row as a side effect.
+
+## Login Entry Types
+
+Active MVP values, stored as `metadata.loginEntryType`:
+
+- `direct_url` — dedicated login URL, supplied by the owner. Open target is that URL.
+- `primary_page` — login begins from the service primary/website page (including a button or modal on that page). Open target is the website URL, stored as `loginUrl` so open does not depend on a null check to mean "please discover".
+
+Not active:
+
+- `navigable`, `modal`, `unknown` as discovery classifications
+- `usesModal`, `phase112Deferred`, `loginIntelligenceHint` as Phase 108 outputs
+- Audience / consumer-vs-business portal classification
+- Confidence scores
+
+Phase 112 may still classify modal and complexity from its own detection. It must not require Phase 108 to have classified them. Existing stored discovery values are legacy. Do not delete them in this task. Do not write them on new saves.
 
 ## Data / State Considerations
-- `login_url_status` migration must not break Phase 102 rows; map `invalid` → `stale` or `failed` per operational choice (document in migration).
-- Bulk refresh progress: UI-only job state acceptable (no server job table required in 108).
-- Rate limits: client-side queue defaults (Manager specifies constants); avoid hammering sites.
-- `clearRegistryCatalogCache()` after bulk admin refresh completes.
-- Dev: `VITE_POC_EXTENSION_ID` remains extension id source until Phase 108 packaging doc defines production id strategy.
-- **Phase 108 discovery deferral metadata** (write-allowed; Phase 112 later classifies authoritatively):
-  - `rejectedLoginUrl` — false-positive candidate that was not persisted
-  - `loginEntryType` — `navigable` \| `modal` \| `unknown`
-  - `usesModal` — boolean observation
-  - `phase112Deferred` — `true` when Phase 112 must handle the surface
-  - `loginIntelligenceHint` — `alternate_audience_portal` \| `modal_on_primary` \| `complex_login_surface` \| `needs_review`
-  - existing: `loginUrlDiscoveryError`, `loginUrlDiscoveryOutcome`, `lastDiscoveryOutcome`
-- Rediscovery / review persist must **clear** auto `login_url` only when D-108-15/16 reject with **positive evidence**; never clear admin overrides; never clear a good consumer URL because a weak modal heuristic fired (D-108-18); never clear / refuse a same-brand trusted-auth consumer URL under D-108-21…23.
 
-## Security / Privacy Considerations
-- Discovery fetches third-party pages in extension context — no user credentials transmitted.
-- Discovery logs must not include page HTML dumps in production user-visible errors.
-- Extension `host_permissions` for production must be reviewed for store policy (broad `https://*/*` may need justification or activeTab pattern in future hardening — document, do not block 108 on full permission refactor unless store requires).
+Core MVP login data (retain and keep writing):
+
+- `service_registry.primary_url` — website / home URL
+- `service_registry.login_url` — explicit login entry URL
+- `service_registry.login_url_status` — column retained. Active writes: `valid` for a human-saved entry. Legacy null entries may remain `unknown` until a human saves. Explicit administrator "mark stale" may continue to write `stale` if that control remains an administrator action, not a discovery result.
+- `metadata.loginUrlSource` — active writes `admin` or `user` only
+- `metadata.loginEntryType` — active writes `direct_url` or `primary_page`
+
+Obsolete discovery metadata — do not delete in this task:
+
+| Field | Classification |
+|---|---|
+| `login_url`, `primary_url` | Retain for MVP |
+| `login_url_status` column | Retain for MVP. Stop writing `needs_review`, `failed`, `missing` as discovery outcomes. |
+| `loginUrlSource=admin` / `user` | Retain for MVP |
+| `loginUrlSource=catalog_seed` | Legacy / migration candidate. Existing Hapoalim seed. Treat as explicit catalog data, not discovery. Do not overwrite. Do not write new `catalog_seed` values. Later migration may map to `admin`. Not an immediate delete. |
+| `loginUrlSource=auto` / `unknown` / `discovered` | Stop Writing. Legacy / migration candidate. Must not authorize any automatic replacement. |
+| `loginUrlConfidence`, `discoveryMethod`, `loginUrlLastDiscoveredAt`, `loginUrlLastCheckedAt`, `loginUrlDiscoveryError`, `loginUrlDiscoveryOutcome`, `loginUrlDiscoveryAttempted`, `lastDiscoveryOutcome`, `rawExtensionDiscovery`, `rejectedLoginUrl` | Stop Writing. Legacy / migration candidate. Safe removal candidate only after runtime no longer reads them and after development data is handled. |
+| Discovery `loginEntryType` values `navigable` / `modal` / `unknown` | Stop Writing. Legacy. Active contract replaces them on the next human save. |
+| `phase112Deferred`, `loginIntelligenceHint` written by discovery | Stop Writing from Phase 108. Phase 112 must not require them. Do not delete stored values in this task. |
+| `usesModal` | Shared with Phase 112 Login Intelligence, which also writes it. Phase 108 must stop writing it. Not a safe removal candidate. |
+| RPC `persist_discovered_login_url` | Stop calling. Legacy. Gate still mentions `invalid`, which Phase 108 mapped to `stale`. Do not drop until no caller remains. |
+| RPC `persist_login_discovery_review` | Stop calling. Legacy / future removal candidate after callers are gone. |
+| RPC `admin_update_login_url` | Retain for explicit administrator saves. Must no longer be used as a discovery success path. Must not stamp discovery success metadata on a non-discovery write. |
+| RPC `ensure_known_builtin_registry_row` | Do not touch. Coalesces `login_url` and must not start discovery. |
+| No discovery history table exists | Nothing to drop. `lastDiscoveryOutcome` is a single object, not a log. |
+
+`login_fields` and credential storage are not discovery data. Do not modify them as part of removing discovery.
+
+## Security / Privacy / Validation boundaries
+
+- Login URL and website URL are explicit inputs. Validate format. Reject empty when the entry type requires a dedicated URL. Do not "repair" an invalid URL by searching the site.
+- Custom website URL remains HTTPS under the existing custom-URL validation. A separate custom Login URL uses the same URL validity rules as the service model (http(s) URL). Do not invent a new canonicalization engine (Phase 116).
+- No third-party page fetch for the purpose of finding a login page.
+- No credentials in login-entry save paths.
+- No service-role key in the client.
+- Discovery logs and raw page payloads must not be written on new saves. Existing `rawExtensionDiscovery` is legacy data, not a new collection surface.
+- Global writes stay on global rows. User writes stay on that user's rows. RLS/RPC ownership checks must not be weakened to remove discovery.
+
+## Relationship to other phases
+
+| Phase | Relationship after this revision |
+|---|---|
+| 102 Service Registry | Owns the table. Phase 108 defines which login fields are active MVP data. |
+| 103 Execution | Opens `loginUrl` when set, else primary URL for legacy nulls. Must not call discovery. |
+| 104 Service Management | Custom add/edit collects explicit login entry. Catalog search named "discovery" (`filterDiscoveryServices`) is unrelated and must remain. |
+| 105 Digital Home | Tile open unchanged. No discovery on click. |
+| 107 Admin | Admin UI maintains explicit login entry. Must not expose rediscovery or bulk login discovery as MVP behavior. |
+| 109 Accounts | No change to authentication. Regression only. |
+| 110 Autofill | Consumes an explicitly stored `loginUrl` (or login fields). Does not require that the URL was discovered. Must not propose silent `loginUrl` replacement. |
+| 111 Service Assets | Icon discovery is a different pipeline (`src/serviceAssets/discovery.ts`). Unaffected. Must not be removed because of the shared word "discovery". |
+| 112 Login Intelligence | Authoritative for complexity classification. Must not depend on Phase 108 discovery hints. Must not invent `loginUrl`. |
+| 113 Login assistance | Uses stored `loginUrl`, else home URL. No discovery. |
+| 116 URL identity | Not this phase. |
+
+## Regression protection
+
+Removal of Login Discovery must not change:
+
+- Creating a global service (persist administrator fields; succeed if extension is absent)
+- Editing a global service
+- Creating a custom service (explicit fields; row created without a discovery step)
+- Editing a custom service
+- Opening a service (`executeServiceFromTile` / `getServiceOpenUrl`)
+- Browser Integration used by open, autofill, and adapters
+- Digital Home tile behavior
+- Service Registry identity, category, and non-login fields
+- Authentication and session (Phase 109)
+- Credential storage and vault encryption
+- Autofill eligibility based on already stored `loginUrl` or `loginFields`
+- Service ownership and global/user isolation
+- Icon assets (Phase 111)
+- Existing stored `login_url` values, including catalog seeds
+
+## Non-goals
+
+The MVP does not include:
+
+- Automatic login-page discovery
+- Crawling websites to locate login pages
+- Guessing or inferring login URLs
+- Discovery confidence scoring
+- Automatic rediscovery
+- Bulk login discovery
+- Background or scheduled login discovery
+- Automatic portal or audience determination
+- AI-based login-page discovery
+- Automatic validation of a login URL by running discovery
+- DiscoveryExecutor, discovery tabs, candidate ranking, common-path invention, trusted-auth probes, federated IdP accept/reject
+- `needs_review` caused by discovery
+- `loginUrlSource=auto`
+- PayPal/Zap/KSP discovery milestones (withdrawn, including deferred M16)
+- Credential lifecycle, autofill expansion, login-intelligence redesign, URL canonicalization, or admin chrome redesign beyond removing discovery controls
+
+## Constraints / Non-Negotiables
+
+- Do not delete Phase 108.
+- Do not renumber later phases.
+- Do not null historical `login_url` while removing discovery.
+- Do not drop database columns or discovery metadata in the same change that detaches the engine, unless a later approved migration follows verified unused state.
+- Do not treat `src/serviceAssets/discovery.ts` or `filterDiscoveryServices` as Login Discovery.
+- Do not modify credential rows.
+- Service creation must not depend on the extension.
+
+## Technical Boundaries / Out of Scope
+
+See Non-goals. In addition, this architecture task does not authorize edits to application source, migrations, Manager artifacts, or Developer artifacts.
 
 ## Testing and Lint Expectations
-- `npm run build` passes (AC-108-17).
-- `node scripts/verifyPhase108BrowserIntegration.mjs` — PASS.
-- `node scripts/verifyPhase108CustomDiscovery.mjs` — PASS.
-- `node scripts/verifyPhase103Execution.mjs` — PASS (regression).
-- `node scripts/verifyPhase108FalsePositiveGate.mjs` — PASS for **reject** fixtures (Zap / modal-only) **and** **accept** fixtures (ordinary consumer `/login` / Phase 103 catalog pages / **Bank Hapoalim-class trusted auth** / **KSP-class auth-host probe**) — AC-108-21, AC-108-22, AC-108-23.
-- Manual matrix: Chrome + Edge; **Zap → NULL (hard)**; **Shufersal / Clalit / HTZone → non-NULL**; Hapoalim trusted-auth; **KSP → auth.ksp non-NULL + Zap NULL**; **PayPal → www.paypal.com/login + Zap NULL**; **Zoom → zoom.us/signin + Zap NULL**.
+
+When engineering is later authorized:
+
+- `npm run build` passes after the discovery bundle is detached from the build if that bundle is removed.
+- No production path references `discoverLogin`, `discoverLoginForRegistryService`, `discoverAndPersistLoginUrl`, `HUB_LOGIN_ENTRY_DISCOVERY`, or `HUB_DISCOVERY_FETCH_HTML`.
+- Existing execution and autofill regression checks still pass.
+- No new discovery tests are required. Discovery-only scripts are not a release gate.
+
+This document does not run those checks.
 
 ## Functional Testability
 
-- **Custom add:** Add custom URL → registry row created → discovery attempted → consumer `loginUrl` when evidence supports it, else `NULL` + metadata
-- **Zap (false-positive) — M15 HARD GATE U19:** after PayPal/Zoom changes, rediscover Zap → `login_url` **NULL** — never `sa.zap…` / business-interface `/login` even when that page has identity fields (D-108-30)
-- **True-positive regression (M10/M11):** Rediscover Shufersal, Clalit, HTZone → `login_url` remains set (AC-108-21)
-- **Trusted-auth priority (M12 / U23):** Rediscover Bank Hapoalim (or fixture equivalent) → `login_url` persists `login.bankhapoalim.co.il/...` (or same-brand trusted auth); must **not** remain NULL with `alternate_audience_portal` solely due to homepage modal / weak wording / `ng-portals` (AC-108-22)
-- **Trusted-auth probe (M13 / U24):** Operator reports M13 complete — keep regression green for KSP/GitHub
-- **Validated common-path (M13 / U25):** GitHub → `https://github.com/login` PASS
-- **Federated IdP (M14 / U26):** Trello → `id.atlassian.com/login` (keep M14 obligations)
-- **Live validation (M15 / U27):** PayPal → persist `https://www.paypal.com/login`; **must be paired with U19 Zap NULL on the same build**
-- **Sibling-TLD (M15 / U28):** Zoom → persist `https://zoom.us/signin`; **must be paired with U19 Zap NULL on the same build**
-- **Zap dual gate (M15 HARD / U19):** after M15 changes, Zap `login_url` remains **NULL** — never business portal / `sa.zap…` even if that page has identity fields (D-108-30)
-- **No extension:** Add still succeeds; open-URL-only on tile; friendly banner
-- **Admin / Isolation / scripts:** unchanged from prior contract
+- Page/screen: Admin catalog create/edit; user Add Site (and custom edit); Digital Home tile open.
+- User-visible behavior: administrator sets name, primary URL, login entry type, and login URL. User sees the same-as-website control defaulting on, and a separate Login URL field when off. No "searching for login page" state. No discovery tab.
+- Command-line flow: not the acceptance path. Build pass is a later engineering gate (AC-108-15).
+- API endpoint / request: registry insert/update of `login_url` and ownership metadata. No discovery RPC on those requests.
+- Minimal end-to-end flow: create custom site with same-as-website on; create another with a distinct login URL; create global service with an administrator login URL; open each tile; confirm no discovery message and no overwrite after edit.
+- Expected observable result: stored `login_url` equals the human-provided value; `loginUrlSource` is `user` or `admin`; open uses that URL.
+
+## Acceptance Criteria
+
+| ID | Criterion |
+|---|---|
+| AC-108-1 | Global catalog services support an administrator-defined login entry point (name, primary URL, login URL, login entry type). |
+| AC-108-2 | Administrator-provided login URLs are never overwritten by automatic discovery. No automatic discovery path exists. |
+| AC-108-3 | User-created custom services support an explicitly defined login entry point. |
+| AC-108-4 | For a custom service, the user can specify that the website URL is also the login entry point. That control defaults to enabled and sets `loginUrl` equal to the website URL. |
+| AC-108-5 | A user can provide a separate login URL when the login entry point differs from the website URL. Save is rejected if that URL is missing while the control is off. |
+| AC-108-6 | No service creation flow performs Login Discovery, including admin create, user add, and approval/promote. |
+| AC-108-7 | No service update flow performs Login Discovery. |
+| AC-108-8 | Missing Login URL information never triggers Login Discovery. Legacy null `login_url` opens the primary URL. |
+| AC-108-9 | No background, bulk, retry, or rediscovery Login Discovery executes. |
+| AC-108-10 | Global and user-owned login metadata remain isolated. A user save does not update global login fields. A global save does not update user-owned login fields. |
+| AC-108-11 | Browser Integration continues to operate independently of Login Discovery, including when discovery messages are absent, and Hub open still works without the extension. |
+| AC-108-12 | Opening a service uses explicitly configured login-entry metadata (`loginUrl`), or the primary URL only as the documented legacy/primary-page fallback. |
+| AC-108-13 | Removal of Login Discovery does not modify credential data. |
+| AC-108-14 | Removal of Login Discovery does not alter authentication. |
+| AC-108-15 | After later engineering implementation, build and existing execution/autofill regression validation pass. |
+| AC-108-16 | `primary_page` persists `loginUrl` equal to the primary/website URL without crawling or inference. |
+| AC-108-17 | `direct_url` requires a human-provided Login URL. |
+| AC-108-18 | User custom save and admin global save cannot cross-write the other ownership class (verified against `owner_user_id`). |
+| AC-108-19 | Phase 112 classification does not require `phase112Deferred` or discovery `loginIntelligenceHint`. Opening and autofill do not require discovery confidence or method. |
+| AC-108-20 | Phase 111 icon discovery and catalog search (`filterDiscoveryServices`) remain functional. They are not Login Discovery. |
+
+Previous AC-108-1 through AC-108-26 that required discovery, rediscovery, bulk refresh, audience gates, or discovery-tab behavior are withdrawn.
+
+## Required engineering deliverables
+
+Not authorized until CEO accepts this revision and the Manager plans the work. When authorized, engineering must:
+
+1. Stop calling discovery from user add, admin create, admin edit, and promote/approve.
+2. Add the custom-service same-as-website control and separate Login URL field; persist the rules in D-108-7.
+3. Make admin create/edit persist explicit login entry without a follow-up discovery call; set `loginUrlSource=admin` on that save.
+4. Remove discovery-only UI (rediscover, bulk login refresh, discovery progress, discovery diagnostics that exist only for the engine).
+5. Leave Browser Integration, execution messages, and icon discovery in place.
+6. Stop writing obsolete discovery metadata. Do not delete columns or historical keys in the first implementation change.
+7. Detach the discovery bundle from `npm run build` if the bundle is removed.
+8. Prove AC-108-1 through AC-108-20 without changing credentials or authentication.
+
+## Engineering Change Boundary
+
+### A. RETAIN
+Required for the MVP.
+
+- `src/browserIntegration/**`, `src/execution/extensionBridge.ts`
+- Extension messages other than discovery: `POC_GENERIC_FILL`, `POC_GENERIC_DETECT`, `POC_IDENTITY_FIRST_FILL`, `POC_FILL_DEMO`, `POC_FILL_IL` in `extension/background.js`
+- `service_registry.primary_url`, `service_registry.login_url`, `service_registry.login_url_status`
+- `getServiceOpenUrl` in `src/service/legacyService.ts`; `executeServiceFromTile` in `src/execution/serviceExecution.ts`
+- `shouldAttemptGenericAutofill` in `src/execution/autofillEligibility.ts` (consumes stored `loginUrl`; do not require discovery)
+- Admin catalog fields for name, primary URL, login URL in `src/admin/RegistryAdmin.tsx`
+- `adminUpdateLoginUrl` / RPC `admin_update_login_url` as the explicit administrator save path only
+- `createGlobalRegistryRow`, `updateGlobalRegistryRow`, `updateUserOwnedRegistryRow` (without discovery wrappers)
+- `src/catalog/builtinCatalog.ts` explicit `loginUrl` seeds
+- `ensure_known_builtin_registry_row` coalesce behavior
+- `src/serviceManagement/discoveryFilter.ts` (catalog search)
+- `src/serviceAssets/discovery.ts` and admin icon refresh (Phase 111)
+- Authentication and credential modules
+
+### B. MODIFY
+Required by the MVP, currently coupled to Login Discovery.
+
+- `src/App.tsx` custom add: keep upsert; remove `discoverLoginForRegistryService` and `recordLoginDiscoveryPipelineFailure`. Add explicit login-entry persistence.
+- `src/AddSiteModal.tsx` and `src/ManageServices.tsx`: add same-as-website control and optional separate Login URL. No discovery progress copy.
+- `src/catalog/customService.ts` `createCustomServiceDefinition`: accept explicit login entry; do not leave `loginUrl` unset for new creates under the new rules.
+- `src/admin/adminRegistryApi.ts`: `createGlobalRegistryRowWithDiscovery` and `promoteUserSubmissionWithDiscovery` must become explicit saves. `adminTriggerLoginRediscovery` and `adminBulkRefreshLoginUrls` must not remain reachable. `adminUpdateLoginUrl` must set ownership metadata without discovery outcome theater that implies a discovery run. Main-form save must set `loginUrlSource=admin` and `login_url_status=valid` when the administrator saves an entry.
+- `src/admin/RegistryAdmin.tsx` create path must not set discovering state or call the discovery wrapper. Remove bulk refresh control.
+- `src/admin/LoginUrlRefresh.tsx`: keep manual login URL save; remove "גילוי מחדש".
+- `src/admin/ApprovalQueue.tsx`: approve must not call `promoteUserSubmissionWithDiscovery`.
+- `src/registry/registryMapper.ts` `serviceDefinitionToRegistryInsert`: stop writing discovery outcome keys as if discovery ran. Write explicit source and entry type.
+- `package.json` `build` script: must not require `build:extension-discovery` once the bundle is unused.
+- `src/admin/IntegrationStatusPanel.tsx`: stop presenting discovery outcome as a live product status. May still show `login_url` and `primary_url`.
+
+### C. REMOVE
+Exclusive to Automatic Login Discovery. Not architecturally required. Do not remove until CEO accepts and Manager sequences the work.
+
+- `src/discovery/**` (engine, policy, audience gate, probes, executor, harness session)
+- `src/extension/discoveryPageEntry.ts`
+- Generated `extension/discovery/login-entry-discovery.js` and `scripts/buildExtensionDiscovery.mjs` after the build script no longer calls it
+- `HUB_LOGIN_ENTRY_DISCOVERY` and `HUB_DISCOVERY_FETCH_HTML` branches in `extension/background.js` only
+- `src/registry/bulkLoginUrlRefresh.ts`
+- `src/registry/loginUrlClearPolicy.ts`
+- `src/catalog/customServiceDiscovery.ts` once no caller remains
+- `src/registry/loginUrlDiscovery.ts` discovery persist functions (`discoverAndPersistLoginUrl`, `recordLoginDiscoveryPipelineFailure`)
+- `src/dev/DiscoveryHarness.tsx` and its route in `src/main.tsx`
+- `scripts/verifyPhase108*.mjs`, `scripts/capturePhase108*.mjs`, `scripts/fixtures/phase108-*` as release gates
+- Admin controls: rediscover, bulk login refresh, force-overwrite checkbox
+
+### D. LEGACY DATA / CLEANUP CANDIDATE
+Remove only after runtime dependencies and existing development data are handled.
+
+- Metadata keys listed as Stop Writing / Legacy in Data / State
+- RPC `persist_discovered_login_url`, `persist_login_discovery_review`
+- Status values `needs_review`, `failed`, `missing` if no remaining reader and no rows require them
+- `loginUrlSource=catalog_seed` mapping to `admin` (optional later migration; do not null `login_url`)
+- Unused exports with no production callers: `discoverLoginForCustomService`, `markLoginUrlInvalid`, `registryRowNeedsDiscovery`, `buildInitialDiscoveryMetadata`, `mergeDiscoveryOntoKnownSeed`
+- `src/discovery/execution/DISCOVERY_EXECUTION.md` (stale relative to implementation; not an active contract)
+
+### E. DO NOT TOUCH
+- Phase 109 authentication, session, vault encryption
+- Credential tables and vault credential blobs
+- `executeServiceFromTile` orchestration except to ensure it does not import discovery
+- Adapter execute implementations except that they keep receiving the already resolved open URL
+- Phase 111 asset tables, Storage, icon upload
+- Phase 112 classification engine, except it must tolerate missing discovery hints (already true)
+- `filterDiscoveryServices`
+- `src/serviceAssets/discovery.ts`
 
 ## Handoff Notes for Manager
 
-1. Sync `manager-phase108.md`: **M15 accepted with U27 PayPal deferred** (D-108-31). Live green: Zap NULL + KSP + Zoom. PayPal = seed/admin until M16.
-2. **Freeze** further discovery-gate churn unless opening **M16** for PayPal only (must re-prove Zap+KSP+Zoom on same build).
-3. Advance program phases; Phase 108 discovery backlog = PayPal auto-discovery only (plus any open M14 if still needed).
-4. Optional: one-line catalog migration seed for `paypal` → `https://www.paypal.com/login` (same pattern as Hapoalim) — Manager/Developer ops, not heuristic rewrite.
+Do not start Developer work until the CEO accepts this revision.
+
+When accepted:
+
+- Plan implementation against this document, not against `manager-phase108.md` discovery milestones. That Manager artifact still describes withdrawn discovery work. The Architect does not edit Manager artifacts.
+- Do not reopen PayPal M16 or discovery-gate churn.
+- Do not delete historical `login_url` values.
+- Sequence: stop invocation and add explicit UI persist first; remove engine and messages second; database cleanup last, in a separate approved change.
+- Icon discovery and catalog search stay.
 
 ## Architect Review
-ARCHITECT_REVIEW_STATUS: APPROVED_WITH_DEFERRED_U27
+ARCHITECT_REVIEW_STATUS: APPROVED
 
 ### Review Notes
-_Operator 2026-07-14: After repeated Sarah fixes, stable live set is Zap NULL + KSP + Zoom discovered; PayPal empty again. Further churn risks dual-gate regression. Approve M15 closeout with PayPal auto-discovery deferred (D-108-31); interim seed/admin; resume as M16 later — not Phase 112. Program may proceed to subsequent phases._
+2026-09-14. Phase 108 revised to Browser Integration and Explicit Login Entry Management. Automatic Login Discovery is withdrawn from the MVP. Phase number retained. Later phases are not renumbered. Ready for Manager planning only after CEO acceptance. No implementation is authorized by this approval alone.
 
 ### Required Corrections
-1. Manager: document deferred U27 / M16 backlog; stop instructing more PayPal discovery heuristics now.
-2. Developer: no further M15 discovery churn; optional paypal catalog/admin seed only; lock regression on Zap+KSP+Zoom.
-3. When M16 opens: PayPal auto-discover only + same-build Zap/KSP/Zoom regression.
+None for the architecture contract. Manager and Developer artifacts that still require discovery are stale relative to this revision and must not be used as the implementation source.

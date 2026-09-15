@@ -9,8 +9,7 @@ import NotificationsSection from './digitalHome/NotificationsSection';
 import UsefulServicesSection from './digitalHome/UsefulServicesSection';
 import {
   LoginAssistancePanel,
-  MSG_NO_CREDENTIALS,
-  serviceHasUsableCredentials,
+  shouldOpenLoginAssistancePanel,
 } from './loginAssistance';
 import { getLoginFields, type Service } from './mockServices';
 import type { AccessProfile, ResolveProfileFn } from './profile';
@@ -39,6 +38,8 @@ interface DashboardProps {
   /** Lock control rendered inside the Home shell (D-113-23 / AC-113-35). */
   vaultUnlocked?: boolean;
   onLockVault?: () => void;
+  /** Open existing credential editor from the missing-credentials Launch Card. */
+  onAddCredentials?: (service: Service) => void;
 }
 
 interface AssistanceState {
@@ -67,6 +68,7 @@ export default function Dashboard({
   catalogError = null,
   vaultUnlocked = true,
   onLockVault,
+  onAddCredentials,
 }: DashboardProps) {
   const logos = useServiceLogos(services);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -99,18 +101,13 @@ export default function Dashboard({
       return;
     }
 
-    if (
-      !serviceHasUsableCredentials(
-        service,
-        accessProfiles,
-        credentialsByProfileId,
-      )
-    ) {
-      setAssistance(null);
-      clearStatusSoon(MSG_NO_CREDENTIALS, 'warn');
-      return;
-    }
-
+    // Every launch kind uses the floating Launch Card — never a page-level banner.
+    shouldOpenLoginAssistancePanel(
+      service,
+      accessProfiles,
+      credentialsByProfileId,
+    );
+    setStatusMessage(null);
     setAssistance({ service, anchorRect });
   }
 
@@ -238,6 +235,14 @@ export default function Dashboard({
           logoSrc={logos[assistance.service.id]}
           onClose={() => setAssistance(null)}
           onStatus={clearStatusSoon}
+          onAddCredentials={
+            onAddCredentials
+              ? (service) => {
+                  onAddCredentials(service);
+                  setAssistance(null);
+                }
+              : undefined
+          }
         />
       )}
     </div>

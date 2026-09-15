@@ -1,6 +1,8 @@
 # Migration Guide — Phase 108 (Browser Integration & Login Discovery)
 
-Phase 108 delivers a **browser integration abstraction** for Chrome and Edge (Chromium), a **unified login-entry discovery pipeline**, admin override protection, and bulk login URL refresh — without changing Phase 103 execution semantics.
+**2026-09-14:** Automatic Login Discovery is not the MVP path. Create, edit, and approval persist an explicit login entry and must not invoke discovery. The sections below describe the withdrawn discovery pipeline and existing migrations. They are not the active contract. No new migration was added for the explicit-entry change. Do not null stored `login_url` values.
+
+Phase 108 delivers a **browser integration abstraction** for Chrome and Edge (Chromium). The previous unified login-entry discovery pipeline is withdrawn from the MVP.
 
 ## Prerequisites
 

@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import AddSiteModal from './AddSiteModal';
+import AddSiteModal, { type AddSiteFormValues } from './AddSiteModal';
 import ServiceProfileManagementModal from './ServiceProfileManagementModal';
 import ServiceCard from './components/ServiceCard';
 import { createCustomServiceDefinition } from './catalog';
-import type { CustomServiceDiscoveryResult } from './catalog';
+import { defaultSameAsWebsite } from './catalog/explicitLoginEntry';
 import { groupSelectedServicesByCategory } from './digitalHome/homeLayout';
 import {
   runtimeCategoryLabels,
   runtimeCategoryOrder,
-  getLoginFields,
   type Service,
   type ServiceCategory,
 } from './mockServices';
@@ -35,7 +34,22 @@ import {
   deleteAccessProfileFromCloud,
   deleteCloudEncryptedCredentialByLocalProfileId,
 } from './supabase/persistence';
+import {
+  CATALOG_SERVICE_ADD_HOME_LABEL,
+  CATALOG_SERVICE_ALREADY_IN_HOME_DISMISS_LABEL,
+  catalogServiceAlreadyInHomeMessage,
+  CATALOG_SERVICE_AVAILABLE_PROMPT,
+  catalogServiceAvailableTitle,
+  CATALOG_SERVICE_NOT_NOW_LABEL,
+  type AddCustomServiceResult,
+} from './supabase/registryPersistence';
 import { toFriendlySecurityError, VaultStateBadge } from './trust';
+import {
+  NO_STORED_CREDENTIALS_LIST_LABEL,
+  isNoStoredCredentialsMode,
+  offersCredentialManagementPanel,
+  resolveCredentialEntry,
+} from './service/credentialSchema';
 
 interface ManageServicesProps {
   allServices: Service[];
@@ -47,7 +61,8 @@ interface ManageServicesProps {
   catalogError: string | null;
   onAddService: (id: string) => Promise<void>;
   onRemoveService: (id: string) => Promise<void>;
-  onAddCustom: (definition: ServiceDefinition) => Promise<CustomServiceDiscoveryResult>;
+  onAddCustom: (definition: ServiceDefinition) => Promise<AddCustomServiceResult>;
+  onUpdateCustom: (definition: ServiceDefinition) => Promise<void>;
   onVaultStateChange: (state: VaultState) => Promise<void>;
   onRetryCatalog: () => void;
   onContinue: () => void;
@@ -118,6 +133,7 @@ export default function ManageServices({
   onAddService,
   onRemoveService,
   onAddCustom,
+  onUpdateCustom,
   onVaultStateChange,
   onRetryCatalog,
   onContinue,
@@ -126,11 +142,14 @@ export default function ManageServices({
 }: ManageServicesProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
-  const [isDiscovering, setIsDiscovering] = useState(false);
-  const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
-  const [discoveryOutcome, setDiscoveryOutcome] = useState<'success' | 'failure' | null>(
-    null,
-  );
+  const [isSavingCustom, setIsSavingCustom] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [catalogOffer, setCatalogOffer] = useState<
+    | { kind: 'already_in_user_home'; serviceId: string; displayName: string }
+    | { kind: 'catalog_service_available'; serviceId: string; displayName: string }
+    | null
+  >(null);
+  const [catalogOfferBusy, setCatalogOfferBusy] = useState(false);
   const [managingService, setManagingService] = useState<Service | null>(null);
   const manageOpenerRef = useRef<HTMLButtonElement | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -158,7 +177,7 @@ export default function ManageServices({
     }
     const rect = anchor.getBoundingClientRect();
     const menuWidth = 148;
-    const menuHeight = 48;
+    const menuHeight = 88;
     // Anchor under the ⋮ and open inward (rightward from the left-side kebab in RTL).
     let left = rect.left;
     if (left + menuWidth > window.innerWidth - 8) {
@@ -251,63 +270,115 @@ export default function ManageServices({
     });
   }
 
+  function dismissCatalogOffer() {
+    setCatalogOffer(null);
+    setCatalogOfferBusy(false);
+  }
+
+  async function confirmAddCatalogToHome() {
+    if (!catalogOffer || catalogOffer.kind !== 'catalog_service_available') {
+      return;
+    }
+    if (catalogOfferBusy) return;
+    setCatalogOfferBusy(true);
+    try {
+      await onAddService(catalogOffer.serviceId);
+      dismissCatalogOffer();
+    } catch {
+      setCatalogOfferBusy(false);
+    }
+  }
+
   function openAddModal() {
     setAddError(null);
-    setDiscoveryMessage(null);
-    setDiscoveryOutcome(null);
-    setIsDiscovering(false);
+    setIsSavingCustom(false);
+    setEditingServiceId(null);
     setShowAddModal(true);
   }
 
   function dismissAddModal() {
     setShowAddModal(false);
+    setEditingServiceId(null);
     setAddError(null);
-    setDiscoveryMessage(null);
-    setDiscoveryOutcome(null);
-    setIsDiscovering(false);
+    setIsSavingCustom(false);
     addInFlightRef.current = false;
   }
 
   function closeAddModal() {
-    if (isDiscovering) {
+    if (isSavingCustom) {
       return;
     }
     dismissAddModal();
   }
 
-  async function handleAddCustomSite(
-    displayName: string,
-    primaryUrl: string,
-    category: ServiceCategory,
-  ) {
-    // Ignore repeated submits while a request is in progress or already succeeded.
-    if (addInFlightRef.current || isDiscovering || discoveryMessage) return;
+  function openEditLoginEntry(serviceId: string) {
+    closeRowMenu();
+    setAddError(null);
+    setIsSavingCustom(false);
+    setEditingServiceId(serviceId);
+    setShowAddModal(true);
+  }
+
+  async function handleAddCustomSite(values: AddSiteFormValues) {
+    if (addInFlightRef.current || isSavingCustom) return;
     addInFlightRef.current = true;
 
     try {
+      const existingDefinition = editingServiceId
+        ? vaultState.customServices.find((service) => service.id === editingServiceId)
+        : undefined;
+      const existingRuntime = editingServiceId
+        ? allServices.find((service) => service.id === editingServiceId)
+        : undefined;
       const definition = createCustomServiceDefinition({
-        displayName,
-        primaryUrl,
-        category,
+        id: editingServiceId ?? undefined,
+        displayName: values.displayName,
+        primaryUrl: values.primaryUrl,
+        category: values.category,
+        sameAsWebsite: values.sameAsWebsite,
+        dedicatedLoginUrl: values.dedicatedLoginUrl,
+        metadata: existingDefinition?.metadata ?? existingRuntime?.metadata,
       });
 
       setAddError(null);
-      setDiscoveryMessage(null);
-      setDiscoveryOutcome(null);
-      setIsDiscovering(true);
+      setIsSavingCustom(true);
 
-      // Phase 108: App.addCustomService creates the registry row then runs the shared
-      // Login Discovery pipeline (same as admin). Do not discover before persistence.
-      const { outcome } = await onAddCustom(definition);
-      setDiscoveryMessage(outcome.message);
-      setDiscoveryOutcome(outcome.status);
-      setIsDiscovering(false);
-
-      window.setTimeout(() => {
+      if (editingServiceId) {
+        await onUpdateCustom(definition);
         dismissAddModal();
-      }, 1800);
+      } else {
+        const result = await onAddCustom(definition);
+        if (result.status === 'already_in_user_home') {
+          dismissAddModal();
+          setCatalogOffer({
+            kind: 'already_in_user_home',
+            serviceId: result.existingServiceId,
+            displayName: result.displayName,
+          });
+          return;
+        }
+        if (result.status === 'catalog_service_available') {
+          dismissAddModal();
+          setCatalogOffer({
+            kind: 'catalog_service_available',
+            serviceId: result.existingServiceId,
+            displayName: result.displayName,
+          });
+          return;
+        }
+        if (result.status === 'same_user_custom_duplicate') {
+          dismissAddModal();
+          setCatalogOffer({
+            kind: 'already_in_user_home',
+            serviceId: result.existingServiceId,
+            displayName: result.displayName,
+          });
+          return;
+        }
+        dismissAddModal();
+      }
     } catch (error) {
-      setIsDiscovering(false);
+      setIsSavingCustom(false);
       setAddError(toFriendlySecurityError(error));
     } finally {
       addInFlightRef.current = false;
@@ -335,11 +406,17 @@ export default function ManageServices({
     service: Service,
     opener?: HTMLButtonElement | null,
   ) {
+    if (!offersCredentialManagementPanel(service)) {
+      return;
+    }
     manageOpenerRef.current = opener ?? null;
     setProfileError(null);
-    const ensured = ensureDefaultProfileForService(vaultState, service.id);
-    if (ensured !== vaultState) {
-      await onVaultStateChange(ensured);
+    const entry = resolveCredentialEntry(service);
+    if (entry.kind === 'form') {
+      const ensured = ensureDefaultProfileForService(vaultState, service.id);
+      if (ensured !== vaultState) {
+        await onVaultStateChange(ensured);
+      }
     }
     setManagingService(service);
   }
@@ -357,6 +434,10 @@ export default function ManageServices({
   const managingProfiles = managingService
     ? getProfilesForService(vaultState, managingService.id)
     : [];
+
+  const editingService = editingServiceId
+    ? allServices.find((service) => service.id === editingServiceId) ?? null
+    : null;
 
   return (
     <div className="service-management">
@@ -464,18 +545,24 @@ export default function ManageServices({
                                   pending={pending}
                                   layout="row"
                                   manageSlot={
-                                    <button
-                                      type="button"
-                                      className="sm-action sm-action--primary"
-                                      onClick={(event) =>
-                                        void openProfileManagement(
-                                          service,
-                                          event.currentTarget,
-                                        )
-                                      }
-                                    >
-                                      ניהול
-                                    </button>
+                                    isNoStoredCredentialsMode(service) ? (
+                                      <span className="sm-manage-status">
+                                        {NO_STORED_CREDENTIALS_LIST_LABEL}
+                                      </span>
+                                    ) : offersCredentialManagementPanel(service) ? (
+                                      <button
+                                        type="button"
+                                        className="sm-action sm-action--primary"
+                                        onClick={(event) =>
+                                          void openProfileManagement(
+                                            service,
+                                            event.currentTarget,
+                                          )
+                                        }
+                                      >
+                                        ניהול
+                                      </button>
+                                    ) : null
                                   }
                                   moreSlot={
                                     <div className="sm-row-menu">
@@ -626,20 +713,93 @@ export default function ManageServices({
 
       {showAddModal && (
         <AddSiteModal
+          mode={editingServiceId ? 'edit' : 'create'}
           onAdd={handleAddCustomSite}
           onCancel={closeAddModal}
           categoryOptions={userFacingCategories()}
           error={addError}
-          isDiscovering={isDiscovering}
-          discoveryMessage={discoveryMessage}
-          discoveryOutcome={discoveryOutcome}
+          isSaving={isSavingCustom}
+          initialDisplayName={editingService?.name ?? ''}
+          initialPrimaryUrl={editingService?.url ?? ''}
+          initialCategory={editingService?.category}
+          initialSameAsWebsite={
+            editingService
+              ? defaultSameAsWebsite(editingService.loginUrl, editingService.url)
+              : true
+          }
+          initialLoginUrl={editingService?.loginUrl ?? ''}
         />
       )}
 
-      {managingService && (
+      {catalogOffer && (
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            if (!catalogOfferBusy) dismissCatalogOffer();
+          }}
+        >
+          <div
+            className="modal-dialog sm-catalog-offer"
+            dir="rtl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sm-catalog-offer-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {catalogOffer.kind === 'already_in_user_home' ? (
+              <>
+                <h2
+                  id="sm-catalog-offer-title"
+                  className="modal-title sm-catalog-offer-title"
+                >
+                  {catalogServiceAlreadyInHomeMessage(catalogOffer.displayName)}
+                </h2>
+                <div className="modal-actions sm-catalog-offer-dismiss">
+                  <button
+                    type="button"
+                    className="modal-btn modal-btn-primary"
+                    onClick={dismissCatalogOffer}
+                  >
+                    {CATALOG_SERVICE_ALREADY_IN_HOME_DISMISS_LABEL}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2
+                  id="sm-catalog-offer-title"
+                  className="modal-title sm-catalog-offer-title"
+                >
+                  {catalogServiceAvailableTitle(catalogOffer.displayName)}
+                </h2>
+                <p className="sm-catalog-offer-prompt">{CATALOG_SERVICE_AVAILABLE_PROMPT}</p>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="modal-btn modal-btn-primary"
+                    disabled={catalogOfferBusy}
+                    onClick={() => void confirmAddCatalogToHome()}
+                  >
+                    {catalogOfferBusy ? 'מוסיף…' : CATALOG_SERVICE_ADD_HOME_LABEL}
+                  </button>
+                  <button
+                    type="button"
+                    className="modal-btn modal-btn-secondary"
+                    disabled={catalogOfferBusy}
+                    onClick={dismissCatalogOffer}
+                  >
+                    {CATALOG_SERVICE_NOT_NOW_LABEL}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {managingService && offersCredentialManagementPanel(managingService) && (
         <ServiceProfileManagementModal
           service={managingService}
-          loginFields={getLoginFields(managingService)}
           profiles={managingProfiles}
           credentials={vaultState.credentials}
           error={profileError}
@@ -710,6 +870,18 @@ export default function ManageServices({
               >
                 {pendingIds.has(menuOpenId) ? 'מסיר…' : 'הסר אתר'}
               </button>
+              {allServices.find((service) => service.id === menuOpenId)?.source ===
+                'user-created' && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="sm-menu-item sm-menu-item--action"
+                  disabled={pendingIds.has(menuOpenId)}
+                  onClick={() => openEditLoginEntry(menuOpenId)}
+                >
+                  עריכת פרטי האתר
+                </button>
+              )}
             </div>
           </>,
           document.body,

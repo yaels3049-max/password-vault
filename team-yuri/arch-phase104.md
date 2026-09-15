@@ -1,5 +1,8 @@
 # Architecture Phase 104
 
+## Amendment
+AMENDED: 2026-09-14 — **Phase 108 MVP.** Custom add must not call `discoverLoginForCustomService` or any login discovery. The user supplies an explicit login entry (`arch-phase108.md`). Catalog search in `discoveryFilter.ts` is unchanged and is not Login Discovery.
+
 ## Phase Identifier
 PHASE=104
 
@@ -55,7 +58,7 @@ Phase 104 owns **management UX and selection orchestration** only. It does not o
 | **D-104-13: Resilient discovery section** | AC-104-10 | When registry/catalog fetch fails, **My Services** remains usable from vault state. Discover section shows friendly error/empty state; selected services still manageable. |
 | **D-104-14: Pending-operation safety** | AC-104-13, AC-104-23 | While add/remove/custom-add persist is in flight: disable relevant controls; block navigation side-effects that would leave inconsistent state; clear in-flight lock on success or failure. |
 | **D-104-15: Icons interim** | Phase 111 dependency | Cards use existing logo resolution (`useServiceLogos`, favicon metadata). Full Supabase Storage icon pipeline is **out of scope** for Phase 104. |
-| **D-104-16: Phase 116 integration boundary** | PLAN dependency note | Custom add continues current `createCustomServiceDefinition` + discovery flow. **Full URL canonicalization and duplicate registry prevention** deferred to Phase 116. Phase 104 may add **user-visible reuse messaging** only when existing logic already detects a match — no new canonicalization engine. |
+| **D-104-16: Phase 116 integration boundary** | PLAN dependency note; arch-phase108 2026-09-14 | Custom add uses `createCustomServiceDefinition` plus an explicit login entry. It must not run login discovery. **Full URL canonicalization and duplicate registry prevention** remain deferred to Phase 116. |
 | **D-104-17: Execution vs management separation (strict)** | PLAN §14, P5, amended AC-104-17 | **Digital Home** is the **sole user-facing execution surface** — tile click → `openServiceWithProfile` → `executeServiceFromTile`. **Service Management** is **administration-only**: selection, credential/profile management via **ניהול**, remove via ⋮ **הסר שירות**. Service Management must not import or call `executeServiceFromTile`, `openServiceWithProfile`, or any execution helper. Footer secondary CTA: **לבית הדיגיטלי**. |
 | **D-104-18: First-run mode** | Existing product flow | `isFirstRun` remains a **layout/copy variant** of the same Service Management screen (simplified helper text, continue CTA). Same components and persistence rules apply. |
 | **D-104-19: Progressive-disclosure management modal** | AC-104-7, UX simplification | **ניהול** opens `ServiceProfileManagementModal` with mode derived from profile count. **Single-profile service:** modal shows **credential editing directly** for the implicit default profile — profile chrome (rename, delete, set-default, profile list) **hidden**; default profile is internal, not surfaced as a named entity on the card. **Multi-profile service:** modal shows **full profile-aware management** — profile list, rename, delete, set-default, per-profile credential edit. Secondary actions **הוספת פרופיל נוסף** and **ניהול פרופילים** (profile-structure controls) appear **inside the modal only**, not on the card. Underlying `AccessProfile` model, vault credential storage, and CRUD callbacks unchanged. |
@@ -184,7 +187,7 @@ Digital Home re-renders from persisted selectedIds
 ### Custom add flow (unchanged contract)
 
 1. User opens single **+ הוסף אתר** from **הוספת שירותים** toolbar.
-2. `AddSiteModal` → `discoverLoginForCustomService` → `onAddCustom` in `App.tsx`.
+2. `AddSiteModal` → explicit login entry → `onAddCustom` in `App.tsx`. Do not call `discoverLoginForCustomService` (withdrawn, arch-phase108 2026-09-14).
 3. Registry upsert + vault persist + add to `selectedIds`.
 4. Same idempotent/pending rules as catalog add (D-104-5, D-104-14).
 

@@ -77,6 +77,15 @@ function mainBehavioral() {
   );
   assert(!allowsAuto('manual_only'), 'AC-113-17 manual blocks auto');
   assert(allowsAuto('best_effort') && allowsAuto('automatic_supported'));
+
+  const openCta = 'פתח אתר';
+  assert(openCta === 'פתח אתר', 'service-open CTA is פתח אתר');
+  assert(
+    !openCta.includes('יד2') &&
+      !openCta.includes('Spotify') &&
+      !openCta.includes('איבורי'),
+    'service-open CTA does not embed Hebrew or English service names',
+  );
 }
 
 function assertFloat(anchor, expectedSide) {
@@ -104,6 +113,17 @@ function mainStatic() {
   assert(!/\bBest Effort\b/i.test(messages), 'AC-113-22 no Best Effort English');
   assert(messages.includes('MSG_OPENED_HOME_FALLBACK'), 'AC-113-23 home fallback copy');
   assert(messages.includes('MSG_NO_CREDENTIALS'), 'AC-113-24 missing credentials copy');
+  assert(messages.includes('MSG_MISSING_USER_CREDENTIALS_LAUNCH'), 'in-card missing credentials copy');
+  assert(messages.includes('עדיין לא שמרת פרטי כניסה לאתר זה.'), 'exact missing-credentials launch copy');
+  assert(messages.includes('פרטי הכניסה לאתר אינם נשמרים בבית הדיגיטלי.'), 'exact no-stored launch copy');
+  assert(messages.includes('ממתין להגדרת מנהל המערכת.'), 'exact not-configured launch copy');
+  assert(!messages.includes('פרטי הכניסה לאתר עדיין לא הוגדרו במערכת.'), 'retired not-configured copy gone');
+  assert(messages.includes('LABEL_ADD_CREDENTIALS'), 'add credentials CTA copy');
+  assert(messages.includes("LABEL_OPEN_SITE = 'פתח אתר'"), 'unified service-open CTA');
+  assert(!messages.includes('פתח אתר להתחברות'), 'retired login-open CTA gone');
+  assert(!/פתח את \$\{serviceName\}/.test(messages), 'named service-open CTA retired');
+  assert(!messages.includes('export function labelOpenSiteNamed'), 'named CTA helper retired');
+  assert(messages.includes("נסה מילוי אוטומטי"), 'Autofill copy unchanged');
   assert(messages.includes('לא אותר דף התחברות'), 'AC-113-23 Hebrew home-open');
   assert(messages.includes('ניהול האתרים'), 'AC-113-24 manage prompt');
   assert(!messages.includes('«ניהול האתרים»'), 'no guillemets around manage screen name');
@@ -129,6 +149,9 @@ function mainStatic() {
 
   const gate = read('src/loginAssistance/credentialsGate.ts');
   assert(gate.includes('serviceHasUsableCredentials'), 'credentials gate helper');
+  assert(gate.includes('shouldOpenLoginAssistancePanel'), 'launch card open gate');
+  assert(gate.includes('resolveCredentialEntry'), 'launch gate uses resolved credential mode');
+  assert(gate.includes('no-stored-credentials'), 'no-stored must open launch card');
 
   const panel = read('src/loginAssistance/LoginAssistancePanel.tsx');
   assert(panel.includes('data-floating') || panel.includes('la-panel--float'), 'floating panel');
@@ -136,6 +159,19 @@ function mainStatic() {
   assert(!panel.includes('supportLevelLabel'), 'no visible support badge text');
   assert(!/\bManual Only\b/i.test(panel) && !/\bBest Effort\b/i.test(panel), 'panel Hebrew-facing');
   assert(panel.includes('IconCopy') && panel.includes('IconEye') && panel.includes('IconClose'), 'icon buttons');
+  assert(panel.includes('MSG_NO_STORED_CREDENTIALS_LAUNCH'), 'no-stored launch card copy');
+  assert(panel.includes('MSG_NOT_CONFIGURED_LAUNCH'), 'not-configured launch card copy');
+  assert(panel.includes('MSG_MISSING_USER_CREDENTIALS_LAUNCH'), 'missing-user-credentials launch card copy');
+  assert(panel.includes("launchKind === 'missing-user-credentials'"), 'panel branches missing-user-credentials');
+  assert(panel.includes('LABEL_ADD_CREDENTIALS'), 'add credentials CTA on missing-credentials card');
+  assert(panel.includes('{LABEL_OPEN_SITE}'), 'unified service-open CTA for every launch kind');
+  assert(panel.includes('LABEL_TRY_AUTO'), 'Autofill CTA remains a separate action');
+  assert(
+    !panel.includes('labelOpenSiteNamed') &&
+      !panel.includes('פתח אתר להתחברות') &&
+      !/labelOpenSiteNamed\(service\.name\)/.test(panel),
+    'Launch Card service-open CTA must not use פתח את {serviceName} or פתח אתר להתחברות',
+  );
 
   const eye = read('src/loginAssistance/icons.tsx');
   assert(eye.includes('M8 3C3.5 3') && !eye.includes('13.4 2.2'), 'eye glyph always');
@@ -145,7 +181,20 @@ function mainStatic() {
   assert(float.includes('PANEL_WIDTH_MAX = 360'), 'panel max width ~+20%');
 
   const dash = read('src/Dashboard.tsx');
-  assert(dash.includes('serviceHasUsableCredentials') && dash.includes('MSG_NO_CREDENTIALS'), 'AC-113-24 gate');
+  assert(dash.includes('shouldOpenLoginAssistancePanel'), 'AC-113-24 gate');
+  assert(
+    !dash.includes('MSG_NO_CREDENTIALS') &&
+      !/clearStatusSoon\(\s*MSG_NO_CREDENTIALS/.test(dash),
+    'tile click must not emit page-level no-credentials banner',
+  );
+  assert(dash.includes('onAddCredentials'), 'missing-credentials card can open existing editor');
+  const appSrcLaunch = read('src/App.tsx');
+  assert(
+    appSrcLaunch.includes('DigitalHomeCredentialModal') &&
+      appSrcLaunch.includes('openHomeCredentialModal'),
+    'Home missing-credentials CTA reuses existing credential editor',
+  );
+  assert(dash.includes('setStatusMessage(null)'), 'opening Launch Card must clear the global warning');
   assert(dash.includes('dashboard-manage-cta'), 'Home still has prominent Manage CTA');
   assert(!dash.includes('la-home-notice-cta') && !dash.includes('LABEL_GO_MANAGE'), 'no banner manage button');
   assert(dash.includes('la-home-notice'), 'credentials notice banner');

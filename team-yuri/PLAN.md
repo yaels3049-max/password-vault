@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Version** | 5.19 |
+| **Version** | 5.48 |
 | **Status** | Production Ready |
-| **Last updated** | 2026-07-14 |
+| **Last updated** | 2026-09-15 |
 
 This document describes *what* the product is and *how* it is shaped at a system level. It does not prescribe implementation details, file layouts, or step-by-step build plans.
 
@@ -476,6 +476,26 @@ erDiagram
 - **Profile resolution at execution** — Digital Home never administers profiles.
 - **Management in Service Management** — create, rename, delete profiles; edit credentials; set default.
 
+### Credential field schema (Phase 102, amended 2026-09-14)
+
+The service credential schema remains `loginFields` stored on `service_registry.login_fields`. Do not create a second model.
+
+A global / catalog schema is administrator-defined. It is an ordered list of fields. Each field has a stable `id`, a display `label`, `required`, input masking, and an optional site-password / autofill role. Those are not the same thing. A schema does not require a password field. Valid examples include Username + Password, ID Number + Password, Customer Number + Password, and ID Number + Last 4 digits of card. Non-password values must not be forced into username/password semantics. A field may be masked without `type: password`.
+
+`field.id` is the only identity of a stored value. Label changes do not move values. Changing, removing, or reusing an id must not silently reattach an existing value. No silent credential migration. No ciphertext rewrite. No backfill or nulling of existing `login_fields`.
+
+User credential entry is mandatory product behavior, owned by Phase 102 (AC-102-17 … AC-102-24). A valid explicit global schema renders exactly that service's fields: field count, administrator order, administrator labels, required/optional and masking as configured, each value bound to `field.id`. It must not substitute Username + Password. Fixtures: ID Number + Last 4 digits of card (exactly two fields); Customer Number + ID Number + Password (exactly three fields).
+
+A global service has one resolved credential mode, stored as the reserved key `metadata.credentialMode` on the existing metadata object: `not_configured`, `credential_fields`, or `no_stored_credentials`. An empty field array is not `no_stored_credentials`. If the key is absent, a valid non-empty `login_fields` array remains CREDENTIAL_FIELDS; otherwise the mode is NOT_CONFIGURED. NOT_CONFIGURED uses the configuration-incomplete state and must not invent Username + Password. NO_STORED_CREDENTIALS is an explicit complete configuration: no credential form, no empty credential record, no identity-provider automation. CREDENTIAL_FIELDS renders exactly the configured fields.
+
+Each field may set `inputType` to `text` or `number`, separate from masking and separate from `type` password role. NUMBER values stay digit strings. `0017` must not become `17`. CEO approved this amendment for Development Manager handoff. A mode and its field list must agree (D-102-27, AC-102-36). Contradictory saves are rejected. Contradictory stored rows are configuration-invalid, not silently reinterpreted.
+
+Three behaviors must stay distinguishable in tests: (A) a valid explicit global schema, including one that is Username + Password because an administrator configured those fields; (B) the custom-service render-time default Username + Password, only when the service is user-created and has no valid schema, with no end-user schema designer and no write of that default onto `login_fields`; (C) global no/empty/invalid schema, which must not render (B). Stored username/password ciphertext is storage compatibility when a later explicit schema uses those field ids. It is not a rendering fallback for class (C).
+
+Credential fields are not inferred from a login URL, crawl, DOM inspection, AI, or Automatic Login Discovery. Autofill expansion is out of scope. Encryption remains the existing whole-payload path. Implementation that relaxes the password-type invariant, changes schema validation, or changes credential serialization requires security review before MVP release and must not redesign the vault, KDF, encryption format, or authentication.
+
+Phase 102 owns the schema and rendering contract. Phase 107 owns the structured administrator editor. Phase 113 is a non-blocking amendment only. Phase 108 does not own this capability.
+
 ### Terminology
 
 **Access Profile** is production canon (replacing provisional “access instance” language from early architecture drafts).
@@ -633,7 +653,7 @@ Product governance defines **who owns** platform definitions and how changes pro
 | **Service Registry (user-private)** | End user | User via Service Management; subject to capability limits |
 | **Categories** | Platform / product operations | Admin platform; localization review for Hebrew labels |
 | **Adapters** | Engineering + product | New adapters require engineering implementation **and** admin registry binding; generic engine improvements preferred |
-| **Integration metadata** | Platform operations | Admins edit `loginUrl`, `loginFields`, `integrationHealth`; discovery system proposes |
+| **Integration metadata** | Platform operations | Admins explicitly edit `loginUrl` and `loginFields`. Discovery must not propose or write credential schemas (Phase 102 / Phase 107, 2026-09-14). Login-entry discovery is not an MVP source of `loginUrl` (Phase 108) |
 | **Approval workflow** | Platform operations | User submissions queue as `Pending Review`; admins approve to `ApprovedGlobal` or reject to `Disabled` |
 
 ### Approval workflow (architectural)
@@ -868,7 +888,9 @@ Phases are ordered by dependency. Acceptance criteria define done.
 
 ### Phase 102 — Service Registry and Login URL Cache
 
-**Goal:** Catalog as platform data with cached login URLs and discovery on demand.
+**Goal:** Catalog as platform data with cached login URLs. Historical "discovery on demand" is not an active MVP requirement. Phase 108 is authoritative: Automatic Login Discovery is withdrawn. Do not restore it.
+
+**Amended 2026-09-14:** The credential schema is not a discovery cache. Global `loginFields` are administrator-defined. See section 8 and AC-102-7 … AC-102-24. User credential entry (AC-102-17 … AC-102-24) is mandatory product behavior. Discovery must not write credential schemas. CEO approved Development Manager handoff. Security gate remains mandatory before MVP release of validation and serialization changes.
 
 **Ownership:** Phase 102 owns **Service Registry metadata** and the **login URL cache**. Tile execution may open `loginUrl` only when `service_registry.loginUrl` exists. If `loginUrl` is missing, opening `primaryUrl` is compliant for Phase 102.
 
@@ -877,9 +899,39 @@ Phases are ordered by dependency. Acceptance criteria define done.
 | AC-102-1 | Registry entries include `primaryUrl`, `loginUrl`, category, icon metadata |
 | AC-102-2 | Built-in Israeli catalog loaded from registry, not application source code |
 | AC-102-3 | Custom services create user-scoped registry references |
-| AC-102-4 | Login discovery runs only when `loginUrl` is missing or marked invalid |
-| AC-102-5 | Discovered `loginUrl` persisted to registry cache |
-| AC-102-6 | `loginFields` schema stored on registry entry when known |
+| AC-102-4 | **Withdrawn from the MVP.** Historical: login discovery ran only when `loginUrl` was missing or marked invalid. Phase 108 is authoritative. Do not implement |
+| AC-102-5 | **Withdrawn from the MVP.** Historical: discovered `loginUrl` was persisted to the registry cache. Phase 108 is authoritative. Do not implement |
+| AC-102-6 | `loginFields` schema stored on the registry entry when an administrator has explicitly defined it. Not inferred |
+| AC-102-7 | A valid global schema may contain no password-role field, including ID Number + Last 4 digits of card, without encoding those values as username or password |
+| AC-102-8 | Username + Password, ID Number + Password, and Customer Number + Password are valid schemas on the same `loginFields` model |
+| AC-102-9 | A valid global schema renders exactly those fields, in order, with configured labels and required/optional behavior, each value bound to `field.id`, and does not also show Username + Password |
+| AC-102-10 | A global service with no valid schema does not invent or substitute fields, does not show Username + Password, does not accept new input, and does not rewrite or delete stored ciphertext |
+| AC-102-11 | Label changes do not change stored-value identity. Id change, removal, or reuse does not silently reattach values. No silent credential migration |
+| AC-102-12 | A user-created custom service with no valid schema still uses Username + Password. No end-user schema designer |
+| AC-102-13 | Login URL, crawling, DOM inspection, AI, and Automatic Login Discovery do not create or modify a credential schema |
+| AC-102-14 | Existing username/password ciphertext remains valid when the active schema still uses those field ids. No ciphertext rewrite, backfill, or nulling of `login_fields` |
+| AC-102-15 | A stored schema does not require Autofill. Autofill heuristics, adapters, and Login Intelligence are not changed by this amendment |
+| AC-102-16 | A masked non-password field is not persisted as `type: password` |
+| AC-102-17 | Service-specific credential form: load that global service's explicit schema; render exactly that field count, in administrator order, with administrator labels; bind values to `field.id`; honor required/optional and masking; do not substitute Username + Password |
+| AC-102-18 | Fixture: ID Number then Last 4 digits of card renders exactly those two fields, not Username and Password |
+| AC-102-19 | Fixture: Customer Number, ID Number, Password renders exactly those three fields, in that order |
+| AC-102-20 | Global service with no schema: do not invent a schema; configuration-incomplete; no Username + Password form; no new input; no ciphertext write |
+| AC-102-21 | Global service with empty schema `[]`: same outcome as AC-102-20; do not rewrite the empty array to Username + Password |
+| AC-102-22 | Global service with an invalid schema: same outcome as AC-102-20; do not repair it into a schema |
+| AC-102-23 | User-created custom service with no valid schema still uses render-time Username + Password. No end-user schema designer. That default is not a global explicit schema. An already-valid custom schema is rendered and is not replaced by the default |
+| AC-102-24 | Tests distinguish explicit global schema (including an administrator-configured Username + Password schema), custom render-time default, and global no/empty/invalid schema. Stored username/password ciphertext is not a rendering fallback for the third class. An empty array is not NO_STORED_CREDENTIALS |
+| AC-102-25 | Administrator can explicitly set NOT_CONFIGURED. User sees configuration-incomplete. No invented fields |
+| AC-102-26 | Administrator can explicitly set CREDENTIAL_FIELDS. User form renders exactly those fields |
+| AC-102-27 | Administrator can explicitly set NO_STORED_CREDENTIALS. That state is complete and valid |
+| AC-102-28 | NO_STORED_CREDENTIALS shows no credential form, creates no Username + Password fields, and creates no empty credential record. The service can still be added and opened |
+| AC-102-29 | NOT_CONFIGURED and NO_STORED_CREDENTIALS are distinguishable. Empty `login_fields` is not the latter |
+| AC-102-30 | Administrator can set field input type TEXT |
+| AC-102-31 | Administrator can set field input type NUMBER. Digit strings are stored losslessly. Leading zeros remain |
+| AC-102-32 | Masking is independent of input type. A masked NUMBER field is not `type: password` |
+| AC-102-33 | `field.id` remains the stored-value identity |
+| AC-102-34 | Existing username/password ciphertext remains valid when those field ids remain. No ciphertext rewrite |
+| AC-102-35 | No Autofill expansion. NUMBER adds no fill heuristics. NO_STORED_CREDENTIALS does not perform external identity-provider authentication |
+| AC-102-36 | CREDENTIAL_FIELDS without a valid field, and NO_STORED_CREDENTIALS with active fields, are rejected on save. Contradictory stored rows are configuration-invalid. NOT_CONFIGURED does not generate Username + Password |
 
 ---
 
@@ -1363,13 +1415,24 @@ It defines only the user experience around security.
 | AC-107-15 | Website edit uses compact sections / collapsible groups with clear Save and Cancel (not oversized full-page forms) |
 | AC-107-16 | Admin can filter by category, built-in, custom, user-submitted, active, inactive and search by website name, category, or login URL |
 | AC-107-17 | Admin screens are usable on desktop/tablet/laptop without unnecessary horizontal scrolling or oversized controls |
-| AC-107-18 | Existing approval, registry write policies, rediscovery, and zero-credential-access rules remain intact (presentation changes only unless an AC above requires behavior) |
+| AC-107-18 | Existing approval, registry write policies, explicit login-entry maintenance, and zero-credential-access rules remain intact (presentation changes only unless an AC above requires behavior). Automatic login rediscovery is not an MVP requirement (Phase 108, 2026-09-14). |
+| AC-107-21 | Administrator defines, reorders, and saves global credential fields in a structured editor, including a schema with no password-role field, without raw JSON as the primary method |
+| AC-107-22 | Masking a field does not set `type: password`. Label edits do not change `field.id` |
+| AC-107-23 | Changing, removing, or reusing a `field.id` requires an explicit warning and confirmation, without revealing credential values, and without silent migration |
+| AC-107-24 | Saving a global service does not rewrite a missing or empty schema to Username + Password. Promoting a user submission does not invent a global schema |
+| AC-107-25 | Login URL edit and any residual rediscovery path do not create or modify `login_fields` |
+| AC-107-26 | Admin still cannot view credential plaintext |
+| AC-107-27 | Administrator explicitly chooses NOT_CONFIGURED, CREDENTIAL_FIELDS, or NO_STORED_CREDENTIALS without raw JSON as the primary method |
+| AC-107-28 | An empty field list does not set NO_STORED_CREDENTIALS |
+| AC-107-29 | Each credential field has separate TEXT/NUMBER and mask controls. Masking NUMBER does not set password role |
 
 ---
 
-### Phase 108 — Browser Integration and Login Discovery
+### Phase 108 — Browser Integration and Explicit Login Entry Management
 
-**Goal:** Provide Chrome and Edge browser support and establish the browser-based login page discovery mechanism used to enrich `service_registry` with `loginUrl` metadata.
+Normative contract: `team-yuri/arch-phase108.md` (2026-09-14 MVP revision). Automatic Login Discovery is withdrawn. This section must not reintroduce discovery requirements.
+
+**Goal:** Provide Chrome and Edge browser support through a browser integration abstraction, and require every service login entry point to be explicitly maintained by a human. The administrator owns global/catalog login entries. The user owns private custom-service login entries. The system must not discover, infer, crawl, guess, or automatically replace a login URL.
 
 **Scope:**
 
@@ -1383,230 +1446,128 @@ It defines only the user experience around security.
 - Store packaging strategy for Chrome Web Store and Edge Add-ons
 - Graceful Hub behavior when extension is missing
 
-#### 2. Login Page Discovery
+#### 2. Explicit Login Entry Management
 
-When a user adds a new service, the system should attempt to discover the service login page and store it in `service_registry`.
+Login entry points are maintained by a human. The system must not crawl, infer, guess, rank, rediscover, bulk-refresh, or automatically replace a login URL. Create, update, approval, a missing login URL, and validation failure must not start discovery.
 
-Discovery must:
+Active login entry types:
 
-- start from the user-provided URL or `primaryUrl`
-- detect common login/sign-in links
-- follow safe redirects
-- identify candidate `loginUrl`
-- validate that the candidate looks like a login page
-- store `loginUrl` in `service_registry` when confidence is sufficient
-- store `primaryUrl` even when `loginUrl` is not found
-- never block service creation solely because `loginUrl` discovery failed
-- never perform autofill during discovery
-- never submit forms during discovery
-- never use user credentials during discovery
+- `direct_url` — dedicated login URL supplied by the owner
+- `primary_page` — login begins on the website/primary page; `loginUrl` is stored equal to that URL
 
-#### 3. `service_registry` metadata
+Global/catalog (`owner_user_id IS NULL`): the administrator owns the login entry and must be able to maintain service name, primary URL, login URL, and login entry type. `primary_page` stores `loginUrl` equal to the primary URL. `direct_url` requires a login URL. `loginUrlSource=admin`. No automatic overwrite.
 
-`service_registry` should support login discovery metadata such as:
+User-created custom: the user owns the private service login entry. The control "Login page is the same as the website URL" defaults to enabled. Enabled sets `loginUrl` to the website URL and `loginEntryType=primary_page`. Disabled requires a separate login URL and `loginEntryType=direct_url`. `loginUrlSource=user`. Example: website `https://example.com`, control off, login URL `https://example.com/login`.
 
-- `primaryUrl`
-- `loginUrl`
-- `loginUrlSource`: auto | admin | user | unknown
-- `loginUrlConfidence`
-- `loginUrlStatus`: valid | missing | stale | failed | needs_review
-- `loginUrlLastDiscoveredAt`
-- `loginUrlLastCheckedAt`
-- `loginUrlDiscoveryError`
+A user save must not modify global catalog login metadata. A global save must not silently replace user-owned login metadata. Approval/promote must not run discovery. The administrator confirms the global login entry explicitly. Prefill from a user row is allowed only as administrator-confirmed input on the global row.
 
-Exact column names may follow existing schema conventions.
+Legacy rows with null `login_url` open the primary URL. That fallback is deterministic. It is not a search.
 
-#### 4. Custom Service Creation Flow
+#### 3. `service_registry` login data
 
-When a user adds a custom service:
+Active MVP data:
 
-- normalize/validate the provided URL according to Phase 116 rules where available
-- create or reuse `service_registry` entry
-- attempt login discovery
-- save `loginUrl` if found
-- if not found, save service with `primaryUrl` and mark `loginUrlStatus` appropriately
+- `primary_url` / `login_url`
+- `loginUrlSource`: `admin` | `user` only for new writes
+- `loginEntryType`: `direct_url` | `primary_page`
+- `login_url_status`: `valid` on a human-saved entry
+
+Do not write `auto`, `discovered`, discovery confidence, discovery method, discovery timestamps, discovery errors, `needs_review` from discovery, or discovery deferral hints. Existing discovery metadata is legacy. Do not delete it until a later change verifies nothing reads it and development data has been handled. `catalog_seed` is legacy explicit catalog data, not a discovery source; do not write new `catalog_seed` values; do not null those `login_url` values.
+
+#### 4. Custom Service Creation and Edit
+
+When a user adds or edits a custom service:
+
+- validate the website URL under existing custom HTTPS rules
+- persist an explicit login entry as specified in section 2
+- do not attempt login discovery
 - link `user_services` to the registry entry
 - avoid phantom tiles and partial local-only success
+- succeed without the browser extension
 
 #### 5. Admin Login URL Management
 
 Admin Management must support:
 
-- viewing current `loginUrl` per service
-- editing `loginUrl` manually
-- marking `loginUrl` as verified
-- marking `loginUrl` as stale/needs review
-- triggering rediscovery for a single service
-- triggering bulk refresh for all services
-- seeing last discovery/check date
-- seeing discovery failure reason
-- preserving manual admin override unless explicitly refreshed
+- viewing and editing the current login entry for a global service
+- choosing `direct_url` or `primary_page`
+- saving that entry as authoritative (`loginUrlSource=admin`)
+- no rediscovery control
+- no bulk login discovery
+- no discovery confidence, method, or failure panel as an active product requirement
 
-#### 6. Bulk Refresh Rules
+#### 6. Bulk login discovery
 
-Bulk `loginUrl` refresh must:
+Not in the MVP. Do not implement or retain an active bulk login-URL refresh.
 
-- be rate-limited
-- avoid blocking the application
-- support partial success
-- report failures clearly
-- not overwrite verified manual admin `loginUrl` values without explicit approval
-- not affect credentials, access profiles, or `user_services`
-- update only service metadata
+#### 7. Browser Integration boundary
 
-#### 7. Discovery UX Rules
-
-- Discovery should be non-intrusive.
-- Avoid visible temporary tabs where possible.
-- If a temporary tab is technically required, it must be isolated in a DiscoveryExecutor and must close reliably on success, failure, timeout, or cancellation.
-- Normal Digital Home execution tabs must never reuse discovery close behavior.
-- User should receive friendly messages when discovery fails.
+- Browser Integration serves execution, autofill, adapters, and open-URL fallback.
+- It must not depend on discovery messages or discovery tabs.
+- Digital Home execution tabs are not discovery sessions.
 
 #### 8. Relationship to Other Phases
 
 - Phase 102 owns Service Registry persistence.
-- Phase 108 owns browser integration and `loginUrl` discovery.
-- Phase 110 uses discovered `loginUrl` for standard autofill.
-- Phase 112 classifies and supports medium/complex login experiences once a valid login entry point is available, whether through a discovered `loginUrl`, an admin-managed `loginUrl`, or approved Service Registry metadata.
+- Phase 108 owns browser integration and explicit login-entry rules.
+- Phase 110 uses an explicitly stored `loginUrl` (or configured login fields) for standard autofill. It does not require that the URL was discovered.
+- Phase 112 classifies login complexity from its own signals. It must not require Phase 108 discovery deferral metadata and must not invent `loginUrl`.
+- Phase 111 icon discovery is a separate pipeline and remains.
 - Phase 116 owns service identity and URL canonicalization.
-- Phase 107 owns admin registry management UI.
+- Phase 107 owns admin registry management UI and must expose explicit login-entry edit, not rediscovery.
 
-**Discovery boundary**
+**Explicit login-entry boundary**
 
-Phase 108 is responsible only for discovering and maintaining the service **consumer** login entry point.
-
-**False-positive / true-positive dual rule (normative):**
-
-1. Never persist a **wrong** login page (alternate-audience portal; modal-only consumer with no dedicated URL).
-2. **Preserve true positives** — ordinary consumer navigable login pages must still be discovered and persisted.
-
-A URL/link containing `login` is **not** sufficient to accept a **portal**. It is also **not** sufficient, by itself, to reject a same-origin consumer candidate that has dedicated login-form / strong link evidence.
-
-**Reject only with positive evidence** of alternate audience on the candidate, or modal-only consumer login with no remaining consumer navigable candidate. Weak homepage “login button / modal trigger” signals must **not** blank all navigable results.
-
-**Trusted consumer auth host priority (normative — M12):**
-
-When a candidate hostname is a **trusted consumer auth subdomain** on the **same registrable brand** as `primaryUrl` (prefixes such as `login`, `auth`, `signin`, `secure`, `e-services`, `services`, `online`, and equivalents already in discovery keywords), Phase 108 **must persist** that consumer navigable URL unless the **candidate itself** has **strong positive** alternate-audience evidence (e.g. `sa.` / seller / b2b host, business/merchant path, audience query, or strong business wording such as `ממשק העסק` / `לקוחות עסקיים` / “business interface”).
-
-- A homepage modal/login-button trigger on `primaryUrl` must **not** veto such a trusted-auth candidate.
-- Weak wording alone (especially retail Hebrew `כניסת לקוחות`) must **not** veto such a trusted-auth candidate.
-- Path tokens that only mean an application shell (`portal` / `portals` / `ng-portals`) are **not** alternate-audience evidence by themselves.
-- Zap-class business portals remain rejected.
-- Finding a trusted-auth consumer URL and leaving `login_url=NULL` is a Phase 108 gate bug — **not** a Phase 112 deferral case.
-
-**Trusted-auth host probe (normative — M13):**
-
-When link/DOM discovery on `primaryUrl` does **not** produce a **high-confidence** consumer navigable `loginUrl`, Phase 108 **must probe** same-brand hosts built from trusted auth subdomain prefixes (`auth`, `login`, `secure`, `e-services`, …) with common login paths (at least `/login`). Persist only after **login-page evidence** and audience-gate pass.
-
-- Canonical gap: KSP homepage does not expose `https://auth.ksp.co.il/login`; `common-path` invents dead `https://ksp.co.il/login` at low confidence — probe must find and persist the auth host.
-- **Unvalidated** low-confidence same-origin common-path must **not** win over a validated trusted-auth probe.
-- **Validated** same-origin common-path (login-page evidence + audience pass) **must persist** — e.g. [GitHub](https://github.com/) → `https://github.com/login`. Do not blank-reject solely because `method=common-path` or initial `confidence=low`.
-- Validated same-brand trusted-auth **probe** candidates (e.g. `auth.ksp.co.il/login` listed in discovery candidates) **must persist** — appearing in `topCandidates` with empty `login_url` is a Phase 108 persist bug.
-- Do **not** probe cross-brand hosts or alternate-audience prefixes (`sa`, `seller`, …) as invent-probes.
-- Zap REJECT unchanged.
-
-**Federated / parent IdP (normative — M14):**
-
-When a discovered candidate is on a **different registrable domain** than `primaryUrl` but the host is a **trusted IdP** label (`id`, `login`, `auth`, `accounts`, `sso`, `identity`, …) **and** the URL carries **brand-return evidence** that the login serves the primary site (`continue` / `callback` / `return` / `redirect_uri` / `redirect_url` / `next` / `application` value containing the primary brand, etc. pointing at the primary registrable domain), Phase 108 **must persist** that IdP URL as consumer `loginUrl`.
-
-- Canonical ACCEPT: [Trello](https://trello.com/) → `https://id.atlassian.com/login?...&continue=https://trello.com/...`
-- Do not reject solely because a query param contains `signup` when the host is IdP login and brand-return evidence is present.
-- Do not accept arbitrary cross-domain URLs without brand-return evidence.
-- Zap-class alternate-audience portals without consumer brand-return remain REJECT.
-
-**Live candidate page validation (normative — M15):**
-
-Before persisting a candidate (and before concluding `no_login_page_found` / `login_entry_not_found` when candidates exist), Phase 108 **must** open/inspect the candidate in the DiscoveryExecutor and require:
-
-1. **Reachable** login surface (not a dead invent / empty soft-404).
-2. **≥1 consumer identity input** (email / username / phone / equivalent) — read-only DOM inspection. No credentials, autofill, or submit.
-
-**Critical — Zap / portal safety:** A page that has identity fields is **not** automatically consumer login. **Alternate-audience evidence still rejects** (Zap `sa.zap…` / business-interface `/login` / “ממשק העסק”). Field validation must run **after or with** the audience gate and must **not** override it. Historical failure mode: fixing common-path/true positives while accidentally persisting Zap’s wrong or business portal URL.
-
-**M15 dual gate (hard):** PayPal/Zoom ACCEPT on a build is incomplete unless the **same** build keeps Zap `login_url=NULL` (same bar as M13: KSP found + Zap NULL).
-
-Canonical ACCEPT: PayPal `https://www.paypal.com/login`. Path/score alone is insufficient.
-
-**Sibling-TLD / same SLD brand (normative — M15):**
-
-Hosts sharing the same second-level label under different public suffixes (e.g. `zoom.com` ↔ `zoom.us`) are **same brand** for discovery audience/cross-host gates when the candidate is a consumer sign-in URL with link or live-validation evidence. Canonical ACCEPT: Zoom → `https://zoom.us/signin`. Sibling-TLD must not weaken Zap dual gate.
+Phase 108 maintains a human-provided login entry point. It does not discover one.
 
 Phase 108 must not:
 
-- perform credential autofill
-- interact with authentication flows
-- execute login sequences
-- solve CAPTCHA
-- handle OTP
-- execute service-specific adapters
-- interpret complex authentication logic as executable autofill
-- auto-validate business / merchant / partner / admin / vendor portals as consumer `loginUrl` (example: Zap `sa.zap.co.il/.../login` “כניסה לממשק העסק”)
-- invent a navigable `loginUrl` when consumer login is a homepage modal/overlay without a dedicated consumer URL
+- crawl or fetch third-party pages to find a login URL
+- infer, guess, or rank login candidates
+- open discovery tabs
+- write discovery confidence, method, or deferral hints
+- replace a stored login URL automatically
+- use credentials, autofill, or form submit while saving a login entry
 
-Its responsibility ends once a **confident consumer** login entry point has been identified, or discovery has deferred safely: `login_url` remains `NULL`, status is clear (`missing` / `needs_review`), and `metadata` records deferral signals for Phase 112.
-
-**Canonical deferred cases (Phase 108 → metadata → Phase 112):**
-
-| Case | Example | Phase 108 `loginUrl` | Metadata (minimum) |
-|------|---------|----------------------|--------------------|
-| Alternate-audience portal mistaken for login | Zap business interface at `/login` | **NULL** | `rejectedLoginUrl`, reason code, `phase112Deferred=true`, `loginIntelligenceHint=alternate_audience_portal` |
-| Consumer login is modal on `primaryUrl` **and no** separate consumer navigable URL | Zap home floating login only | **NULL** | `loginEntryType=modal`, `usesModal=true`, `phase112Deferred=true`, `loginIntelligenceHint=modal_on_primary` |
-| Homepage has login button/modal **and** a separate consumer navigable login page | Typical retail sites | **Persist** navigable consumer URL | Do not veto because of homepage modal trigger |
-| Trusted auth host on same brand; homepage also has modal | Bank Hapoalim `login.bankhapoalim.co.il/.../login` | **Persist** trusted-auth URL | Do not classify as `alternate_audience_portal` / Phase 112 solely because of modal or weak wording |
-| Homepage has no link to auth host; `common-path` invents dead `/login` | KSP `auth.ksp.co.il/login` vs dead `ksp.co.il/login` | **Persist** probed trusted-auth URL | Probe same-brand `auth.`/`login.`; do not prefer unvalidated common-path |
-| Same-origin `/login` found via common-path and is a real login page | GitHub `https://github.com/login` | **Persist** after login-page validation | Do not blank-reject solely for `method=common-path` / low confidence |
-| Parent IdP on other registrable domain; continue/callback to primary | Trello → `id.atlassian.com/login?...&continue=trello.com/...` | **Persist** IdP login URL | Federated IdP + brand-return evidence (M14) |
-| Correct `/login` in candidates but scored only by path | PayPal `https://www.paypal.com/login` | **Persist** after live page validation | Reachable + ≥1 identity field (M15) |
-| Marketing TLD vs product TLD same SLD | Zoom `zoom.com` → `zoom.us/signin` | **Persist** sibling-TLD signin | Same-brand sibling TLD (M15); not portal |
-| Navigable consumer login page still needs modal/complex steps | Mizrahi Tefahot login page + floating step | **Persist** navigable consumer URL when audience is consumer | `loginIntelligenceHint=complex_login_surface`, `phase112Deferred=true` — Phase 112 owns interaction |
-
-Phase 108 may write **discovery deferral signals** into `service_registry.metadata`. Phase 112 remains the authoritative owner of Login Intelligence classification (`loginComplexity`, etc.) and consumes these signals.
-
-Phase 110 consumes a stored `loginUrl` only when Phase 108 (or admin) has validated it as a consumer navigable entry.
-
-Phase 112 classifies login complexity and extends execution for modal / multi-step / portal-shadowed cases documented above.
+Opening a service uses the stored `loginUrl`. Legacy null `login_url` opens the primary URL. That is not discovery.
 
 **Non-goals:**
 
-- No credential autofill
-- No auto-submit
-- No password handling
-- No complex multi-step login intelligence
-- No iframe/modal/OTP/CAPTCHA handling
-- No service-specific adapters
-- No canonical identity redesign
-- No persistence of non-consumer portal login URLs
+- Automatic login-page discovery, crawling, guessing, inference
+- Discovery confidence scoring
+- Rediscovery, bulk discovery, background or retry discovery
+- Automatic portal or audience determination
+- AI-based login-page discovery
+- Credential autofill, auto-submit, password handling
+- Login Intelligence classification (Phase 112)
+- URL canonicalization (Phase 116)
+
+**Architecture history:** Automatic Login Discovery was previously in Phase 108 and was removed from the MVP baseline on 2026-09-14. Prior implementation is not the approved architecture for any future discovery. A future reconsideration requires a new architectural review.
 
 | Acceptance criteria | |
 |---------------------|---|
-| AC-108-1 | Extension functions on current Chrome stable |
-| AC-108-2 | Extension functions on current Edge stable |
-| AC-108-3 | Browser integration abstraction layer isolates messaging and tab APIs |
-| AC-108-4 | Packaging strategy documented for Chrome Web Store and Edge Add-ons |
-| AC-108-5 | Hub degrades gracefully when extension is not installed |
-| AC-108-6 | Adding a custom service attempts `loginUrl` discovery |
-| AC-108-7 | `service_registry` stores `loginUrl` when discovery succeeds with **consumer** confidence |
-| AC-108-8 | `service_registry` stores `primaryUrl` and a clear `loginUrl` status when discovery fails |
-| AC-108-9 | Discovery failure does not prevent service creation |
-| AC-108-10 | Discovery never uses credentials, never autofills, and never submits forms |
-| AC-108-11 | Admin can manually edit `loginUrl` for a service |
-| AC-108-12 | Admin can trigger rediscovery for a single service |
-| AC-108-13 | Admin can trigger bulk `loginUrl` refresh |
-| AC-108-14 | Bulk refresh is rate-limited and reports partial failures |
-| AC-108-15 | Manual admin `loginUrl` overrides are not overwritten without explicit approval |
-| AC-108-16 | Temporary discovery tabs, if used, close reliably and are never confused with user-opened execution tabs |
-| AC-108-17 | Build passes |
-| AC-108-18 | Discovery never persists a non-consumer / alternate-audience portal as `loginUrl` (including URLs whose path contains `login` but whose page is business/merchant/partner/admin). `login_url` remains `NULL`; `metadata` records `rejectedLoginUrl` and deferral reason for Phase 112 |
-| AC-108-19 | When consumer login is modal/overlay on `primaryUrl` **and** there is no separate validated consumer navigable login URL, `login_url` remains `NULL` and `metadata` records `loginEntryType=modal` / `usesModal=true` / `phase112Deferred=true`. A homepage modal trigger must not veto a separate consumer navigable candidate |
-| AC-108-20 | Reject with **positive evidence** of wrong audience or modal-only surface; document deferrals in `metadata`. Do not blank-reject ordinary same-origin consumer login pages solely because path contains `login` or a weak modal heuristic fired |
-| AC-108-21 | True-positive regression: after false-positive gate changes, rediscovery of known consumer catalog services (at least Shufersal, Clalit, HTZone or current Phase 103 equivalents) must still persist a non-NULL consumer `login_url`, while Zap-class portals remain rejected |
-| AC-108-22 | Trusted consumer auth host priority: when discovery finds a same-brand trusted auth-host candidate (e.g. `login.*` / `auth.*` / `e-services.*` / `services.*`) that is a consumer navigable login URL, persist it unless the **candidate** has strong positive alternate-audience evidence. Homepage modal triggers and weak wording (including retail `כניסת לקוחות`, and path tokens `portal`/`portals`/`ng-portals` alone) must not force `login_url=NULL`. Bank Hapoalim-class ACCEPT; Zap-class REJECT remains required |
-| AC-108-23 | Trusted-auth host probe **and** validated common-path persist: (1) when DOM/link discovery yields no high-confidence consumer `loginUrl`, probe same-brand trusted auth hosts (`auth.` / `login.` / equivalents), validate login-page evidence, and persist (KSP-class: `auth.ksp.co.il/login`, not dead `ksp.co.il/login`); (2) when same-origin `/login` (e.g. `https://github.com/login`) is validated as a consumer login page, persist it — do **not** leave `needs_review` solely because `method=common-path` or initial `confidence=low`. Probed candidates that appear in `topCandidates` must not leave `login_url` empty. Zap-class REJECT remains required; no cross-brand invent-probing |
-| AC-108-24 | Federated / parent IdP: when discovery finds a trusted IdP host on a different registrable domain (`id.` / `login.` / `auth.` / `accounts.` / equivalents) **and** brand-return evidence ties the login to the primary site (`continue` / `callback` / `redirect_*` / `application` containing primary brand, etc.), persist that IdP `loginUrl`. Trello → `id.atlassian.com/login` ACCEPT; do not reject solely for `signup` in query when brand-return is present; arbitrary cross-domain without brand-return remains REJECT; Zap-class REJECT unchanged |
-| AC-108-25 | Live candidate validation **and** sibling-TLD brand **with Zap dual-gate hard:** (1) open/inspect top candidates — reachable + ≥1 identity field (no fill/submit) — PayPal `https://www.paypal.com/login` is the normative auto target; (2) sibling-TLD same SLD — Zoom `https://zoom.us/signin` ACCEPT; (3) identity fields must not override alternate-audience reject — Zap stays NULL; (4) **Operator closeout 2026-07-14:** live Zoom + Zap + KSP accepted; **PayPal auto-discovery (U27) explicitly deferred** to a later Phase 108 milestone (M16) with interim catalog/admin seed — dual-gate stability preferred over further heuristic churn (D-108-31) |
-| AC-108-26 | When the user adds a custom site (or admin triggers rediscovery), loginUrl discovery must keep the Hub as the focused experience: do not steal OS focus with a separate discovery window; an inactive same-window discovery tab that closes and returns focus to the Hub is acceptable; the discovery tab must never be activated |
+| AC-108-1 | Global catalog services support an administrator-defined login entry point |
+| AC-108-2 | Administrator-provided login URLs are never overwritten by automatic discovery |
+| AC-108-3 | User-created custom services support an explicitly defined login entry point |
+| AC-108-4 | A custom service can specify that the website URL is also the login entry point; that control defaults to enabled |
+| AC-108-5 | A user can provide a separate login URL when it differs from the website URL |
+| AC-108-6 | No service creation flow performs Login Discovery |
+| AC-108-7 | No service update flow performs Login Discovery |
+| AC-108-8 | Missing Login URL information never triggers Login Discovery |
+| AC-108-9 | No background, bulk, or retry-based Login Discovery executes |
+| AC-108-10 | Global and user-owned login metadata remain isolated |
+| AC-108-11 | Browser Integration operates independently of Login Discovery |
+| AC-108-12 | Opening a service uses explicitly configured login-entry metadata |
+| AC-108-13 | Removal of Login Discovery does not modify credential data |
+| AC-108-14 | Removal of Login Discovery does not alter authentication |
+| AC-108-15 | After later engineering implementation, build and regression validation pass |
+| AC-108-16 | `primary_page` persists `loginUrl` equal to the primary/website URL without crawling |
+| AC-108-17 | `direct_url` requires a human-provided Login URL |
+| AC-108-18 | User and global saves cannot cross-write the other ownership class |
+| AC-108-19 | Phase 112 and autofill do not require discovery hints, confidence, or method |
+| AC-108-20 | Phase 111 icon discovery and catalog search remain; they are not Login Discovery |
 
----
+Previous AC-108-1 through AC-108-26 that required discovery are withdrawn. Historical changelog rows below are not active requirements.
 
 ### Phase 109 — User Accounts, Authentication and Cross-Browser Access
 
@@ -2184,10 +2145,10 @@ Phase 109 must not break or redesign:
 - Phase 105 Digital Home
 - Phase 106 Security and Trust UX
 - Phase 107 Admin Registry Management
-- Phase 108 Browser Integration and Login Discovery
-- existing service discovery behavior
-- existing `loginUrl` metadata
-- existing custom-service creation behavior
+- Phase 108 Browser Integration and Explicit Login Entry Management
+- existing explicit login-entry behavior (no Automatic Login Discovery)
+- existing `loginUrl` values (do not null them)
+- existing custom-service creation, with an explicit login entry instead of discovery
 - validated Shufersal and Clalit behavior
 - extension messaging and tab behavior
 - Access Profile architecture
@@ -2390,11 +2351,11 @@ It must never:
 - popup/modal login forms
 - bank-specific complex adapters
 - automatic password rotation
-- loginUrl discovery for missing login pages
+- loginUrl discovery for missing login pages (not an MVP capability; removed from Phase 108)
 - canonical URL normalization
 - duplicate service detection
 
-These belong to Phase 112 or Phase 116.
+Complex login experiences belong to Phase 112. URL identity belongs to Phase 116. Login-page discovery is not assigned to either phase.
 
 **Relationship to Phase 112:**
 
@@ -2748,7 +2709,7 @@ Phase 111 must:
 #### Relationship to Other Phases
 
 - Phase 102 owns Service Registry persistence.
-- Phase 108 discovers login entry points.
+- Phase 108 maintains explicitly configured login entry points. It does not discover them.
 - Phase 111 owns managed service visual assets.
 - Phase 110 and Phase 112 consume service metadata but never depend on asset availability.
 - Phase 107 exposes administrator asset management.
@@ -2762,7 +2723,7 @@ Phase 111 must not modify:
 - Access Profiles
 - credentials
 - execution pipeline
-- login discovery
+- explicit login entry (Phase 108; do not restore automatic login discovery)
 - autofill behavior
 - Service Registry ownership
 
@@ -2824,7 +2785,7 @@ The development team must provide:
 
 **Architectural purpose:**
 
-- Phase 108 discovers and maintains the login entry point.
+- Phase 108 maintains an explicitly configured login entry point. It does not discover it.
 - Phase 110 handles standard single-page login forms.
 - Phase 112 handles login experiences that are not covered safely by Phase 110.
 - Phase 112 classifies login complexity, enriches Service Registry metadata, and determines when generic intelligence is sufficient versus when an adapter is required.
@@ -2965,9 +2926,9 @@ Other phases may consume this metadata but must not modify it directly unless ex
 
 Phase ownership remains:
 
-- Phase 108 discovers and validates **consumer** login entry points (`loginUrl`), preferring `NULL` over false positives, and may write **discovery deferral signals** (`rejectedLoginUrl`, `loginEntryType`, `usesModal`, `phase112Deferred`, `loginIntelligenceHint`) for Phase 112.
+- Phase 108 stores an explicitly configured `loginUrl`. It does not discover or validate one by crawling, and it does not write discovery deferral signals for Phase 112.
 - Phase 110 consumes Login Intelligence for standard autofill when a validated navigable `loginUrl` exists.
-- Phase 112 owns authoritative Login Intelligence classification and metadata lifecycle, including modal-on-primary and complex surfaces deferred by Phase 108.
+- Phase 112 owns authoritative Login Intelligence classification. It must not require Phase 108 discovery deferral metadata and must not invent `loginUrl`.
 - Phase 116 owns Service Identity and URL canonicalization.
 
 **Login Reclassification:**
@@ -3170,7 +3131,7 @@ Admin Management should display:
 
 **Relationship to other phases:**
 
-- Phase 108 finds and maintains the login entry point.
+- Phase 108 maintains an explicitly configured login entry point.
 - Phase 110 handles basic standard forms.
 - Phase 112 classifies and supports medium/complex login experiences.
 - Phase 116 owns canonical service identity and duplicate prevention.
@@ -3509,7 +3470,7 @@ Phase 113 is a **User Experience** and **Login Assistance** phase. It does not e
 | AC-113-15 | Every automatic completion attempt that is made produces exactly one visible user status; silent failure is forbidden |
 | AC-113-16 | Each service exposes a visible support level before open: Automatic Login Supported, Automatic Login (Best Effort), or Manual Login Only |
 | AC-113-17 | Manual Login Only services open URL and provide profile/credential/copy flows without attempting automatic completion |
-| AC-113-18 | Existing service names, icons, categories, profiles, credential storage, and create/edit flows remain unchanged; no data-model migration is required |
+| AC-113-18 | Existing service names, icons, categories, profiles, credential storage, and create/edit flows remain unchanged **by Phase 113**; no data-model migration is required **of Phase 113**. Does not block the Phase 102 / Phase 107 credential-schema amendment |
 | AC-113-19 | Validation evidence includes opening Login/Home URLs, multiple profiles, credential copy, password protection, graceful fallback when automatic completion is unavailable or fails, and at least one Manual Login Only service; successful automatic completion is not an acceptance criterion |
 | AC-113-20 | Build passes |
 | AC-113-21 | Phase 113 has no dependency on Phase 112; it does not fix or replace Phase 112; it does not introduce new Login Intelligence, website detection, or field detection |
@@ -3948,7 +3909,7 @@ Only anonymized operational metadata may be displayed.
 **Relationship to Other Phases:**
 
 - Phase 103 executes services.
-- Phase 108 discovers login entry points.
+- Phase 108 maintains explicitly configured login entry points. It does not discover them.
 - Phase 110 performs generic autofill.
 - Phase 112 supports advanced login experiences.
 - Phase 115 detects possible credential changes and guides safe updates.
@@ -4042,6 +4003,64 @@ Only credential-change intelligence is introduced.
 | AC-116-8 | Subdomains must not automatically be merged into the root domain. Canonical identity must preserve service boundaries unless explicitly defined by Service Registry metadata |
 | AC-116-9 | When an existing Service Registry entry matches the canonical identity, no duplicate registry row is created. The user's `user_services` record references the existing registry entry |
 | AC-116-10 | Canonical Service Identity is stable. It may be recomputed only through the approved normalization process. User edits or execution behavior must never implicitly change canonical identity |
+
+---
+
+### Phase 117 — Managed Autofill: Deterministic Single-Page Mapping
+
+Normative contract: `team-Yuri/arch-phase117.md`.
+
+**Goal:** Deliver administrator-managed, deterministic Autofill for simple single-page login forms. The administrator configures explicit `field.id` → CSS locator mappings; Digital Home resolves approved mappings and credential values; the browser extension executes and verifies fills without generic field inference on the validated path. No automatic form submission.
+
+**MVP vertical slice:** Rivhit Online (configuration of the generic contract — not a Rivhit-specific code path). Authoritative credential field IDs: `username`, `password`, `business_id`.
+
+**Hard precondition (D-117-0):** Before implementation, verify live Rivhit `login_fields` IDs match those three exactly. Mismatch → STOP; no rename/migration.
+
+**Scope:**
+
+- Persist Managed Autofill profile in `service_registry.metadata.autofillProfile` (no new table)
+- Support states: `not_configured` | `validated` | `unsupported`
+- Admin CSS locator editor derived from active credential schema
+- Structural validation vs live fill validation (structural alone never activates `validated`)
+- Hub routing: validated → deterministic path; otherwise legacy Autofill retained
+- Extension top-document-only deterministic executor reusing `GenericFillExecutor`
+- Security activation gate for production `validated`
+- `configVersion` + `validation.metadataVersion` binding; security-relevant edits invalidate prior validation
+- Automated + runtime verification per `arch-phase117.md`
+
+**Non-goals:** modal/multi-step/OTP/CAPTCHA automation; auto-submit; iframe automation; selector discovery/AI; Login Discovery; Phase 116 identity changes; removal of legacy Autofill; encryption redesign; Phase 113 Launch Card copy changes.
+
+| Acceptance criteria | |
+|---------------------|---|
+| AC-117-0 | Rivhit live field IDs are exactly `username`, `password`, `business_id` before implementation |
+| AC-117-1 | Profile persists in registry metadata without a new table |
+| AC-117-2 | Admin maps CSS locators only for active credential field IDs |
+| AC-117-3 | Structural validation enforces schema join, HTTPS Login Entry, origin bind, css-only |
+| AC-117-4 | Structural pass alone never sets `validated` |
+| AC-117-5 | `validated` requires approved live validation + explicit activation |
+| AC-117-6 | Validated path does not invoke heuristic field mapper |
+| AC-117-7 | Fill-executor reused; no auto-submit |
+| AC-117-8 | Top-document-only; Rivhit hidden iframe not written |
+| AC-117-9 | Locator must resolve exactly one visible editable input or fail |
+| AC-117-10 | Partial fill cannot report success |
+| AC-117-11 | Wrong origin fails |
+| AC-117-12 | Validated-path failure must not silent-fallback to generic success |
+| AC-117-13 | Non-validated services retain legacy Autofill |
+| AC-117-14 | No Rivhit-specific adapter / hardcoded fill branch |
+| AC-117-15 | `business_id` → `#osek` without renaming vault field id |
+| AC-117-16 | `#remember` never filled |
+| AC-117-17 | Missing-credentials / NOT_CONFIGURED / NO_STORED_CREDENTIALS preserved |
+| AC-117-18 | `supportState` does not redefine `credentialMode` |
+| AC-117-19 | No credential values in logs/errors/telemetry |
+| AC-117-20 | Production `validated` remains Security-gated |
+| AC-117-21 | Manager-required build/lint/tests pass |
+| AC-117-22 | Phase 113 Launch Card copy unchanged unless Architecture amends |
+| AC-117-23 | Live validation stamps `validation.metadataVersion` to the validated Managed Autofill `configVersion` |
+| AC-117-24 | Managed runtime requires version match; mismatch is not eligible |
+| AC-117-25 | Changing a validated locator/mappings invalidates prior validation eligibility |
+| AC-117-26 | Changing Login Entry / `allowedOrigin` invalidates prior validation eligibility |
+| AC-117-27 | Clearing/editing mappings cannot silently preserve `validated` eligibility |
+| AC-117-28 | `not_configured` reset is explicit Admin action only — not a mapping-clear side effect |
 
 ---
 
@@ -5196,5 +5215,13 @@ flowchart LR
 | **5.38** | 2026-07-15 | **Phase 113 — Credential Details freeze + header chrome.** Fix hang; remove ⋮; lock beside X. D-113-28; AC-113-48…50. |
 | **5.39** | 2026-07-15 | **Phase 113 — Remove-site durability.** Fix resurrect after re-login (cloud delete + hydrate). D-113-29; AC-113-51. |
 | **5.40** | 2026-07-15 | **Phase 109 — Cross-user profile leak + durable profile delete.** Profiles of X (incl. deleted) must not appear on Y; cloud delete for «מחיקת פרופיל». D-109-26; AC-109-40/41. |
+| **5.41** | 2026-09-14 | **Phase 108 — MVP removal of Automatic Login Discovery.** Phase retained as Browser Integration and Explicit Login Entry Management. Login entry is human-owned (`admin` / `user`; `direct_url` / `primary_page`). Discovery milestones M12-M16 and prior discovery acceptance criteria are withdrawn. See `arch-phase108.md`. |
+| **5.42** | 2026-09-14 | **MVP Dynamic Credential Fields.** Retain `loginFields`. Password field not required. Label, masking, and password role are separate. Phase 102 owns the schema and user-entry contract, including the absent-schema state. Phase 107 owns the structured admin editor. Phase 113 non-blocking amendment only. Security review required before implementation of validation and serialization changes. No new phase. No ciphertext migration. |
+| **5.43** | 2026-09-14 | **User credential entry acceptance.** AC-102-17 … AC-102-24 are mandatory product behavior: exact service-specific form, two-field and three-field fixtures, separate no/empty/invalid global-schema outcomes, custom default distinguished from an explicit global schema. Engineering change boundary unchanged. |
+| **5.44** | 2026-09-14 | **CEO final approval — Manager handoff.** AC-102-7 … AC-102-24 accepted. Historical Phase 102 automatic Login URL discovery (AC-102-4, AC-102-5, D-102-7, D-102-8) is not an active MVP requirement. Phase 108 remains authoritative. Discovery is not reopened. |
+| **5.45** | 2026-09-14 | **Credential modes and input types — pending CEO approval.** Global services resolve NOT_CONFIGURED, CREDENTIAL_FIELDS, or explicit NO_STORED_CREDENTIALS. Empty fields are not "no stored credentials". `inputType` text/number is separate from masking. NUMBER values stay lossless strings. No new phase. No Manager handoff until approved. |
+| **5.46** | 2026-09-14 | **CEO approval — credential modes.** `metadata.credentialMode` approved. D-102-27: mode and `login_fields` must agree. Contradictions are rejected or configuration-invalid. Manager must revise `manager-phase102.md` before Developer execution. |
+| **5.47** | 2026-09-15 | **Phase 117 — Managed Autofill: Deterministic Single-Page Mapping.** Admin-managed `field.id` → CSS locator profiles in `service_registry.metadata.autofillProfile`. Rivhit first vertical slice (`username` / `password` / `business_id`). Legacy Autofill retained for non-validated services. Security gate for production `validated`. See `arch-phase117.md`. AC-117-0 … AC-117-22. |
+| **5.48** | 2026-09-15 | **Phase 117 Architecture review corrections.** Explicit support-state transitions only (no implicit `not_configured` on mapping clear). Bind live validation to `validation.metadataVersion` / `configVersion`. AC-117-23 … AC-117-28. Not approved for Developer until Architecture accepts. |
 
 Implementation plans for individual production phases may be authored separately; they must align with this document and must not duplicate it as a second architecture source.

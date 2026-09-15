@@ -7,24 +7,26 @@ import {
 } from './serviceModel';
 
 /**
- * Infer catalog provenance from a legacy runtime Service id.
- * Custom services created in the hub use ids prefixed with `custom-`.
- */
-export function inferServiceSource(service: Pick<Service, 'id'>): ServiceSource {
-  return service.id.startsWith('custom-') ? 'user-created' : 'built-in-catalog';
-}
-
-/**
  * Future adapter binding for catalog entries that use site-specific adapters today.
  * Prefer {@link Service.adapterId} on the legacy runtime shape when present.
  */
 const LEGACY_ADAPTER_ID_BY_SERVICE_ID: Readonly<Record<string, string>> = {};
 
+/**
+ * Map a legacy runtime Service to a canonical ServiceDefinition.
+ * Source must be explicit (options.source or service.source).
+ * Never infer source from the id prefix (custom-* is identity only).
+ */
 export function legacyServiceToDefinition(
   service: Service,
   options?: { source?: ServiceSource },
 ): ServiceDefinition {
-  const source = options?.source ?? inferServiceSource(service);
+  const source = options?.source ?? service.source;
+  if (!source) {
+    throw new Error(
+      `Legacy service "${service.id}" has no authoritative source; refuse to infer from id`,
+    );
+  }
   const adapterId = service.adapterId ?? LEGACY_ADAPTER_ID_BY_SERVICE_ID[service.id];
 
   const candidate: ServiceDefinition = {

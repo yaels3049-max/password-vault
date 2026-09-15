@@ -1,12 +1,23 @@
 import { useEffect, useState } from 'react';
 import type { Credential } from './credentials';
 import type { LoginField } from './mockServices';
+import {
+  INCOMPLETE_SCHEMA_MESSAGE,
+  NO_STORED_CREDENTIALS_MESSAGE,
+  STORED_DETAILS_RETAINED_MESSAGE,
+  fieldInputType,
+  isFieldMasked,
+  isFieldRequired,
+  serializeCredentialValues,
+  type CredentialEntryResolution,
+} from './service/credentialSchema';
 import { TRUST_COPY, HubCredentialInput, TrustIndicator, VaultStateBadge } from './trust';
 
 interface CredentialModalProps {
   serviceName: string;
   serviceId: string;
   loginFields: LoginField[];
+  entryKind?: CredentialEntryResolution['kind'];
   initial?: Credential;
   hasExisting: boolean;
   onSave: (credential: Credential) => Promise<void> | void;
@@ -32,6 +43,7 @@ export default function CredentialModal({
   serviceName,
   serviceId,
   loginFields,
+  entryKind,
   initial,
   hasExisting,
   onSave,
@@ -46,6 +58,8 @@ export default function CredentialModal({
   );
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const resolvedKind = entryKind ?? (loginFields.length === 0 ? 'incomplete' : 'form');
 
   useEffect(() => {
     setValues(emptyValues(loginFields, initial));
@@ -59,21 +73,17 @@ export default function CredentialModal({
 
   async function handleSubmit() {
     if (saving) return;
-    const complete = loginFields.every((field) => values[field.id]?.trim());
-    if (!complete) return;
-
-    const credential: Credential = {};
-    for (const field of loginFields) {
-      credential[field.id] =
-        field.type === 'password'
-          ? values[field.id]
-          : values[field.id].trim();
+    if (resolvedKind !== 'form' || loginFields.length === 0) return;
+    const serialized = serializeCredentialValues(loginFields, values);
+    if (!serialized.ok) {
+      setLocalError(serialized.message ?? 'לא ניתן לשמור את הפרטים.');
+      return;
     }
 
     setSaving(true);
     setSuccessMessage(null);
     try {
-      await onSave(credential);
+      await onSave(serialized.credential);
       setSuccessMessage(
         hasExisting ? TRUST_COPY.updateSuccess : TRUST_COPY.saveSuccess,
       );
@@ -111,9 +121,9 @@ export default function CredentialModal({
         </div>
         <h2 className="modal-title">פרטי כניסה</h2>
         <p className="modal-subtitle">{serviceName}</p>
-        {error && (
+        {(error || localError) && (
           <p className="modal-field-error" role="alert">
-            {error}
+            {error || localError}
           </p>
         )}
         {successMessage && (
@@ -126,7 +136,18 @@ export default function CredentialModal({
             {TRUST_COPY.savingEncrypted}
           </p>
         )}
-        {/* D-106-5: per-field assist — email/username browser help; password PM-hardened */}
+        {resolvedKind === 'no-stored-credentials' ? (
+          <div role="status">
+            <p className="modal-subtitle">{NO_STORED_CREDENTIALS_MESSAGE}</p>
+          </div>
+        ) : resolvedKind !== 'form' ? (
+          <div role="status">
+            <p className="modal-subtitle">{INCOMPLETE_SCHEMA_MESSAGE}</p>
+            {hasExisting ? (
+              <p className="modal-subtitle">{STORED_DETAILS_RETAINED_MESSAGE}</p>
+            ) : null}
+          </div>
+        ) : (
         <form onSubmit={(e) => e.preventDefault()}>
           {loginFields.map((field, index) => (
             <label key={field.id} className="modal-field">
@@ -135,10 +156,13 @@ export default function CredentialModal({
                 serviceId={serviceId}
                 fieldId={field.id}
                 fieldType={field.type}
+                digitString={fieldInputType(field) === 'number'}
+                maskDisplay={isFieldMasked(field) && field.type !== 'password'}
                 value={values[field.id] ?? ''}
                 onChange={(e) => handleChange(field.id, e.target.value)}
                 autoFocus={index === 0}
                 disabled={saving}
+                required={isFieldRequired(field)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -177,6 +201,7 @@ export default function CredentialModal({
             </button>
           )}
         </form>
+        )}
       </div>
     </div>
   );

@@ -40,6 +40,13 @@ web-app UX and orchestration change only. `service_registry` is read-only from t
 - **Administration vs execution separation** (amended AC-104-17): Service Management has
   **no Open action** and never calls execution helpers. Digital Home tiles remain the sole
   execution surface (`openServiceWithProfile` → `executeServiceFromTile`).
+- **Custom add outcome consolidation:** `App.addCustomService` is the single outcome
+  producer. Catalog match uses **global definitions first**; private customs cannot steal
+  the branch via `Array.find()` order. Same-user custom duplicates return
+  `same_user_custom_duplicate` (informational dialog) instead of the legacy red form error
+  «האתר כבר קיים ברשימת האתרים שלך.». Custom add waits on the existing catalog
+  readiness contract rather than classifying against an unready snapshot. Phase 116 URL
+  identity is unchanged (e.g. `e-services.clalit.co.il/` is not Clalit).
 - **ניהול — progressive-disclosure modal** (D-104-19):
   - **Single profile** (default private user): credential editing is shown **directly**;
     the implicit default profile is internal and profile chrome is hidden. A secondary

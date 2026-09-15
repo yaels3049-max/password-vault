@@ -22,7 +22,7 @@ export {
   type AutomaticCompletionAssistResult,
 } from './assistanceActions';
 
-export { serviceHasUsableCredentials } from './credentialsGate';
+export { serviceHasUsableCredentials, shouldOpenLoginAssistancePanel, resolveDigitalHomeLaunchKind } from './credentialsGate';
 
 export {
   computeFloatingPanelPosition,
@@ -31,5 +31,7 @@ export {
 
 export { default as LoginAssistancePanel } from './LoginAssistancePanel';
 export type { LoginAssistancePanelProps } from './LoginAssistancePanel';
+
+export { default as DigitalHomeCredentialModal } from './DigitalHomeCredentialModal';
 
 export * from './messages';

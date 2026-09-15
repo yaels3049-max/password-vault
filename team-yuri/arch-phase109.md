@@ -1,5 +1,8 @@
 # Architecture Phase 109
 
+## Amendment
+AMENDED: 2026-09-14 — **Phase 108 MVP.** Regression scope is Browser Integration and explicit login-entry behavior, not Login Discovery. Do not treat discovery redesign as an active Phase 108 obligation. See `arch-phase108.md`.
+
 ## Phase Identifier
 PHASE=109
 

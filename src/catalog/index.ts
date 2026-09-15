@@ -22,6 +22,7 @@ export {
   type RegistryLoginDiscoveryResult,
 } from './customServiceDiscovery';
 export { loadBuiltinCatalogDefinitions } from './catalogLoader';
+export { classifyAddCustomService } from './addCustomServiceOutcome';
 export {
   bootstrapMissingKnownBuiltins,
   getKnownBuiltinDefinition,

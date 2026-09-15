@@ -1,5 +1,14 @@
-import { DEFAULT_LOGIN_FIELDS, type LoginField } from '../service/serviceModel';
+import {
+  planCredentialConfigurationWrite,
+  readStoredCredentialMode,
+  type CredentialMode,
+} from '../service/credentialSchema';
+import { type LoginField } from '../service/serviceModel';
 import { discoverLoginForRegistryService } from '../catalog/customServiceDiscovery';
+import {
+  stampExplicitLoginMetadata,
+  type ExplicitLoginEntryType,
+} from '../catalog/explicitLoginEntry';
 import {
   bulkRefreshLoginUrls,
   BULK_REFRESH_CONCURRENCY,
@@ -38,6 +47,7 @@ export interface GlobalRegistryInput {
   icon?: string | null;
   adapter_id?: string | null;
   login_fields?: LoginField[] | null;
+  credential_mode?: CredentialMode;
   source_type: 'built_in' | 'admin' | 'approved_global';
   service_status: 'active' | 'deprecated' | 'disabled';
   metadata?: Record<string, unknown>;
@@ -68,8 +78,11 @@ function invalidateCatalogCache() {
   clearRegistryCatalogCache();
 }
 
-function loginFieldsToJson(loginFields?: LoginField[] | null): LoginField[] {
-  return loginFields && loginFields.length > 0 ? loginFields : DEFAULT_LOGIN_FIELDS;
+function loginFieldsForWrite(loginFields?: LoginField[] | null): LoginField[] | null {
+  if (!loginFields || loginFields.length === 0) {
+    return null;
+  }
+  return loginFields;
 }
 
 function mapRegistryError(error: unknown, fallback: string): Error {
@@ -307,8 +320,32 @@ export async function createGlobalRegistryRow(input: GlobalRegistryInput): Promi
       existingRows.map((row) => row.id),
     ));
 
-  const loginUrl = input.login_url?.trim() || null;
-  const loginUrlStatus: LoginUrlStatus = loginUrl ? (input.login_url_status ?? 'valid') : 'unknown';
+  const loginUrl = input.login_url?.trim() || primaryUrl;
+  const entryType: ExplicitLoginEntryType =
+    input.metadata?.loginEntryType === 'direct_url' ? 'direct_url' : 'primary_page';
+  const published = input.credential_mode
+    ? planCredentialConfigurationWrite({
+        mode: input.credential_mode,
+        fields: input.login_fields,
+      })
+    : null;
+  if (published && !published.ok) {
+    throw new Error(published.message);
+  }
+  const loginFields = published && published.ok
+    ? published.loginFields
+    : loginFieldsForWrite(input.login_fields);
+  const metadata = stampExplicitLoginMetadata(
+    {
+      ...(input.metadata ?? {}),
+      faviconSiteUrl: primaryUrl,
+    },
+    'admin',
+    entryType,
+  );
+  if (published && published.ok) {
+    metadata.credentialMode = published.credentialMode;
+  }
 
   const { error } = await supabase.from('service_registry').insert({
     id: serviceId,
@@ -318,15 +355,12 @@ export async function createGlobalRegistryRow(input: GlobalRegistryInput): Promi
     category_id: normalizeOptionalText(input.category_id),
     icon: normalizeOptionalText(input.icon) ?? '🔗',
     adapter_id: normalizeOptionalText(input.adapter_id),
-    login_fields: loginFieldsToJson(input.login_fields),
+    login_fields: loginFields,
     source_type: input.source_type,
     service_status: input.service_status,
-    metadata: {
-      ...(input.metadata ?? {}),
-      faviconSiteUrl: primaryUrl,
-    },
+    metadata,
     metadata_version: 1,
-    login_url_status: loginUrlStatus,
+    login_url_status: 'valid',
     owner_user_id: null,
   });
 
@@ -428,15 +462,79 @@ export async function updateGlobalRegistryRow(
 
   if (patch.display_name !== undefined) payload.display_name = patch.display_name.trim();
   if (patch.primary_url !== undefined) payload.primary_url = patch.primary_url.trim();
-  if (patch.login_url !== undefined) payload.login_url = patch.login_url?.trim() || null;
+  if (patch.login_url !== undefined) {
+    const trimmedLoginUrl = patch.login_url?.trim() ?? '';
+    if (!trimmedLoginUrl) {
+      throw new Error('יש להזין כתובת כניסה');
+    }
+    payload.login_url = trimmedLoginUrl;
+    payload.login_url_status = 'valid';
+  }
   if (patch.category_id !== undefined) payload.category_id = patch.category_id;
   if (patch.icon !== undefined) payload.icon = patch.icon;
   if (patch.adapter_id !== undefined) payload.adapter_id = patch.adapter_id;
-  if (patch.login_fields !== undefined) payload.login_fields = loginFieldsToJson(patch.login_fields);
+  let publishedCredentialMode: CredentialMode | undefined;
+  if (patch.credential_mode !== undefined || patch.login_fields !== undefined) {
+    const existing = await fetchRegistryRowForAdmin(serviceId);
+    const existingMode = readStoredCredentialMode(existing?.metadata);
+    const mode =
+      patch.credential_mode ??
+      (existingMode === 'absent' || existingMode === 'unrecognized' ? undefined : existingMode);
+    if (mode) {
+      const planned = planCredentialConfigurationWrite({
+        mode,
+        fields: patch.credential_mode !== undefined ? patch.login_fields : patch.login_fields,
+      });
+      if (!planned.ok) {
+        throw new Error(planned.message);
+      }
+      payload.login_fields = planned.loginFields;
+      if (patch.credential_mode !== undefined) {
+        publishedCredentialMode = planned.credentialMode;
+      }
+    } else if (patch.login_fields !== undefined) {
+      payload.login_fields = loginFieldsForWrite(patch.login_fields);
+    }
+    const previousFields = JSON.stringify(existing?.login_fields ?? null);
+    const nextFields = JSON.stringify(payload.login_fields ?? null);
+    const modeChanged =
+      publishedCredentialMode !== undefined && publishedCredentialMode !== existingMode;
+    if (previousFields !== nextFields || modeChanged) {
+      payload.metadata_version = (existing?.metadata_version ?? 1) + 1;
+    }
+  }
   if (patch.source_type !== undefined) payload.source_type = patch.source_type;
   if (patch.service_status !== undefined) payload.service_status = patch.service_status;
-  if (patch.login_url_status !== undefined) payload.login_url_status = patch.login_url_status;
-  if (patch.metadata !== undefined) payload.metadata = patch.metadata;
+  if (patch.login_url === undefined && patch.login_url_status !== undefined) {
+    payload.login_url_status = patch.login_url_status;
+  }
+  if (patch.login_url !== undefined || patch.metadata !== undefined) {
+    const existing = await fetchRegistryRowForAdmin(serviceId);
+    const entryType: ExplicitLoginEntryType =
+      patch.metadata?.loginEntryType === 'direct_url' ||
+      patch.metadata?.loginEntryType === 'primary_page'
+        ? patch.metadata.loginEntryType
+        : existing?.metadata?.loginEntryType === 'direct_url'
+          ? 'direct_url'
+          : 'primary_page';
+    const merged = {
+      ...(existing?.metadata ?? {}),
+      ...(patch.metadata ?? {}),
+    };
+    if (publishedCredentialMode) {
+      merged.credentialMode = publishedCredentialMode;
+    }
+    payload.metadata =
+      patch.login_url !== undefined
+        ? stampExplicitLoginMetadata(merged, 'admin', entryType)
+        : merged;
+  } else if (publishedCredentialMode) {
+    const existing = await fetchRegistryRowForAdmin(serviceId);
+    payload.metadata = {
+      ...(existing?.metadata ?? {}),
+      credentialMode: publishedCredentialMode,
+    };
+  }
 
   const { error } = await supabase
     .from('service_registry')
@@ -459,7 +557,7 @@ export async function updateUserOwnedRegistryRow(
   serviceId: string,
   patch: Pick<
     GlobalRegistryInput,
-    'display_name' | 'primary_url' | 'login_url' | 'category_id' | 'service_status'
+    'display_name' | 'primary_url' | 'login_url' | 'category_id' | 'service_status' | 'metadata'
   >,
 ): Promise<void> {
   await ensureSession();
@@ -470,18 +568,36 @@ export async function updateUserOwnedRegistryRow(
     throw new Error('הגשת משתמש לא נמצאה.');
   }
 
+  const loginUrl = patch.login_url?.trim() ?? '';
+  if (!loginUrl) {
+    throw new Error('יש להזין כתובת כניסה');
+  }
+
+  const entryType: ExplicitLoginEntryType =
+    patch.metadata?.loginEntryType === 'direct_url' ? 'direct_url' : 'primary_page';
+
   const { error } = await supabase
     .from('service_registry')
     .update({
       display_name: patch.display_name.trim(),
       primary_url: patch.primary_url.trim(),
-      login_url: patch.login_url?.trim() || null,
+      login_url: loginUrl,
+      login_url_status: 'valid',
       category_id: patch.category_id,
       service_status: patch.service_status,
+      metadata: stampExplicitLoginMetadata(
+        {
+          ...(existing.metadata ?? {}),
+          ...(patch.metadata ?? {}),
+        },
+        'user',
+        entryType,
+      ),
       updated_at: new Date().toISOString(),
     })
     .eq('id', serviceId)
-    .not('owner_user_id', 'is', null);
+    .eq('owner_user_id', existing.owner_user_id)
+    .eq('source_type', 'user');
 
   if (error) {
     throw mapRegistryError(error, 'לא ניתן לעדכן הגשת משתמש.');
@@ -580,16 +696,17 @@ export async function rejectUserSubmission(
 export async function adminUpdateLoginUrl(
   serviceId: string,
   loginUrl: string,
-  loginFields?: LoginField[] | null,
+  _loginFields?: LoginField[] | null,
   loginUrlStatus: LoginUrlStatus = 'valid',
 ): Promise<void> {
   await ensureSession();
   const supabase = requireSupabase();
 
+  // Login URL edit must not create or modify login_fields (AC-107-25).
   const { error } = await supabase.rpc('admin_update_login_url', {
     p_service_id: serviceId,
     p_login_url: loginUrl.trim(),
-    p_login_fields: loginFieldsToJson(loginFields),
+    p_login_fields: null,
     p_login_url_status: loginUrlStatus,
   });
 
@@ -597,45 +714,30 @@ export async function adminUpdateLoginUrl(
     throw mapRegistryError(error, 'לא ניתן לעדכן כתובת כניסה.');
   }
 
-  // Ensure client-visible metadata matches admin override even if an older RPC
-  // is deployed (clears stale needs_review / discovery error fields).
+  // Client follow-up records ownership only. Do not add discovery outcome fields.
+  // Residual: RPC admin_update_login_url may still stamp discovery-shaped keys
+  // (loginUrlDiscoveryOutcome, lastDiscoveryOutcome, discoveryMethod). M1 does not migrate that.
   if (loginUrlStatus === 'valid') {
     const row = await fetchRegistryRowForAdmin(serviceId);
     if (row && row.owner_user_id === null) {
-      const now = new Date().toISOString();
-      const metadata = {
-        ...(row.metadata ?? {}),
-        loginUrlSource: 'admin',
-        lastAdminEdit: now,
-        loginUrlDiscoveryError: null,
-        loginUrlDiscoveryOutcome: 'succeeded',
-        loginUrlDiscoveryAttempted: true,
-        loginUrlLastCheckedAt: now,
-        loginUrlLastDiscoveredAt: now,
-        lastDiscoveryOutcome: {
-          at: now,
-          success: true,
-          outcome: 'succeeded',
-          method: 'admin_manual',
-          confidence: null,
-          source: 'admin',
-          loginUrl: loginUrl.trim(),
-          reason: null,
-        },
-      };
+      const metadata = stampExplicitLoginMetadata(
+        row.metadata ?? {},
+        'admin',
+        row.metadata?.loginEntryType === 'direct_url' ? 'direct_url' : 'primary_page',
+      );
 
       const { error: metaError } = await supabase
         .from('service_registry')
         .update({
           metadata,
           login_url_status: 'valid',
-          updated_at: now,
+          updated_at: new Date().toISOString(),
         })
         .eq('id', serviceId)
         .is('owner_user_id', null);
 
       if (metaError && import.meta.env.DEV) {
-        console.warn('[admin] Post-edit discovery metadata clear skipped:', metaError);
+        console.warn('[admin] Post-edit login entry metadata skipped:', metaError);
       }
     }
   }

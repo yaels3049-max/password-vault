@@ -2,10 +2,16 @@ export type ServiceCategory = string;
 
 export type LoginFieldType = 'text' | 'password';
 
+export type CredentialInputType = 'text' | 'number';
+
 export interface LoginField {
   id: string;
   label: string;
   type: LoginFieldType;
+  required?: boolean;
+  masked?: boolean;
+  /** Entry check only. Omitted means text. Not a numeric storage type. */
+  inputType?: CredentialInputType;
 }
 
 /** Legacy runtime service shape used by Dashboard, vault, and autofill today. */
@@ -18,6 +24,13 @@ export interface Service {
   category: ServiceCategory;
   logoUrl?: string;
   loginFields?: LoginField[];
+  /** Client-only. Not a credential and not written back to the registry. */
+  storedLoginFieldsStatus?: 'valid' | 'missing' | 'empty' | 'invalid';
+  /**
+   * Credential-entry class only. `user-created` may use the render-time default.
+   * Autofill must not read this to invent field roles.
+   */
+  source?: 'built-in-catalog' | 'user-created' | 'imported' | 'org-catalog';
   /** Optional adapter routing metadata (e.g. htzone). */
   adapterId?: string;
   /**
