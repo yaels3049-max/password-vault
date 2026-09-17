@@ -28,6 +28,7 @@ import {
 import { deriveRegistryServiceIdFromUrl } from '../registry/serviceIdFromUrl';
 import IconAssetEditor from './IconAssetEditor';
 import IntegrationStatusPanel from './IntegrationStatusPanel';
+import AutofillProfileEditor from './AutofillProfileEditor';
 import LoginIntelligencePanel from './LoginIntelligencePanel';
 import LoginUrlRefresh from './LoginUrlRefresh';
 import UrlFieldWithCopy from './UrlFieldWithCopy';
@@ -619,6 +620,15 @@ export default function RegistryAdmin() {
                           setCredentialFields(next);
                           setConfigurationTouched(true);
                         }}
+                      />
+                    ) : null}
+                    {credentialMode === 'credential_fields' &&
+                    selectedRow?.owner_user_id === null &&
+                    !isCreating ? (
+                      <AutofillProfileEditor
+                        key={selectedRow.id}
+                        row={selectedRow}
+                        onSaved={reload}
                       />
                     ) : null}
                   </>

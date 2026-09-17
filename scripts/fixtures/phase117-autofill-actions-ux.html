@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <title>Phase 117 Managed Autofill actions — UX states</title>
+    <style>
+      :root {
+        --admin-primary: #2563eb;
+        --admin-primary-dark: #1d4ed8;
+        --admin-border: #cbd5e1;
+      }
+      body {
+        margin: 0;
+        font-family: Assistant, 'Segoe UI', Tahoma, sans-serif;
+        background: #f1f5f9;
+        color: #0f172a;
+        padding: 1.25rem;
+      }
+      .panel {
+        background: #fff;
+        border: 1px solid rgba(37, 99, 235, 0.2);
+        border-radius: 16px;
+        padding: 1rem 1.1rem 1.15rem;
+        margin-bottom: 1.25rem;
+        max-width: 720px;
+      }
+      h1 {
+        font-size: 1.1rem;
+        margin: 0 0 0.35rem;
+        color: #1e3a8a;
+      }
+      .state {
+        margin: 0 0 0.75rem;
+        color: #475569;
+        font-size: 0.9rem;
+      }
+      .legend {
+        margin: 0.65rem 0 0;
+        font-size: 0.85rem;
+        color: #334155;
+        line-height: 1.45;
+      }
+      .admin-actions-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      .admin-btn {
+        border: 1px solid transparent;
+        border-radius: 12px;
+        padding: 0.5rem 0.95rem;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        font-size: 0.875rem;
+      }
+      .admin-btn:disabled,
+      .admin-btn[aria-disabled='true'] {
+        opacity: 0.42;
+        cursor: not-allowed;
+        border-style: dashed;
+        box-shadow: none;
+        filter: grayscale(0.25);
+        pointer-events: none;
+      }
+      .admin-btn-primary {
+        background: var(--admin-primary);
+        color: #fff;
+      }
+      .admin-btn-primary:disabled,
+      .admin-btn-primary[aria-disabled='true'] {
+        background: #94a3b8;
+        color: #f8fafc;
+        border: 1px dashed #64748b;
+        opacity: 0.55;
+        cursor: not-allowed;
+        filter: grayscale(0.35);
+        box-shadow: none;
+      }
+      .admin-btn-secondary {
+        background: #fff;
+        border-color: var(--admin-border);
+        color: #334155;
+      }
+      .admin-btn-secondary:disabled {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #64748b;
+      }
+      .badge {
+        display: inline-block;
+        margin-inline-start: 0.35rem;
+        padding: 0.05rem 0.4rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        vertical-align: middle;
+      }
+      .badge-on {
+        background: #dcfce7;
+        color: #166534;
+        border: 1px solid #86efac;
+      }
+      .badge-off {
+        background: #f1f5f9;
+        color: #64748b;
+        border: 1px dashed #94a3b8;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="panel" id="state-a" data-state="unsaved">
+      <h1>A — Mapping not yet saved</h1>
+      <p class="state">מצב תמיכה: <strong>לא הוגדר</strong> · מיפוי תקף במסך, עדיין לא נשמר</p>
+      <div class="admin-actions-row" role="group" aria-label="פעולות מיפוי">
+        <button type="button" class="admin-btn admin-btn-primary" data-action="save" data-enabled="true">שמור מיפוי</button>
+        <button type="button" class="admin-btn admin-btn-secondary" data-action="approve" data-enabled="false" disabled aria-disabled="true">אשר מיפוי</button>
+        <button type="button" class="admin-btn admin-btn-secondary" data-action="clear" data-enabled="true">נקה מיפוי</button>
+        <button type="button" class="admin-btn admin-btn-secondary" data-action="unsupported" data-enabled="false" disabled aria-disabled="true">הגדר כלא נתמך</button>
+      </div>
+      <p class="legend">
+        ENABLED: שמור מיפוי, נקה מיפוי <span class="badge badge-on">enabled</span><br />
+        DISABLED: אשר מיפוי, הגדר כלא נתמך
+        <span class="badge badge-off">disabled + dashed border + aria-disabled</span>
+      </p>
+    </section>
+
+    <section class="panel" id="state-b" data-state="saved">
+      <h1>B — Saved structurally-valid mapping</h1>
+      <p class="state">מצב תמיכה: <strong>לא הוגדר</strong> · מיפוי שמור ותקף, המסך תואם לשמור</p>
+      <div class="admin-actions-row" role="group" aria-label="פעולות מיפוי">
+        <button type="button" class="admin-btn admin-btn-primary" data-action="save" data-enabled="false" disabled aria-disabled="true">שמור מיפוי</button>
+        <button type="button" class="admin-btn admin-btn-secondary" data-action="approve" data-enabled="true">אשר מיפוי</button>
+        <button type="button" class="admin-btn admin-btn-secondary" data-action="clear" data-enabled="true">נקה מיפוי</button>
+        <button type="button" class="admin-btn admin-btn-secondary" data-action="unsupported" data-enabled="false" disabled aria-disabled="true">הגדר כלא נתמך</button>
+      </div>
+      <p class="legend">
+        ENABLED: אשר מיפוי, נקה מיפוי <span class="badge badge-on">enabled</span><br />
+        DISABLED: שמור מיפוי, הגדר כלא נתמך
+        <span class="badge badge-off">disabled + dashed border + aria-disabled</span>
+      </p>
+    </section>
+
+    <section class="panel" id="state-c" data-state="validated">
+      <h1>C — Validated mapping</h1>
+      <p class="state">מצב תמיכה: <strong>מאומת</strong> · מיפוי שמור ומאושר; אין שינויים לא שמורים</p>
+      <div class="admin-actions-row" role="group" aria-label="פעולות מיפוי">
+        <button type="button" class="admin-btn admin-btn-primary" data-action="save" data-enabled="false" disabled aria-disabled="true">שמור מיפוי</button>
+        <button type="button" class="admin-btn admin-btn-secondary" data-action="approve" data-enabled="false" disabled aria-disabled="true">אשר מיפוי</button>
+        <button type="button" class="admin-btn admin-btn-secondary" data-action="clear" data-enabled="true">נקה מיפוי</button>
+        <button type="button" class="admin-btn admin-btn-secondary" data-action="unsupported" data-enabled="true">הגדר כלא נתמך</button>
+      </div>
+      <p class="legend">
+        ENABLED: נקה מיפוי, הגדר כלא נתמך <span class="badge badge-on">enabled</span><br />
+        DISABLED: שמור מיפוי, אשר מיפוי
+        <span class="badge badge-off">disabled + dashed border + aria-disabled</span>
+      </p>
+    </section>
+  </body>
+</html>

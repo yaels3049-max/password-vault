@@ -640,13 +640,25 @@ const GENERIC_REAL_SITE_SCRIPT_FILES = {
     'generic/fill-executor.js',
     'generic/identity-first-autofill.js',
   ],
+  managed: [
+    'generic/form-detector.js',
+    'generic/fill-executor.js',
+    'generic/validated-autofill.js',
+  ],
 };
 
 const GENERIC_REAL_SITE_RETRY_DELAY_MS = 300;
 const GENERIC_REAL_SITE_BOT_RETRY_DELAY_MS = 1000;
 const GENERIC_REAL_SITE_MAX_ATTEMPTS = 60;
-/** SPA banking portals often paint login inputs after first paint. */
+/** SPA banking portals often paint login inputs after first paint. Legacy/generic only. */
 const GENERIC_REAL_SITE_INITIAL_DELAY_MS = 4000;
+/**
+ * Phase 117 D-117-17 — Managed Autofill must NOT inherit the legacy 4s post-load delay.
+ * After URL match + top-frame inject path, attempt mappings immediately (readiness + adaptive retry).
+ */
+const MANAGED_AUTOFILL_INITIAL_DELAY_MS = 0;
+/** Bounded adaptive retry spacing for Managed mapped-target readiness (not a multi-second sleep). */
+const MANAGED_AUTOFILL_RETRY_DELAY_MS = 300;
 /** Time allowed for a heavy real-site login page to reach the target URL. */
 const GENERIC_REAL_SITE_TAB_LOAD_TIMEOUT_MS = 120000;
 /** Time allowed for detect/fill once the login page is ready (retries included). */
@@ -754,11 +766,33 @@ function tabUrlMatchesGenericTarget(tabUrl, urlString) {
   }
 }
 
-function openGenericRealSiteTab(urlString, sendResponse, sessionLabel, onTabReady) {
+/**
+ * @param {object} [options]
+ * @param {number} [options.initialDelayMs] — post-URL-match delay before onTabReady.
+ *   Defaults to GENERIC_REAL_SITE_INITIAL_DELAY_MS (legacy/generic 4s).
+ *   Managed Autofill must pass MANAGED_AUTOFILL_INITIAL_DELAY_MS (0).
+ * @param {object} [options.tabCreateProperties] — Managed-only placement hints
+ *   (e.g. index, openerTabId). Legacy/generic must omit this.
+ */
+function openGenericRealSiteTab(urlString, sendResponse, sessionLabel, onTabReady, options) {
   if (!isAllowedGenericAutofillUrl(urlString)) {
     sendResponse({ ok: false, reason: 'url_not_allowed' });
     return false;
   }
+
+  var initialDelayMs =
+    options && typeof options.initialDelayMs === 'number'
+      ? options.initialDelayMs
+      : GENERIC_REAL_SITE_INITIAL_DELAY_MS;
+
+  var placementHints =
+    options && options.tabCreateProperties && typeof options.tabCreateProperties === 'object'
+      ? options.tabCreateProperties
+      : null;
+  var hasManagedPlacement =
+    placementHints &&
+    (typeof placementHints.index === 'number' ||
+      typeof placementHints.openerTabId === 'number');
 
   var respond = onceExternalSendResponse(sendResponse, sessionLabel);
   var settled = false;
@@ -800,7 +834,7 @@ function openGenericRealSiteTab(urlString, sendResponse, sessionLabel, onTabRead
     finishSession({ ok: false, reason: 'tab_load_timeout' });
   }, GENERIC_REAL_SITE_TAB_LOAD_TIMEOUT_MS);
 
-  chrome.tabs.create({ url: urlString }, function (tab) {
+  function onTabCreated(tab) {
     if (chrome.runtime.lastError || !tab || !tab.id) {
       clearTimeout(tabLoadTimeout);
       finishSession({
@@ -827,7 +861,7 @@ function openGenericRealSiteTab(urlString, sendResponse, sessionLabel, onTabRead
           return;
         }
         onTabReady(tabId, finishSession);
-      }, GENERIC_REAL_SITE_INITIAL_DELAY_MS);
+      }, initialDelayMs);
     }
 
     function onTabUpdated(updatedTabId, changeInfo) {
@@ -877,6 +911,28 @@ function openGenericRealSiteTab(urlString, sendResponse, sessionLabel, onTabRead
         startReadyWork();
       }
     });
+  }
+
+  var createProps = { url: urlString };
+  if (hasManagedPlacement) {
+    if (typeof placementHints.index === 'number') {
+      createProps.index = placementHints.index;
+    }
+    if (typeof placementHints.openerTabId === 'number') {
+      createProps.openerTabId = placementHints.openerTabId;
+    }
+  }
+
+  chrome.tabs.create(createProps, function (tab) {
+    // D-117-19: Managed placement soft-fallback — retry URL-only if adjacent create fails.
+    if (
+      hasManagedPlacement &&
+      (chrome.runtime.lastError || !tab || !tab.id)
+    ) {
+      chrome.tabs.create({ url: urlString }, onTabCreated);
+      return;
+    }
+    onTabCreated(tab);
   });
 
   return true;
@@ -1537,6 +1593,236 @@ function openPageAndGenericAutofill(urlString, loginFields, credentials, sendRes
   );
 }
 
+function isManagedAutofillRetryable(result) {
+  if (!result || result.ok) {
+    return false;
+  }
+  return (
+    result.reason === 'targets_not_ready' ||
+    result.reason === 'zero_match' ||
+    result.reason === 'managed_function_missing' ||
+    result.reason === 'executor_missing'
+  );
+}
+
+function runManagedAutofillOnTab(tabId, payload, attempt, onDone) {
+  chrome.scripting.executeScript(
+    {
+      target: { tabId: tabId, frameIds: [0] },
+      world: 'MAIN',
+      files: GENERIC_REAL_SITE_SCRIPT_FILES.managed,
+    },
+    function () {
+      if (chrome.runtime.lastError) {
+        if (attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+          setTimeout(function () {
+            runManagedAutofillOnTab(tabId, payload, attempt + 1, onDone);
+          }, MANAGED_AUTOFILL_RETRY_DELAY_MS);
+          return;
+        }
+        onDone({
+          ok: false,
+          reason: chrome.runtime.lastError.message || 'script_injection_failed',
+        });
+        return;
+      }
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tabId, frameIds: [0] },
+          world: 'MAIN',
+          func: function (opts) {
+            if (typeof runManagedAutofill !== 'function') {
+              return { ok: false, reason: 'managed_function_missing' };
+            }
+            return runManagedAutofill(opts);
+          },
+          args: [
+            {
+              allowedOrigin: payload.allowedOrigin,
+              fieldMappings: payload.fieldMappings,
+              credentials: payload.credentials,
+            },
+          ],
+        },
+        function (results) {
+          if (chrome.runtime.lastError) {
+            if (attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+              setTimeout(function () {
+                runManagedAutofillOnTab(tabId, payload, attempt + 1, onDone);
+              }, MANAGED_AUTOFILL_RETRY_DELAY_MS);
+              return;
+            }
+            onDone({
+              ok: false,
+              reason: chrome.runtime.lastError.message || 'managed_run_failed',
+            });
+            return;
+          }
+
+          var result =
+            results && results[0] && results[0].result
+              ? results[0].result
+              : { ok: false, reason: 'no_result' };
+
+          if (
+            (!result || !result.ok) &&
+            attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS &&
+            isManagedAutofillRetryable(result)
+          ) {
+            setTimeout(function () {
+              runManagedAutofillOnTab(tabId, payload, attempt + 1, onDone);
+            }, MANAGED_AUTOFILL_RETRY_DELAY_MS);
+            return;
+          }
+
+          onDone(result || { ok: false, reason: 'no_result' });
+        },
+      );
+    },
+  );
+}
+
+/**
+ * D-117-19 — Managed tab adjacent to Hub when sender.tab is available.
+ * Placement-only soft fallback when sender.tab missing (default strip placement).
+ */
+function buildManagedTabCreateProperties(sender) {
+  if (
+    !sender ||
+    !sender.tab ||
+    typeof sender.tab.id !== 'number' ||
+    typeof sender.tab.index !== 'number'
+  ) {
+    return null;
+  }
+  return {
+    index: sender.tab.index + 1,
+    openerTabId: sender.tab.id,
+  };
+}
+
+/**
+ * Phase 118 Admin inspect — SafePageStructure only (no values / fill / submit).
+ */
+function openPageAndInspectLoginStructure(message, sendResponse, sender) {
+  var loginEntryUrl =
+    message && typeof message.loginEntryUrl === 'string'
+      ? message.loginEntryUrl.trim()
+      : '';
+  var allowedOrigin =
+    message && typeof message.allowedOrigin === 'string'
+      ? message.allowedOrigin.trim()
+      : '';
+  if (!loginEntryUrl || !allowedOrigin) {
+    sendResponse({ ok: false, reason: 'missing_inspect_payload' });
+    return false;
+  }
+
+  var inspectOptions = {
+    initialDelayMs: MANAGED_AUTOFILL_INITIAL_DELAY_MS,
+  };
+  var placement = buildManagedTabCreateProperties(sender);
+  if (placement) {
+    inspectOptions.tabCreateProperties = placement;
+  }
+
+  return openGenericRealSiteTab(
+    loginEntryUrl,
+    sendResponse,
+    'admin-login-page-inspect',
+    function (tabId, finishSession) {
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tabId, frameIds: [0] },
+          world: 'MAIN',
+          files: ['generic/page-structure-inspect.js'],
+        },
+        function () {
+          if (chrome.runtime.lastError) {
+            finishSession({
+              ok: false,
+              reason: chrome.runtime.lastError.message || 'inspect_inject_failed',
+            });
+            return;
+          }
+          chrome.scripting.executeScript(
+            {
+              target: { tabId: tabId, frameIds: [0] },
+              world: 'MAIN',
+              func: function (expectedOrigin) {
+                if (typeof collectSafePageStructure !== 'function') {
+                  return { ok: false, reason: 'inspect_fn_missing' };
+                }
+                if (
+                  typeof location === 'undefined' ||
+                  location.origin !== expectedOrigin
+                ) {
+                  return { ok: false, reason: 'origin_mismatch' };
+                }
+                var page = collectSafePageStructure();
+                if (!page || page.origin !== expectedOrigin) {
+                  return { ok: false, reason: 'origin_mismatch' };
+                }
+                return { ok: true, page: page };
+              },
+              args: [allowedOrigin],
+            },
+            function (results) {
+              if (chrome.runtime.lastError) {
+                finishSession({
+                  ok: false,
+                  reason:
+                    chrome.runtime.lastError.message || 'inspect_run_failed',
+                });
+                return;
+              }
+              var result =
+                results && results[0] && results[0].result
+                  ? results[0].result
+                  : { ok: false, reason: 'no_result' };
+              finishSession(result);
+            },
+          );
+        },
+      );
+    },
+    inspectOptions,
+  );
+}
+
+function openPageAndManagedAutofill(urlString, payload, sendResponse, sender) {
+  if (
+    !payload ||
+    typeof payload !== 'object' ||
+    !payload.allowedOrigin ||
+    !Array.isArray(payload.fieldMappings) ||
+    !payload.credentials ||
+    typeof payload.credentials !== 'object'
+  ) {
+    sendResponse({ ok: false, reason: 'missing_managed_payload' });
+    return false;
+  }
+
+  var managedOptions = {
+    initialDelayMs: MANAGED_AUTOFILL_INITIAL_DELAY_MS,
+  };
+  var placement = buildManagedTabCreateProperties(sender);
+  if (placement) {
+    managedOptions.tabCreateProperties = placement;
+  }
+
+  return openGenericRealSiteTab(
+    urlString,
+    sendResponse,
+    'managed-autofill',
+    function (tabId, finishSession) {
+      runManagedAutofillOnTab(tabId, payload, 0, finishSession);
+    },
+    managedOptions,
+  );
+}
+
 chrome.runtime.onMessageExternal.addListener(function (
   message,
   sender,
@@ -1675,6 +1961,20 @@ chrome.runtime.onMessageExternal.addListener(function (
           });
         });
       });
+    return true;
+  }
+
+  if (message.type === 'HUB_MANAGED_AUTOFILL') {
+    openPageAndManagedAutofill(message.url, message, sendResponse, sender);
+    return true;
+  }
+
+  /**
+   * Phase 118 — Admin authoring inspect only.
+   * Opens Login Entry, returns SafePageStructure. No fill, no credentials, no LLM.
+   */
+  if (message.type === 'ADMIN_LOGIN_PAGE_INSPECT') {
+    openPageAndInspectLoginStructure(message, sendResponse, sender);
     return true;
   }
 

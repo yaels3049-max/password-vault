@@ -1,0 +1,18 @@
+{
+  "purpose": "D-117-0 / AC-117-0 Rivhit E2E field-ID gate only — not a Managed Autofill vocabulary",
+  "serviceHint": "Rivhit Online (live service_registry row; dump when E2E is scheduled)",
+  "expectedFieldIds": ["username", "password", "business_id"],
+  "knownSliceLocators": {
+    "username": "#username",
+    "password": "#password",
+    "business_id": "#osek"
+  },
+  "loginEntryUrl": "https://online1.rivhit.co.il/loginmanager/login",
+  "allowedOrigin": "https://online1.rivhit.co.il",
+  "doNotMap": ["#remember"],
+  "liveDumpStatus": "pass",
+  "liveDumpSource": "operator-authenticated-admin-ui",
+  "liveDumpDate": "2026-09-16",
+  "activeFieldIds": ["username", "password", "business_id"],
+  "note": "D-117-0 PASS. M8 Operator-only functional validation of live locators is allowed. Production supportState=validated and broad activation remain blocked pending external Security Reviewer."
+}

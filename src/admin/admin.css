@@ -396,6 +396,26 @@
   font-size: 0.875rem;
 }
 
+.admin-btn:disabled,
+.admin-btn[aria-disabled='true'] {
+  opacity: 0.42;
+  cursor: not-allowed;
+  border-style: dashed;
+  box-shadow: none;
+  filter: grayscale(0.25);
+  pointer-events: none;
+}
+
+.admin-btn:disabled:hover,
+.admin-btn:disabled:active,
+.admin-btn[aria-disabled='true']:hover,
+.admin-btn[aria-disabled='true']:active {
+  background: inherit;
+  border-color: inherit;
+  color: inherit;
+  filter: grayscale(0.25);
+}
+
 /* AC-107-19 — compact Save/Delete on Categories (and similar row actions). */
 .admin-btn--compact {
   padding: 0.28rem 0.65rem;
@@ -592,9 +612,15 @@
   background: var(--admin-primary-dark);
 }
 
-.admin-btn-primary:disabled {
-  opacity: 0.5;
+.admin-btn-primary:disabled,
+.admin-btn-primary[aria-disabled='true'] {
+  background: #94a3b8;
+  color: #f8fafc;
+  border: 1px dashed #64748b;
+  opacity: 0.55;
   cursor: not-allowed;
+  filter: grayscale(0.35);
+  box-shadow: none;
 }
 
 .admin-btn-secondary {
@@ -607,6 +633,12 @@
   background: #eff6ff;
   border-color: #bfdbfe;
   color: var(--admin-primary-dark);
+}
+
+.admin-btn-secondary:disabled {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #64748b;
 }
 
 .admin-btn-danger {
@@ -1138,6 +1170,70 @@
   .admin-pending-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.admin-autofill-profile {
+  margin-top: 1rem;
+}
+
+.admin-autofill-state {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+.admin-autofill-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.admin-autofill-fields code {
+  font-size: 0.75rem;
+  color: var(--admin-muted);
+}
+
+.admin-autofill-success {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.admin-autofill-success-dismiss {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.admin-autofill-confirm {
+  max-width: 420px;
+}
+
+.admin-autofill-confirm h3 {
+  margin: 0 0 0.65rem;
+  font-size: 1.15rem;
+  color: #1e3a8a;
+}
+
+.admin-autofill-confirm p {
+  margin: 0 0 1rem;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.admin-autofill-confirm-actions {
+  justify-content: flex-start;
+}
+
+.admin-autofill-actions {
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .admin-credential-field-list {

@@ -18,6 +18,7 @@ import {
   classifyAddCustomService,
   definitionsToLegacyServices,
   loadBuiltinCatalogDefinitions,
+  userMessageForCustomAddFailure,
 } from './catalog';
 
 import { isDevBuild } from './dev/devMode';
@@ -91,9 +92,6 @@ export { isAdminRoute, ADMIN_ROUTE_HASH } from './admin/adminRoutes';
 
 
 type Screen = 'manage' | 'dashboard';
-
-const CUSTOM_SERVICE_CLOUD_FAIL_MESSAGE =
-  'לא ניתן להוסיף את האתר כרגע. בדקו חיבור לרשת ונסו שוב.';
 
 const CUSTOM_SERVICE_DUPLICATE_MESSAGE = CUSTOM_SERVICE_ALREADY_EXISTS_MESSAGE;
 
@@ -367,12 +365,14 @@ function App() {
           );
         }
       } finally {
-        try {
-          await signOutAccount();
-        } catch {
-          // ignore
-        }
+        // Sign out only while Digital Home is still mounted. If the user navigated
+        // to #/admin before restore finished, do not wipe the admin login session.
         if (!cancelled) {
+          try {
+            await signOutAccount();
+          } catch {
+            // ignore
+          }
           setAccountProfile(null);
           clearWorkspaceMemory();
           setAuthReady(true);
@@ -829,7 +829,7 @@ function App() {
       if (import.meta.env.DEV) {
         console.warn('[vault] Custom service registry upsert failed:', error);
       }
-      throw new Error(CUSTOM_SERVICE_CLOUD_FAIL_MESSAGE);
+      throw new Error(userMessageForCustomAddFailure(error));
     }
 
     const persistBase = vaultStateRef.current;
@@ -872,7 +872,7 @@ function App() {
       if (import.meta.env.DEV) {
         console.warn('[vault] Custom service registry update failed:', error);
       }
-      throw new Error(CUSTOM_SERVICE_CLOUD_FAIL_MESSAGE);
+      throw new Error(userMessageForCustomAddFailure(error));
     }
 
     const nextCustom = customServices.some((service) => service.id === definition.id)

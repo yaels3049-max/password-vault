@@ -13,6 +13,14 @@ import {
   type AutofillHealthCode,
 } from './autofillEligibility';
 import { executeGenericAutofill } from './genericAutofill';
+import {
+  executeManagedAutofill,
+  MSG_MANAGED_NOT_READY,
+  readManagedLoginEntryUrl,
+  serviceClaimsValidatedManagedProfile,
+  serviceHasValidatedManagedProfile,
+  serviceIsManagedAutofillEligible,
+} from './managedAutofill';
 import { openUrlInNewTab } from './extensionBridge';
 import {
   complexityForExecution,
@@ -98,6 +106,56 @@ export async function executeServiceFromTile(
       status: 'ok',
       extensionUsed: adapterResult.extensionUsed,
       autofillAttempted: adapterResult.autofillAttempted,
+    };
+  }
+
+  // Validated Managed claim OR ready eligibility — never fall through to legacy/generic.
+  if (
+    serviceClaimsValidatedManagedProfile(service) ||
+    serviceHasValidatedManagedProfile(service) ||
+    serviceIsManagedAutofillEligible(service, credential, loginFields)
+  ) {
+    if (!credential) {
+      const managedUrl = readManagedLoginEntryUrl(service) ?? openUrl;
+      openUrlInNewTab(managedUrl);
+      return {
+        status: 'credentials_missing',
+        extensionUsed: false,
+        autofillAttempted: false,
+        userMessage: MISSING_CREDENTIALS_MESSAGE,
+      };
+    }
+
+    // Version mismatch / incomplete mapping / incomplete credentials: fail closed.
+    if (!serviceIsManagedAutofillEligible(service, credential, loginFields)) {
+      const managedUrl = readManagedLoginEntryUrl(service) ?? openUrl;
+      openUrlInNewTab(managedUrl);
+      return {
+        status: 'open_only',
+        extensionUsed: false,
+        autofillAttempted: true,
+        userMessage: MSG_MANAGED_NOT_READY,
+        metadataHealth: 'fill_failed',
+      };
+    }
+
+    const managed = await executeManagedAutofill(service, credential, loginFields, {
+      accessProfileId: options.activeProfileId,
+    });
+    if (managed.ok) {
+      return {
+        status: 'ok',
+        extensionUsed: managed.extensionUsed,
+        autofillAttempted: true,
+        userMessage: managed.userMessage,
+      };
+    }
+    return {
+      status: 'open_only',
+      extensionUsed: managed.extensionUsed,
+      autofillAttempted: true,
+      userMessage: managed.userMessage,
+      metadataHealth: 'fill_failed',
     };
   }
 

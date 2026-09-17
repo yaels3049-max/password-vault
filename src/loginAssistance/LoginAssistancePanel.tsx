@@ -35,6 +35,11 @@ import {
   MSG_NO_STORED_CREDENTIALS_LAUNCH,
   MSG_NOT_CONFIGURED_LAUNCH,
 } from './messages';
+import {
+  MSG_MANAGED_IN_PROGRESS,
+  isManagedAutofillInFlightFor,
+  serviceClaimsValidatedManagedProfile,
+} from '../execution/managedAutofill';
 
 const COPY_CONFIRM_MS = 2200;
 const STATUS_MS = 8000;
@@ -87,7 +92,8 @@ export default function LoginAssistancePanel({
   );
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [copyFlashFieldId, setCopyFlashFieldId] = useState<string | null>(null);
-  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoBusyProfileId, setAutoBusyProfileId] = useState<string | null>(null);
+
   const [panelStatus, setPanelStatus] = useState<string | null>(null);
   const [logoFailed, setLogoFailed] = useState(false);
 
@@ -202,17 +208,42 @@ export default function LoginAssistancePanel({
       showPanelStatus(MSG_MANUAL_ONLY);
       return;
     }
-    setAutoBusy(true);
+    if (!activeProfileId) {
+      return;
+    }
+    // AC-117-36 — block duplicate for this (service, profile) only; other profiles OK.
+    if (
+      autoBusyProfileId === activeProfileId ||
+      isManagedAutofillInFlightFor(service.id, activeProfileId)
+    ) {
+      return;
+    }
+    const runningProfileId = activeProfileId;
+    setAutoBusyProfileId(runningProfileId);
+    const managedClaim = serviceClaimsValidatedManagedProfile(service);
+    // D-117-18 — in-progress scoped to this execution only.
+    if (managedClaim) {
+      showPanelStatus(MSG_MANAGED_IN_PROGRESS);
+      onStatus?.(MSG_MANAGED_IN_PROGRESS, 'info');
+    }
     try {
       const result = await attemptExistingAutomaticCompletion(
         service,
-        activeProfileId,
+        runningProfileId,
         credentialsByProfileId,
       );
       showPanelStatus(result.message);
-      onStatus?.(result.message, result.attempted ? 'info' : 'warn');
+      const tone =
+        result.outcome === 'success'
+          ? 'success'
+          : result.outcome === 'opened'
+            ? 'info'
+            : 'warn';
+      onStatus?.(result.message, tone);
     } finally {
-      setAutoBusy(false);
+      setAutoBusyProfileId((current) =>
+        current === runningProfileId ? null : current,
+      );
     }
   }
 
@@ -375,7 +406,12 @@ export default function LoginAssistancePanel({
           <button
             type="button"
             className="la-secondary-btn la-secondary-btn--auto"
-            disabled={autoBusy || !activeProfileId}
+            disabled={
+              !activeProfileId ||
+              autoBusyProfileId === activeProfileId ||
+              (activeProfileId !== null &&
+                isManagedAutofillInFlightFor(service.id, activeProfileId))
+            }
             onClick={() => void handleTryAuto()}
           >
             {LABEL_TRY_AUTO}

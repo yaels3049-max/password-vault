@@ -97,6 +97,40 @@ export function urlsReferToSameService(a: string, b: string): boolean {
 }
 
 /**
+ * Phase 116 AC-116-3 — Custom Add identity against the registered URL set:
+ * primary_url (`url`) + login_url when present. Uses existing identity keys only
+ * (no host-only / path-stripping / discovery heuristics).
+ */
+export function serviceMatchesRegisteredUrl(
+  definition: { url: string; loginUrl?: string | null },
+  enteredUrl: string,
+): boolean {
+  if (urlsReferToSameService(definition.url, enteredUrl)) {
+    return true;
+  }
+  const loginUrl =
+    typeof definition.loginUrl === 'string' ? definition.loginUrl.trim() : '';
+  if (loginUrl && urlsReferToSameService(loginUrl, enteredUrl)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Same rule with explicit registered URLs (call-site convenience).
+ */
+export function urlsMatchRegisteredIdentitySet(
+  primaryUrl: string,
+  loginUrl: string | null | undefined,
+  enteredUrl: string,
+): boolean {
+  return serviceMatchesRegisteredUrl(
+    { url: primaryUrl, loginUrl: loginUrl ?? undefined },
+    enteredUrl,
+  );
+}
+
+/**
  * Upsert a canonical built_in registry row from the Hub seed (empty-DB bootstrap).
  * Does not create a user/custom row for known services.
  */
@@ -170,7 +204,7 @@ export async function upsertCustomServiceRegistryRow(
   const normalizedUrl = normalizeCustomServiceUrl(definition.url);
   const { data: existingRows, error: lookupError } = await supabase
     .from('service_registry')
-    .select('id, primary_url, display_name')
+    .select('id, primary_url, login_url, display_name')
     .eq('owner_user_id', userId)
     .eq('source_type', 'user');
 
@@ -181,7 +215,16 @@ export async function upsertCustomServiceRegistryRow(
   const duplicate = (existingRows ?? []).find(
     (existing) =>
       existing.id !== definition.id &&
-      urlsReferToSameService(String(existing.primary_url), normalizedUrl),
+      serviceMatchesRegisteredUrl(
+        {
+          url: String(existing.primary_url),
+          loginUrl:
+            typeof existing.login_url === 'string' && existing.login_url.trim()
+              ? existing.login_url
+              : undefined,
+        },
+        normalizedUrl,
+      ),
   );
 
   if (duplicate) {

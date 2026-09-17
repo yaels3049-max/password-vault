@@ -1,5 +1,9 @@
 import type { AdminRegistryRow } from './adminRegistryApi';
 import ServiceExternalLinks from './ServiceExternalLinks';
+import {
+  AUTOFILL_SUPPORT_STATE_LABEL_HE,
+  readAutofillProfileFromMetadata,
+} from '../autofill/validatedProfile';
 
 interface IntegrationStatusPanelProps {
   row: AdminRegistryRow;
@@ -15,6 +19,10 @@ function metaString(metadata: Record<string, unknown>, key: string): string {
 
 export default function IntegrationStatusPanel({ row }: IntegrationStatusPanelProps) {
   const metadata = row.metadata ?? {};
+  const autofillProfile = readAutofillProfileFromMetadata(metadata);
+  const supportStateLabel = autofillProfile
+    ? AUTOFILL_SUPPORT_STATE_LABEL_HE[autofillProfile.supportState]
+    : AUTOFILL_SUPPORT_STATE_LABEL_HE.not_configured;
 
   return (
     <section className="admin-panel admin-panel--readonly">
@@ -55,6 +63,10 @@ export default function IntegrationStatusPanel({ row }: IntegrationStatusPanelPr
         <div>
           <dt>כתובת כניסה (login_url)</dt>
           <dd>{row.login_url ?? '—'}</dd>
+        </div>
+        <div>
+          <dt>מילוי אוטומטי מנוהל</dt>
+          <dd>{supportStateLabel}</dd>
         </div>
         <div>
           <dt>עודכן לאחרונה</dt>

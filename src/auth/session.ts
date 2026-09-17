@@ -82,20 +82,52 @@ export function isAnonymousAuthUser(user: {
  * Returns auth.uid() only for a non-anonymous email session.
  * Never creates users. Never calls signInAnonymously.
  */
+function authenticatedUserIdFromSession(
+  session: { user?: { id?: string; is_anonymous?: boolean; email?: string | null; app_metadata?: Record<string, unknown> } } | null | undefined,
+): string | null {
+  const user = session?.user;
+  if (!user?.id || isAnonymousAuthUser(user)) {
+    return null;
+  }
+  return user.id;
+}
+
 export async function requireAuthenticatedUserId(): Promise<string> {
   const supabase = getSupabaseClient();
   if (!supabase) {
     throw new AuthRequiredError(AUTH_COPY.supabaseMissing);
   }
 
+  const { data: sessionData } = await supabase.auth.getSession();
+  const localSession = sessionData.session ?? null;
+  const localUserId = authenticatedUserIdFromSession(localSession);
+  const expiresAt = localSession?.expires_at;
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  if (localUserId && typeof expiresAt === 'number' && expiresAt > nowSec + 60) {
+    return localUserId;
+  }
+
+  if (localUserId) {
+    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+    if (!refreshError) {
+      const refreshedUserId = authenticatedUserIdFromSession(refreshed.session);
+      if (refreshedUserId) {
+        return refreshedUserId;
+      }
+    }
+  }
+
   const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user?.id) {
-    throw new AuthRequiredError();
+  if (!error && data.user?.id && !isAnonymousAuthUser(data.user)) {
+    return data.user.id;
   }
-  if (isAnonymousAuthUser(data.user)) {
-    throw new AuthRequiredError();
+
+  if (localUserId && typeof expiresAt === 'number' && expiresAt > nowSec) {
+    return localUserId;
   }
-  return data.user.id;
+
+  throw new AuthRequiredError();
 }
 
 /** Soft variant for optional cloud paths — null if unauthenticated / anonymous. */

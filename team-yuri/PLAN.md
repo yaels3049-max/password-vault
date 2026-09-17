@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Version** | 5.48 |
+| **Version** | 5.51 |
 | **Status** | Production Ready |
-| **Last updated** | 2026-09-15 |
+| **Last updated** | 2026-09-16 |
 
 This document describes *what* the product is and *how* it is shaped at a system level. It does not prescribe implementation details, file layouts, or step-by-step build plans.
 
@@ -417,10 +417,14 @@ Icon metadata follows the same ownership rules as other registry fields: user-pr
 ### Autofill path priority
 
 ```
-1. Generic integration engine (default)
-2. Site adapter (only when registry marks adapterId and generic is insufficient)
-3. Open URL only (no loginFields or incomplete credentials — user-friendly message)
+1. Managed Autofill (Phase 117) — when metadata.autofillProfile.supportState is validated
+   and configVersion matches validation; deterministic field.id → CSS; no LLM
+2. Generic integration engine (default for non-validated services)
+3. Site adapter (only when registry marks adapterId and generic is insufficient)
+4. Open URL only (no loginFields or incomplete credentials — user-friendly message)
 ```
+
+**Agent-assisted authoring (Phase 118+):** Global Admin may use an Assisted Mapping Agent to **propose** Managed Autofill mappings during configuration. The agent is authoring-only. It never runs during user Autofill. See Phase 118 and long-term agent direction below.
 
 ### Messages
 
@@ -4028,11 +4032,11 @@ Normative contract: `team-Yuri/arch-phase117.md`.
 - `configVersion` + `validation.metadataVersion` binding; security-relevant edits invalidate prior validation
 - Automated + runtime verification per `arch-phase117.md`
 
-**Non-goals:** modal/multi-step/OTP/CAPTCHA automation; auto-submit; iframe automation; selector discovery/AI; Login Discovery; Phase 116 identity changes; removal of legacy Autofill; encryption redesign; Phase 113 Launch Card copy changes.
+**Non-goals:** modal/multi-step/OTP/CAPTCHA automation; auto-submit; iframe automation; Automatic Login Discovery; Phase 116 identity changes; removal of legacy Autofill; encryption redesign; Phase 113 Launch Card copy changes; **runtime** AI Autofill (AI-assisted **Admin authoring** of mappings is Phase 118 — not runtime).
 
 | Acceptance criteria | |
 |---------------------|---|
-| AC-117-0 | Rivhit live field IDs are exactly `username`, `password`, `business_id` before implementation |
+| AC-117-0 | Before Rivhit E2E validation, live Rivhit field IDs match known Rivhit test config; not a generic Managed Autofill vocabulary |
 | AC-117-1 | Profile persists in registry metadata without a new table |
 | AC-117-2 | Admin maps CSS locators only for active credential field IDs |
 | AC-117-3 | Structural validation enforces schema join, HTTPS Login Entry, origin bind, css-only |
@@ -4047,8 +4051,8 @@ Normative contract: `team-Yuri/arch-phase117.md`.
 | AC-117-12 | Validated-path failure must not silent-fallback to generic success |
 | AC-117-13 | Non-validated services retain legacy Autofill |
 | AC-117-14 | No Rivhit-specific adapter / hardcoded fill branch |
-| AC-117-15 | `business_id` → `#osek` without renaming vault field id |
-| AC-117-16 | `#remember` never filled |
+| AC-117-15 | Rivhit config: `business_id` → `#osek` without renaming vault field id |
+| AC-117-16 | Rivhit config: `#remember` never filled |
 | AC-117-17 | Missing-credentials / NOT_CONFIGURED / NO_STORED_CREDENTIALS preserved |
 | AC-117-18 | `supportState` does not redefine `credentialMode` |
 | AC-117-19 | No credential values in logs/errors/telemetry |
@@ -4061,9 +4065,103 @@ Normative contract: `team-Yuri/arch-phase117.md`.
 | AC-117-26 | Changing Login Entry / `allowedOrigin` invalidates prior validation eligibility |
 | AC-117-27 | Clearing/editing mappings cannot silently preserve `validated` eligibility |
 | AC-117-28 | `not_configured` reset is explicit Admin action only — not a mapping-clear side effect |
+| AC-117-29 | Genericity: another simple single-page service with a different credential schema needs Admin config/validation only — no Managed Autofill runtime/extension code change (synthetic non-Rivhit schema test required) |
+| AC-117-30 | Managed Autofill must not use the legacy fixed 4s post-load initial delay |
+| AC-117-31 | Managed fill starts from mapped-target readiness; adaptive bounded retry only |
+| AC-117-32 | Fill via existing executor when ready; success only after verification |
+| AC-117-33 | Legacy/generic 4s initial delay unchanged |
+| AC-117-34 | Mandatory Hub in-progress state on Managed start for that execution (suggested «ממלא פרטי כניסה...»); unrelated profiles/services stay available |
+| AC-117-35 | In-progress replaced only by verified success or structured failure |
+| AC-117-36 | In-flight dedupe by `(serviceId, accessProfileId)` only; concurrent other profiles/services OK; re-launch after settle OK; no global Managed busy lock |
+| AC-117-37 | Managed tab adjacent to Hub when `sender.tab` available; soft placement fallback otherwise; legacy/generic placement unchanged |
+
+**Status:** Phase 117 architecture and Operator functional acceptance CLOSED (2026-09-16). Normative contract remains `team-Yuri/arch-phase117.md`.
 
 ---
 
+### Phase 118 — Assisted Mapping Agent
+
+Normative contract: `team-Yuri/arch-phase118.md`.
+
+**Goal:** Give Global Admin an AI-assisted **authoring** tool that proposes Phase 117 Managed Autofill field mappings from (1) the service credential schema, (2) the explicit Login Entry, and (3) a safe structural page snapshot collected by the browser extension. The agent never saves mappings, never sets `validated`, and never participates in user Autofill runtime.
+
+**Phase 118 implements ONLY:**
+
+- `InspectionCapability: single_page_top`
+- `AgentTask: propose_field_mappings`
+
+**Long-term direction (not Phase 118):** Agent-assisted service authoring may later expand to login experience/type detection, modal/popup discovery, multi-step discovery, assisted locator repair when a validated site changes, and broader Agent-generated Service Definition proposals. Those capabilities remain reserved extension points.
+
+**Scope:**
+
+- Global Admin only (MVP)
+- Real Login Entry opened via extension; top-document safe inspection
+- SafePageStructure payload (no credential/input values, cookies, or secrets)
+- Provider-neutral Agent Service + LLM adapter interface (**no provider selected yet**)
+- Structured proposals with three-layer confidence: semantic assessment → deterministic safety validation → prefill eligibility
+- HIGH proposals pre-fill Admin editor state only; uncertain fields stay empty
+- Human Admin Save remains the sole persistence path (Phase 117 model unchanged)
+
+**Non-goals:** runtime AI Autofill; auto-save; auto-validation/approval; modal/multi-step/CAPTCHA/OTP; Automatic Login Entry discovery; end-user agent access; Phase 117 runtime changes; selecting a concrete AI vendor in this phase.
+
+| Acceptance criteria | |
+|---------------------|---|
+| AC-118-1 | Analyze requires credential schema + explicit HTTPS Login Entry |
+| AC-118-2 | Extension returns SafePageStructure without values/cookies/credentials |
+| AC-118-3 | Top-document-only inspection |
+| AC-118-4 | Agent API admin-only |
+| AC-118-5 | Provider-neutral boundary; provider unset until later decision |
+| AC-118-6 | Structured response; invalid schema dropped |
+| AC-118-7 | Prefill only final high after safety validation — not raw modelConfidence |
+| AC-118-8 | Medium/low/unknown → empty + visible not-confident |
+| AC-118-9 | Agent never persists profile / never changes supportState |
+| AC-118-10 | Admin explicit Save; Phase 117 save/validation authority |
+| AC-118-11 | Partial / no_confident_mapping valid |
+| AC-118-12 | Timeout/provider failure → form mappings unchanged |
+| AC-118-13 | Logs have no secrets/values/cookies |
+| AC-118-14 | Validated Managed path has no LLM/agent |
+| AC-118-15 | Genericity ≥2 non-identical schemas/sites; no service-specific code |
+| AC-118-16 | No auto-submit; Analyze does not trigger live validation |
+| AC-118-17 | Locators css-only and ⊆ extension candidates for the chosen input |
+| AC-118-18 | Semantic non-lexical mapping can become valid HIGH after safety validation |
+| AC-118-19 | Invented inputId rejected |
+| AC-118-20 | Invented locator rejected |
+| AC-118-21 | Conflicting field assignments rejected/demoted |
+| AC-118-22 | Ambiguous semantic mapping remains empty in editor |
+| AC-118-23 | Deterministic exact lexical match still eligible for HIGH when safe |
+| AC-118-24 | No hard-coded service/field vocabulary required for AC-118-18 |
+| AC-118-25 | Lexical agreement is not mandatory for HIGH |
+
+**Status:** Phase 118 **CLOSED** (2026-09-17). Normative contract remains `team-Yuri/arch-phase118.md`.
+
+---
+
+### Phase 119 — Generic Advanced Login Mapping
+
+Normative contract (Architecture definition): `team-Yuri/arch-phase119.md`.
+
+**Status:** Architecture definition for Owner review. **No Manager DD / no Developer implementation** until `arch-phase119.md` is APPROVED and a specific slice is authorized.
+
+**Goal:** Extend Phase 117/118 beyond simple top-document automatic mapping via a **Generic Login Experience Framework** and small independently testable slices (capability model → Visual Mapping → evidence-backed frame inspect / readiness → later shadow/modal/multi-step). AI remains authoring-only; Managed Autofill remains deterministic.
+
+**North Star (not a Phase 119 AC):** Arbitrary login experiences configurable without permanent service-specific production code.
+
+**Authoring model:** Agent analyzes → Admin visually maps/corrects → Admin validates → deterministic Managed runtime executes.
+
+**Development slices (default order):** 119.1 capability model → 119.2 Visual Mapping MVP → 119.3 same-origin frame inspect → 119.4 readiness wait-for-inputs → 119.5+ later capabilities.
+
+**Hapoalim:** Validation/investigation target only (Phase 118: empty top-doc inputs). Likely iframe and/or SPA timing gaps vs `single_page_top` — **no** Hapoalim-specific product logic.
+
+**Deferred (explicit, not silently complete):**
+
+- **Autofill Runtime Convergence** — inventory: `team-Yuri/inventory-autofill-runtime-convergence.md`  
+- **D-118-13** — production Admin security/privacy gate  
+- Zero-capture / advanced experiences beyond authorized slices  
+- Filtered-network operational NFR  
+
+**Non-goals:** support every website in 119; runtime AI; auto-submit; per-service adapters; Convergence migrations/deletes; embedding third-party login pages in Admin.
+
+---
 
 ### Phase 122 — Useful Services Intelligence
 
@@ -5223,5 +5321,14 @@ flowchart LR
 | **5.46** | 2026-09-14 | **CEO approval — credential modes.** `metadata.credentialMode` approved. D-102-27: mode and `login_fields` must agree. Contradictions are rejected or configuration-invalid. Manager must revise `manager-phase102.md` before Developer execution. |
 | **5.47** | 2026-09-15 | **Phase 117 — Managed Autofill: Deterministic Single-Page Mapping.** Admin-managed `field.id` → CSS locator profiles in `service_registry.metadata.autofillProfile`. Rivhit first vertical slice (`username` / `password` / `business_id`). Legacy Autofill retained for non-validated services. Security gate for production `validated`. See `arch-phase117.md`. AC-117-0 … AC-117-22. |
 | **5.48** | 2026-09-15 | **Phase 117 Architecture review corrections.** Explicit support-state transitions only (no implicit `not_configured` on mapping clear). Bind live validation to `validation.metadataVersion` / `configVersion`. AC-117-23 … AC-117-28. Not approved for Developer until Architecture accepts. |
+| **5.49** | 2026-09-16 | **Phase 117 amendment — dynamic service/field independence.** D-117-0 is Rivhit slice verification only. Schema-dynamic Managed Autofill (D-117-16). Synthetic non-Rivhit genericity test. AC-117-29. Scope unchanged. |
+| **5.50** | 2026-09-16 | **Phase 117 amendment — Managed Autofill latency.** No fixed 4s post-load delay on Managed path (D-117-17). Mandatory in-progress Hub UX (D-117-18). AC-117-30…36. Legacy 4s unchanged. Implementation authorized; phase OPEN until Operator Rivhit retest. |
+| **5.51** | 2026-09-16 | **Phase 117 amendment — tab placement + concurrency.** D-117-19 adjacent Managed tab via `sender.tab`. D-117-20 execution key `(serviceId, accessProfileId)`. AC-117-36 revised; AC-117-37. Implementation authorized; phase OPEN pending Operator verification. |
+| **5.52** | 2026-09-16 | **Phase 117 CLOSED** (Operator functional acceptance). **Phase 118 — Assisted Mapping Agent** APPROVED. Authoring-only Admin agent proposes Managed Autofill mappings from SafePageStructure; three-layer confidence model; provider-neutral; no provider selected. Long-term agent authoring may expand beyond `single_page_top` + `propose_field_mappings`. See `arch-phase118.md`. AC-118-1 … AC-118-25. |
+| **5.53** | 2026-09-16 | **Phase 118 live provider gate accepted.** MVP = OpenAI (`gpt-4o-mini`) behind `MappingLlmProvider` via Supabase Edge Function `propose-field-mappings`. Secret = `OPENAI_API_KEY` (server only). Mock retained for CI. Live AI quality (Rivhit + 2 unknowns) required before CLOSE. |
+| **5.54** | 2026-09-17 | **Phase 118 — D-118-14 empty-input pre-provider fail-closed** (blocking). Live Hapoalim: `inputs.length===0` still called provider; model fabricated evidence; safety rejected. Case A Rivhit + Case B Green Invoice PASS. Case C defined but not authorized until D-118-14 verified. No Hapoalim expansion. AC-118-26. |
+| **5.55** | 2026-09-17 | **Phase 118 CLOSED.** Live AI quality A/B/C PASS; D-118-14 live verified; Phase 117 regression PASS; AC-118-1…26 PASS (AC-118-13 soft). **Deferred (explicit):** D-118-13 production Admin security/privacy review; Autofill Runtime Convergence; zero-capture portals; DEV proxy/filtered-network NFR. |
+| **5.56** | 2026-09-17 | **Phase 119 opened (Architecture pending).** Name: **Autofill Runtime Convergence**. `PHASE.md` → 119. No implementation. Inventory input: `team-Yuri/inventory-autofill-runtime-convergence.md`. Carried deferred: D-118-13; Hapoalim/zero-capture; filtered-network NFR. |
+| **5.57** | 2026-09-17 | **Phase 119 renamed/refocused — Generic Advanced Login Mapping.** Architecture definition: `arch-phase119.md` (Owner review). Capability framework + Visual Mapping + evidence-ordered structural slices. Autofill Runtime Convergence **DEFERRED** (inventory preserved). No implementation authorized. |
 
 Implementation plans for individual production phases may be authored separately; they must align with this document and must not duplicate it as a second architecture source.

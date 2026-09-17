@@ -25,6 +25,7 @@ import { requireAuthenticatedUserId } from '../auth';
 import { getSupabaseClient } from '../supabase/client';
 import { isSupabaseConfigured } from '../supabase/env';
 import { formatUnknownError } from '../formatErrorChain';
+import { mergeAutofillProfileMetadata, stripAutofillControlKeys } from '../autofill/validatedProfile';
 
 export interface AdminCategory {
   id: string;
@@ -534,6 +535,36 @@ export async function updateGlobalRegistryRow(
       ...(existing?.metadata ?? {}),
       credentialMode: publishedCredentialMode,
     };
+  }
+
+  if (
+    patch.metadata !== undefined &&
+    Object.prototype.hasOwnProperty.call(patch.metadata, 'autofillProfile')
+  ) {
+    const existingForAutofill = await fetchRegistryRowForAdmin(serviceId);
+    const currentMetadata = (payload.metadata as Record<string, unknown> | undefined) ?? {
+      ...(existingForAutofill?.metadata ?? {}),
+      ...(patch.metadata ?? {}),
+    };
+    const loginFieldsForAutofill =
+      payload.login_fields ?? existingForAutofill?.login_fields ?? null;
+    const loginUrlForAutofill =
+      typeof payload.login_url === 'string'
+        ? payload.login_url
+        : existingForAutofill?.login_url ?? null;
+    const mergedAutofill = mergeAutofillProfileMetadata({
+      existingMetadata: existingForAutofill?.metadata ?? {},
+      patchMetadata: patch.metadata,
+      loginFields: loginFieldsForAutofill,
+      loginUrl: loginUrlForAutofill,
+    });
+    if (!mergedAutofill.ok) {
+      throw new Error(mergedAutofill.message);
+    }
+    payload.metadata = stripAutofillControlKeys({
+      ...currentMetadata,
+      ...mergedAutofill.metadata,
+    });
   }
 
   const { error } = await supabase

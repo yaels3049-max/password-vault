@@ -24,6 +24,15 @@ export {
 export { loadBuiltinCatalogDefinitions } from './catalogLoader';
 export { classifyAddCustomService } from './addCustomServiceOutcome';
 export {
+  classifyCustomAddFailure,
+  userMessageForCustomAddFailure,
+  CUSTOM_ADD_FAIL_CONNECTIVITY_HE,
+  CUSTOM_ADD_FAIL_AUTH_POLICY_HE,
+  CUSTOM_ADD_FAIL_PERSISTENCE_HE,
+  CUSTOM_ADD_FAIL_DUPLICATE_HE,
+  type CustomAddFailureClass,
+} from './customAddFailure';
+export {
   bootstrapMissingKnownBuiltins,
   getKnownBuiltinDefinition,
   isKnownBuiltinServiceId,

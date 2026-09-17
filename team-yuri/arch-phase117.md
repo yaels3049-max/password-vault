@@ -4,13 +4,17 @@
 PHASE=117
 
 ## Status
-STATUS: READY_FOR_MANAGER
+STATUS: APPROVED
 
 AMENDED: 2026-09-15 — Architecture review corrections: (1) remove implicit any→`not_configured` reset; state transitions are explicit only; (2) bind live validation to `validation.metadataVersion` / Managed Autofill config version; (3) AC/tests for stale-validation rejection.
 
-Implementation must not start until Architecture (and CEO if required) accept this contract. Do not hand this phase to the Developer from an unapproved draft.
+AMENDED: 2026-09-16 — **Dynamic service / field independence.** D-117-0 is Rivhit vertical-slice verification only — not a generic field-name contract. Managed Autofill is schema-dynamic (`field.id` join only). Prohibit Rivhit/hostname/service-ID hard-coding and username/password semantic assumptions on the deterministic path. Add synthetic non-Rivhit genericity test and AC-117-29.
 
-Manager Detailed Design may proceed only after this document is approved. Developer implementation may proceed only after Manager plan approval **and** the Rivhit field-ID precondition (D-117-0) passes.
+AMENDED: 2026-09-16 — **Managed Autofill latency / readiness (Operator M8).** Root cause accepted: Managed path inherited legacy `GENERIC_REAL_SITE_INITIAL_DELAY_MS = 4000` from shared `openGenericRealSiteTab`. Managed Autofill must not use that fixed post-load delay. Readiness = all required mapped targets safe. Bounded adaptive retry only. **In-progress Hub UX is mandatory** (suggested Hebrew: «ממלא פרטי כניסה...»). Legacy/generic 4s behavior unchanged. D-117-17 / D-117-18; AC-117-30…36. **Implementation of this amendment is authorized.** Phase 117 remains OPEN until Operator Rivhit retest passes.
+
+AMENDED: 2026-09-16 — **Tab placement + execution concurrency (Operator retest).** D-117-19: Managed target tab adjacent to Hub via `sender.tab` (`index + 1`, `openerTabId` when appropriate); fail soft if `sender.tab` missing; legacy/generic placement unchanged; concurrent launches from same Hub may race adjacent index (acceptable). D-117-20: replace global Managed in-flight boolean with `(serviceId, accessProfileId)` execution key; allow different profiles/services concurrent; re-launch after settle allowed; no cooldown; clear key on every terminal outcome. AC-117-36 revised; AC-117-37. **Implementation authorized.** Phase 117 remains OPEN pending Operator verification.
+
+APPROVED: 2026-09-16 — Architecture accepted for Manager Detailed Design. Developer implementation must not start until `manager-phase117.md` is approved and D-117-0 passes for Rivhit E2E validation.
 
 ## Title
 Phase 117 — Managed Autofill: Deterministic Single-Page Mapping
@@ -20,9 +24,11 @@ Deliver a **generic, administrator-managed, deterministic Autofill path** for si
 
 For catalog services that the administrator has **explicitly configured and live-validated**, Digital Home must open the approved Login Entry and the browser extension must fill **all** mapped credential fields by stable `field.id` → CSS locator, then verify the fill. The user submits the external form manually.
 
-**First vertical slice (configuration only, not a code fork):** Rivhit Online.
+**First vertical slice (configuration only, not a code fork):** Rivhit Online. Rivhit’s field IDs are **that service’s configured schema**, not the Managed Autofill engine’s required vocabulary.
 
 **MVP product context:** Accounting firms. Universal Autofill across arbitrary websites is **not** required.
+
+Managed Autofill must work for **any** simple single-page catalog service whose administrator configures and validates mappings for that service’s active credential `field.id` values.
 
 ## Source References
 - Operator Autofill MVP Phase 1 architecture validation (Rivhit) — readiness **B** resolved by Admin credential schema `username` / `password` / `business_id`.
@@ -45,7 +51,7 @@ For catalog services that the administrator has **explicitly configured and live
 | Tile / Launch Autofill entry | `src/loginAssistance/assistanceActions.ts` → `executeServiceFromTile` | Soft entry unchanged; routing change inside execution |
 | Unified execution | `src/execution/serviceExecution.ts` | Branch: validated Managed path **before** legacy generic / LI |
 | Legacy generic fill | `src/execution/genericAutofill.ts` → `POC_GENERIC_FILL` | Non-validated services only |
-| Extension tab orchestration | `extension/background.js` (`openGenericRealSiteTab`, URL match helpers) | Reuse for Managed open |
+| Extension tab orchestration | `extension/background.js` (`openGenericRealSiteTab`, URL match helpers) | Managed may reuse URL/tab helpers **but must not** apply `GENERIC_REAL_SITE_INITIAL_DELAY_MS` (D-117-17) |
 | Fill write + verify | `extension/generic/fill-executor.js` (`GenericFillExecutor`) | **Reuse** on Managed path |
 | Heuristic mapping | `extension/generic/field-mapper.js`, `form-detector.js`, `generic-autofill.js`, `assessStandardLogin` | **Bypass** on Managed path; do not delete |
 | Multi-frame fill | `allFrames: true` + `pickBestGenericFrameResult` | **Must not** be used on Managed path (Rivhit hidden iframe) |
@@ -60,9 +66,10 @@ For catalog services that the administrator has **explicitly configured and live
 
 | Decision | Rationale | Consequence |
 |---|---|---|
-| **D-117-0: Rivhit field-ID precondition (hard stop)** | Authoritative vault keys already chosen by Admin. Silent rename/migration is forbidden. | Before any Phase 117 implementation change, Developer verifies live Rivhit `login_fields` IDs are exactly `username`, `password`, `business_id`. If not → **STOP PHASE 117**, return to Architecture. No code repair, no migration. |
+| **D-117-0: Rivhit vertical-slice precondition (configuration check only)** | Rivhit is the first end-to-end proving service. Its known Admin schema for that slice happens to use `username`, `password`, `business_id`. | Before using Rivhit as the first end-to-end validation service, Developer verifies the live Rivhit `login_fields` IDs still match that known test configuration. Mismatch → **STOP Rivhit validation**, return the discrepancy to Architecture. No silent repair, rename, migration, or hard-code around it. **These IDs are not architectural requirements of Managed Autofill.** They must not appear in generic runtime eligibility logic, must not be required field names for other services, and must not be hard-coded into the generic Managed Autofill implementation. |
 | **D-117-1: Managed Autofill is configuration-driven** | Administrator is the source of service-specific Autofill knowledge. | No Rivhit-specific executor/adapter. Rivhit is the first **configuration** of a generic contract. |
-| **D-117-2: Stable `field.id` is the only join key** | Labels, order, and DOM names are not identity. | Mapping rows join `fieldId` → CSS `locator`. Changing `#osek` must not change `business_id`. |
+| **D-117-2: Stable `field.id` is the only join key** | Labels, order, and DOM names are not identity. Semantic field names are not a fixed vocabulary. | Mapping rows join each service’s active `fieldId` → CSS `locator`. The engine makes **no** assumption that fields are named `username` / `password` / `business_id` or any other predefined set. Changing an external selector must not require changing credential `field.id`. |
+| **D-117-16: Schema-dynamic execution (service / field independence)** | Another simple catalog service may use entirely different field IDs (e.g. `customer_number`+`pin`, or `company_code`+`user_identifier`+`secret`). | Hub and extension Managed paths read the active credential schema and validated mappings dynamically. Adding such a service requires Admin configuration + validation only — **not** Managed Autofill runtime or extension code changes. |
 | **D-117-3: Persist profile in `service_registry.metadata`** | Metadata already holds `credentialMode`, Login Intelligence, login-entry stamps; admin RLS covers global writes. | No new DB table for Phase 117. Contract key: `metadata.autofillProfile`. |
 | **D-117-4: CSS locators only** | Single-page deterministic MVP. | `locatorType` must be `"css"`. No XPath, AI, discovery, shadow DOM, or iframe automation DSL. |
 | **D-117-5: Exact-one visible editable input** | Determinism and injection safety. | 0 / many / hidden / disabled / non-input → **FAIL**. No silent fallback to heuristics. |
@@ -76,23 +83,35 @@ For catalog services that the administrator has **explicitly configured and live
 | **D-117-12: Security activation gate** | Mappings control plaintext injection destinations. | Implement plumbing before Security Owner approval; production `validated` + real credential-bearing live validation wait for approval. |
 | **D-117-13: Do not redefine credentialMode / Phase 113 copy** | Orthogonal concerns. | `autofillProfile.supportState` ≠ `credentialMode`. Launch Card copy/semantics unchanged unless Architecture amends. |
 | **D-117-14: Allowed origin bound to Login Entry** | Prevent cross-origin injection. | `allowedOrigin` derived from Login Entry URL origin (Rivhit: `https://online1.rivhit.co.il`). |
+| **D-117-17: Managed readiness — no fixed post-load delay** | Operator M8: after Rivhit tab is visible, fixed 4s sleep before fill makes Autofill appear failed. Inherited from legacy `GENERIC_REAL_SITE_INITIAL_DELAY_MS`. | Managed Autofill must **not** use that fixed 4-second initial delay. After approved target URL reached, allowed origin confirmed, and top document confirmed, immediately attempt deterministic mappings. Readiness = **all** required mapped locators resolve to exactly one safe enabled/editable target. If not ready: **bounded adaptive** retry only — never replace 4s with another arbitrary fixed delay. When ready: fill via existing fill-executor + post-fill verify. Success only after verification. Legacy/generic Autofill may keep the 4s delay (out of scope for this correction). |
+| **D-117-18: Mandatory Managed in-progress Hub UX** | Waiting for extension result without feedback causes false “failure” perception. | On Managed Autofill initiation for an execution, Hub must **immediately** enter a non-success working state for **that** execution while awaiting the structured extension result. Suggested Hebrew: «ממלא פרטי כניסה...». Not success; not failure; ends on structured success/failure; no credentials/field values; must not claim fields were filled before verification. No fixed UX timer. In-progress UX is scoped to the running `(serviceId, accessProfileId)` — must not make unrelated profiles/services appear unavailable (see D-117-20). |
+| **D-117-19: Managed tab adjacent to Hub** | Operator: «פתח אתר» opens beside Hub (`window.open`); Managed `chrome.tabs.create` without `index` opens at strip end. | When `sender.tab` is available on `HUB_MANAGED_AUTOFILL`, create the Managed target tab with `index: sender.tab.index + 1` and `openerTabId: sender.tab.id` where supported/appropriate. If `sender.tab` unavailable: fail soft for **placement only** — create tab with existing default placement; do not weaken Managed runtime/security validation. Do **not** change legacy/generic tab placement in Phase 117. Concurrent launches from the same Hub tab may compete for the same adjacent index; visual order is **not** guaranteed — acceptable; no tab-order manager in this phase. |
+| **D-117-20: Execution-scoped Managed concurrency** | Global `managedAutofillInFlight` boolean blocks intentional parallel profiles. | Replace global Managed busy lock with in-flight tracking keyed by `(serviceId, accessProfileId)` only (no credential/field/selector secrets). **A** same service+profile in flight → no duplicate. **B** same service, different profile → concurrent OK. **C** different service → concurrent OK. **D** same service+profile after prior settle → new run OK immediately (no cooldown). Clear the key on every terminal outcome (verified success, structured failure, unavailable/not-ready, communication failure, unexpected handled error). No global Managed Autofill busy lock. |
 
 ---
 
 ## Constraints / Non-Negotiables
 
-- Do not rename, repurpose, regenerate, or migrate Rivhit field IDs `username`, `password`, `business_id`.
-- Do not create Autofill field IDs outside the active credential schema.
+- Do not silently rename, repair, or migrate Rivhit’s configured field IDs if D-117-0 fails — return to Architecture.
+- Do not treat `username` / `password` / `business_id` as required names for Managed Autofill or other services.
+- Do not put Rivhit field-ID literals into generic runtime eligibility, Hub Managed routing, or the extension Managed executor.
+- Do not create Autofill field IDs outside the active credential schema of the service being configured.
 - Do not remove or expand legacy heuristic Autofill in this phase.
-- Do not hardcode Rivhit in an adapter or Hub `if (serviceId === …)` fill branch.
+- Do not hardcode Rivhit (or any service) in an adapter, hostname branch, service-ID fill branch, or hard-coded selectors in the generic executor.
+- Do not assume username/password (or any fixed pair) semantics on the deterministic Managed path.
 - Do not auto-submit.
-- Do not fill `#remember` or any unmapped control.
+- Do not fill unmapped controls (for Rivhit config: do not fill `#remember`).
 - Do not change encryption, vault/key architecture, authentication, or credential serialization.
 - Do not claim zero knowledge.
 - Do not modify Phase 116 identity rules or restore Login Discovery.
 - Credential values must never appear in logs, errors, analytics, or telemetry.
 - Do not leave a service effectively Managed-validated after security-relevant Autofill config changes (D-117-15).
 - Do not reset `supportState` to `not_configured` as a side effect of clearing mappings.
+- Do not apply legacy `GENERIC_REAL_SITE_INITIAL_DELAY_MS` (or any arbitrary fixed multi-second post-load sleep) on the Managed Autofill path (D-117-17).
+- Do not report Managed success before post-fill verification.
+- Do not omit in-progress Hub feedback while Managed Autofill awaits the extension (D-117-18).
+- Do not use a global Managed Autofill busy lock (D-117-20).
+- Do not put credential values, field values, or selectors into in-flight execution identity.
 
 ## Technical Boundaries / Out of Scope
 
@@ -162,7 +181,27 @@ Instead:
 
 Clearing or editing mappings is a **configuration change**, not a state machine shortcut to `not_configured`.
 
-### Rivhit first configuration (after D-117-0)
+### Generic field contract (D-117-2 / D-117-16)
+
+Managed Autofill operates dynamically from each service’s **active credential schema**:
+
+```text
+Service credential schema (login_fields)
+    ↓
+active stable field.id values
+    ↓
+Admin-defined mapping for those field.id values
+    ↓
+validated Managed Autofill profile (version-matched)
+    ↓
+deterministic execution (no semantic field understanding)
+```
+
+The Managed Autofill engine must make **no** semantic assumption that credential fields are named `username`, `password`, `business_id`, or any other fixed vocabulary. A different service may define e.g. `customer_number` + `pin`, or `company_code` + `user_identifier` + `secret`, without application or extension code changes. The stable `field.id` remains the only join key between vault values and locators.
+
+### Rivhit first configuration (vertical-slice data only — after D-117-0)
+
+This table is **Rivhit configuration evidence** for the first end-to-end slice. It is **not** the Managed Autofill field vocabulary.
 
 | fieldId | locatorType | locator |
 |---------|-------------|---------|
@@ -270,9 +309,17 @@ Add a thin module (e.g. `extension/generic/validated-autofill.js` / managed-auto
 7. Never submits the form.
 
 ### Background orchestration
-Reuse `openGenericRealSiteTab` / URL readiness helpers in `extension/background.js`.
+Reuse URL/tab open and match helpers in `extension/background.js`. Managed Autofill may share infrastructure with generic open **only if** it does **not** apply `GENERIC_REAL_SITE_INITIAL_DELAY_MS` (D-117-17). Prefer a Managed-specific initial delay of `0` / dedicated Managed orchestrator.
 
 **Frame enforcement (normative):** Managed inject must use `target: { tabId, frameIds: [0] }` or `allFrames: false` so Rivhit’s hidden `LoginManager/Login/Index` iframe is not filled. Do **not** use `pickBestGenericFrameResult` on this path.
+
+### Managed tab orchestration / latency (D-117-17) — normative
+
+After approved target URL is reached, allowed origin will be enforced in-page, and top document is the inject target, Managed Autofill may **immediately** attempt deterministic mappings.
+
+**Readiness:** every required mapped locator resolves to exactly one safe, enabled/editable target. If not ready: bounded adaptive retry only — never another arbitrary fixed multi-second delay. When ready: fill via existing fill-executor, then post-fill verification. Success only after verification.
+
+Legacy/generic Autofill’s 4-second initial delay is **unchanged**.
 
 ### Bypassed (not deleted)
 - `form-detector.js` / `assessStandardLogin`
@@ -280,9 +327,29 @@ Reuse `openGenericRealSiteTab` / URL readiness helpers in `extension/background.
 - `generic-autofill.js` / `runGenericAutofill`
 - Identity-first path
 - `allFrames: true` best-frame selection
+- Fixed `GENERIC_REAL_SITE_INITIAL_DELAY_MS` on the **Managed** path only (legacy keeps it)
 
 ### Extension must not
-Decide business `supportState`; invent mappings; alter credential schema; submit the form.
+Decide business `supportState`; invent mappings; alter credential schema; submit the form; branch on Rivhit / hostname / service id; hard-code Rivhit selectors; hard-code expected credential field names; assume username/password (or any fixed) field semantics; apply legacy fixed post-load delay on the Managed path.
+
+The generic executor receives the validated mapping and credential map keyed by `field.id` and executes it. It does not need to understand the business meaning of a field.
+
+### Managed tab placement (D-117-19) — normative
+
+On Managed `chrome.tabs.create` (Managed path only):
+
+- If `sender.tab` is available: `index: sender.tab.index + 1`, and `openerTabId: sender.tab.id` where supported/appropriate.
+- If `sender.tab` is unavailable: omit placement hints (existing default); do not fail the Managed fill for placement alone.
+- Legacy/generic `tabs.create` placement unchanged.
+- No tab-order orchestration / tab manager in Phase 117.
+
+### Hub in-progress UX (D-117-18) — normative
+
+On Managed Autofill initiation, Hub/Launch Card must immediately show a working state for **that** `(serviceId, accessProfileId)` (suggested Hebrew: «ממלא פרטי כניסה...») — not success, not failure — until structured extension success/failure replaces it. No fixed UX timer. No credentials/field values in that state. Unrelated profiles/services must remain actionable.
+
+### Managed execution concurrency (D-117-20) — normative
+
+Hub tracks in-flight Managed executions by `(serviceId, accessProfileId)` only. Reject accidental duplicate activation of the same key while in flight. Allow concurrent different profiles and different services. After settle, same key may launch again immediately. Clear the key on every terminal outcome. No global Managed busy boolean.
 
 ---
 
@@ -297,14 +364,15 @@ User requests Autofill
   → verify complete required credentials
   → verify fieldMappings against active field IDs
   → resolve approved Login Entry
+  → Hub enters in-progress working state («ממלא פרטי כניסה...»)  [D-117-18]
   → open external page (extension)
   → send mapped values + mapping + allowedOrigin
-  → extension verifies origin
-  → extension targets top document only
-  → wait for configured elements
-  → resolve explicit CSS selectors (exact one each)
+  → extension verifies origin / top document
+  → immediately attempt mappings (NO fixed 4s post-load delay)  [D-117-17]
+  → adaptive retry until ALL required mapped targets are ready
   → GenericFillExecutor fill + verify
   → structured success/failure to Hub
+  → Hub replaces in-progress with verified success or failure
   → user manually submits external form
 ```
 
@@ -314,7 +382,7 @@ User requests Autofill
 
 | Condition | Outcome |
 |-----------|---------|
-| Precondition D-117-0 fails | Stop Phase 117 implementation |
+| Precondition D-117-0 fails | Stop **Rivhit** end-to-end validation; return configuration discrepancy to Architecture. Do not hard-code around it. Managed Autofill generic implementation may continue to be designed/tested with synthetic schemas. |
 | Structural validation fails | Reject save / keep non-validated; never set `validated` |
 | Live validation fails | Remain `not_configured` or `unsupported`; no fake `validated` |
 | Security-relevant config change while `validated` | Bump `configVersion`; transition to `unsupported`; Managed eligibility ends immediately |
@@ -371,14 +439,14 @@ Do not fake validation to close the phase. Do not change encryption/auth/vault k
 
 ## Exact Implementation Order
 
-0. **D-117-0 precondition** — dump/verify live Rivhit `login_fields` IDs. STOP if mismatch.
-1. Pure TypeScript contract module: parse / structural validate / plan metadata write (`configVersion`, `validation.metadataVersion`, explicit support-state transitions).
+0. **D-117-0** — If Rivhit is used as the first end-to-end validation service, dump/verify live Rivhit `login_fields` IDs against the known Rivhit test configuration. Mismatch → STOP Rivhit validation, return to Architecture (do not hard-code).
+1. Pure TypeScript contract module: parse / structural validate / plan metadata write (`configVersion`, `validation.metadataVersion`, explicit support-state transitions). Schema-dynamic — no fixed field-name lists in the contract module beyond “active login_fields”.
 2. Admin API merge of `autofillProfile` + unit tests for reject rules **and** version invalidation on security-relevant edits.
 3. Admin UI: locator editor derived from `login_fields` + supportState display.
-4. Extension Managed runner + top-frame inject + message handler (reuse fill-executor).
-5. Hub `executeServiceFromTile` branch + Managed send helper.
-6. Automated tests (list below).
-7. Runtime evidence with mock/test values on Rivhit Login Entry (non-production activation).
+4. Extension Managed runner + top-frame inject + message handler (reuse fill-executor); mapping-driven only.
+5. Hub `executeServiceFromTile` branch + Managed send helper (schema-dynamic credentials/mappings).
+6. Automated tests including **synthetic non-Rivhit schema** genericity test (below).
+7. Runtime evidence with mock/test values on Rivhit Login Entry (non-production activation) **only after** D-117-0 green.
 8. Security Owner review package.
 9. Only then: Admin live validation + activate `validated` for Rivhit.
 
@@ -405,7 +473,7 @@ Do not modify encryption modules, Phase 116 identity, or discovery engines.
 
 Must cover at least:
 
-1. Rivhit field-ID precondition check (fixture or live read gate).
+1. Rivhit vertical-slice field-ID check (fixture or live read gate for Rivhit E2E only — not a generic engine requirement).
 2. Valid mapping accepted.
 3. Unknown `field.id` rejected.
 4. Missing required mapping rejected.
@@ -416,10 +484,10 @@ Must cover at least:
 9. Hidden target rejected.
 10. Non-editable target rejected.
 11. Partial fill is NOT success.
-12. `username` fills and verifies.
-13. `password` fills and verifies.
-14. `business_id` fills and verifies.
-15. `#remember` remains untouched.
+12. Rivhit config: `username` fills and verifies (slice evidence).
+13. Rivhit config: `password` fills and verifies (slice evidence).
+14. Rivhit config: `business_id` fills and verifies (slice evidence).
+15. Rivhit config: `#remember` remains untouched.
 16. Hidden Rivhit iframe remains untouched (top-frame-only assertion).
 17. Submit is never invoked.
 18. Validated path does not invoke generic mapper.
@@ -431,6 +499,22 @@ Must cover at least:
 24. Changing Login Entry / `allowedOrigin` bumps config version and cannot continue executing under the old validation.
 25. Clearing or changing mappings cannot silently preserve `validated` eligibility.
 26. Reset to `not_configured` is only via explicit Admin state transition (not a side effect of clearing mappings).
+27. **Genericity (required):** synthetic second service/configuration fixture that does **not** use Rivhit field IDs — e.g. schema `customer_number`, `pin` with test locators `#customer-number`, `#pin` (names/selectors may follow existing test conventions). Prove the **same** Managed Autofill implementation:
+    - reads that service’s active credential schema;
+    - resolves mappings by stable `field.id`;
+    - passes dynamically keyed credential values;
+    - deterministically fills configured targets and verifies;
+    - requires **no** service-specific code;
+    - requires **no** `username` / `password` / `business_id` assumptions.
+    Do **not** create a production catalog service solely for this test; fixture/mock/test configuration is sufficient.
+28. Managed path does **not** impose a fixed multi-second sleep after tab `complete` when all mapped targets are already present.
+29. If targets appear later, fill still succeeds via adaptive readiness/retry (no fixed-only strategy).
+30. In-progress Hub state appears immediately after Managed Autofill initiation.
+31. In-progress state is not rendered/interpreted as success; replaced by verified success or structured failure.
+32. Rapid duplicate activation of the same `(serviceId, accessProfileId)` does not start a second run; different profiles/services may run concurrently; same profile may re-launch after settle (D-117-20).
+33. Managed target tab opens adjacent to Hub when `sender.tab` exists; placement fallback when unavailable (D-117-19).
+34. Origin mismatch / top-frame / partial-fill / no legacy fallback / no auto-submit / no secrets in logs — regression suite from latency analysis items 3–11 as applicable.
+35. No global Managed busy state remains on the execution path.
 
 ---
 
@@ -449,7 +533,7 @@ Must cover at least:
 
 | ID | Criterion |
 |----|-----------|
-| AC-117-0 | Rivhit live `login_fields` IDs are exactly `username`, `password`, `business_id` before implementation proceeds |
+| AC-117-0 | Before Rivhit end-to-end validation, live Rivhit `login_fields` IDs match the known Rivhit test configuration (`username`, `password`, `business_id`); mismatch stops Rivhit validation and returns to Architecture — these IDs are **not** generic Managed Autofill requirements |
 | AC-117-1 | Managed Autofill profile persists in `service_registry.metadata` without a new table |
 | AC-117-2 | Admin can set CSS locator per active credential field; cannot invent foreign field IDs |
 | AC-117-3 | Structural validation enforces schema join, HTTPS Login Entry, origin bind, css-only, required coverage |
@@ -464,8 +548,8 @@ Must cover at least:
 | AC-117-12 | Validated-path failure does not silent-fallback to generic inference success |
 | AC-117-13 | Non-validated services retain legacy Autofill behavior |
 | AC-117-14 | Rivhit requires no service-specific adapter / hardcoded fill branch |
-| AC-117-15 | `business_id` maps to `#osek` without renaming vault field id |
-| AC-117-16 | `#remember` never filled |
+| AC-117-15 | Rivhit config maps `business_id` → `#osek` without renaming that vault field id |
+| AC-117-16 | Rivhit config: `#remember` never filled |
 | AC-117-17 | Missing-user-credentials / NOT_CONFIGURED / NO_STORED_CREDENTIALS behaviors preserved |
 | AC-117-18 | credentialMode is not redefined by supportState |
 | AC-117-19 | No credential values in logs/errors/telemetry |
@@ -478,41 +562,56 @@ Must cover at least:
 | AC-117-26 | Changing Login Entry binding or `allowedOrigin` likewise invalidates prior validation eligibility |
 | AC-117-27 | Clearing or editing mappings does not silently preserve `validated` eligibility |
 | AC-117-28 | Transition to `not_configured` occurs only via explicit Admin reset action — never as a side effect of clearing mappings |
+| AC-117-29 | **Genericity:** Adding another simple single-page catalog service with a **different** credential schema and administrator-configured CSS mappings must **not** require a code change to the Managed Autofill runtime or browser extension. Configuration and validation are expected; new service-specific execution code is a phase failure. Proven by the required synthetic non-Rivhit schema test |
+| AC-117-30 | Managed Autofill does **not** use `GENERIC_REAL_SITE_INITIAL_DELAY_MS` (or equivalent fixed multi-second post-load sleep) |
+| AC-117-31 | After target URL + origin/top-document constraints, Managed attempts fill based on mapped-target readiness; adaptive bounded retry only if targets not yet ready |
+| AC-117-32 | When all required mapped targets are ready, fill proceeds immediately via existing fill-executor; success only after post-fill verification |
+| AC-117-33 | Legacy/generic Autofill retains its existing 4-second initial delay behavior (unchanged by this amendment) |
+| AC-117-34 | Hub shows mandatory in-progress working state immediately on Managed Autofill start for that execution (suggested «ממלא פרטי כניסה...»); not success; not failure; no credentials; unrelated profiles/services remain available |
+| AC-117-35 | In-progress state is replaced only by verified success or structured failure; no fixed UX timer |
+| AC-117-36 | Managed in-flight dedupe is keyed by `(serviceId, accessProfileId)` only: same key in flight → no duplicate; different profile or service → concurrent OK; after settle → re-launch OK immediately; no global Managed busy lock; key cleared on every terminal outcome; identity contains no secrets |
+| AC-117-37 | When `sender.tab` is available, Managed target tab opens adjacent to the originating Hub tab (`index + 1`, `openerTabId` where appropriate); if unavailable, placement fails soft without weakening Managed validation; legacy/generic placement unchanged |
 
 ---
 
+
 ## Functional Testability
 
-- **Page/screen:** Admin Registry (global Rivhit row); Digital Home Launch Card for Rivhit.
-- **User-visible behavior:** After `validated` + complete credentials, Autofill populates username, password, and business id on Rivhit login; user clicks «התחבר».
-- **Minimal end-to-end flow:** Admin maps three CSS locators → Security-approved live validate → activate → user Autofill → three fields verified filled → manual submit.
-- **Expected observable result:** Deterministic fill without heuristic mapping; no submit by extension; legacy services unchanged.
+- **Page/screen:** Admin Registry (global Rivhit row as first slice); Digital Home Launch Card for a validated service.
+- **User-visible behavior:** After `validated` + complete credentials, Autofill populates **that service's mapped fields** (for Rivhit config: username, password, business id); user submits externally.
+- **Minimal end-to-end flow:** Admin maps CSS locators from active schema → Security-approved live validate → activate → user Autofill → all required fields verified → manual submit.
+- **Expected observable result:** Deterministic fill without heuristic mapping; no submit by extension; legacy services unchanged; synthetic non-Rivhit schema also works via the same engine.
 
 ---
 
 ## STOP Conditions
 
-- D-117-0 Rivhit field IDs mismatch → STOP, return to Architecture.
-- Proposal to rename/migrate field IDs → STOP.
+- D-117-0 Rivhit configuration mismatch → STOP Rivhit E2E validation, return to Architecture (do not hard-code field names into the engine).
+- Proposal to hard-code Rivhit / hostname / service-ID / fixed field-name assumptions into Managed Autofill → STOP.
+- Proposal to rename/migrate Rivhit field IDs silently → STOP.
 - Proposal to remove legacy Autofill in 117 → STOP.
 - Proposal to auto-submit or add iframe automation → STOP.
 - Setting `validated` without live validation / Security approval → STOP.
 - Remaining effectively validated after security-relevant Autofill config change → STOP.
 - Implicit `not_configured` reset as a side effect of clearing mappings → STOP.
 - Silent fallback from Managed failure to generic success → STOP.
-- Rivhit-specific adapter as the delivery mechanism → STOP.
+- Proposal to apply or reintroduce a fixed multi-second post-load delay on Managed Autofill → STOP.
+- Omitting mandatory in-progress Hub UX for Managed Autofill → STOP.
+- Reporting Managed success before post-fill verification → STOP.
 - Current code contradiction that cannot be resolved without architecture change → return to Architecture (none identified at contract time).
 
 ---
 
 ## Required Developer Completion Evidence
 
-- Precondition dump proving Rivhit field IDs.
-- Metadata sample for Rivhit `autofillProfile` (redacted).
-- Automated test run output covering AC list items including version-match and invalidation cases.
-- Runtime notes/screenshots: Admin config; fill of three fields; `#remember` empty; no submit; top-frame only.
+- Precondition dump for Rivhit E2E (D-117-0), or Architecture note if Rivhit E2E deferred.
+- Metadata sample for Rivhit `autofillProfile` (redacted) as configuration evidence only.
+- Automated test run including **synthetic non-Rivhit schema** genericity proof (AC-117-29).
+- Automated test run covering version-match and invalidation cases.
+- Runtime notes/screenshots: Admin config; Rivhit fill of mapped fields; `#remember` empty; no submit; top-frame only.
 - Evidence that changing a locator after `validated` blocks Managed execution until re-validation.
 - Explicit statement that validated path does not call `mapLoginFields` / `runGenericAutofill`.
+- Explicit statement that Managed Hub/extension code contains no Rivhit field-ID / hostname / service-ID fill hard-coding.
 - Security gate status: what is implemented vs what awaits Security Owner for production `validated`.
 - Confirmation: no encryption/Phase 116/discovery changes; no Phase 113 copy changes.
 
@@ -522,9 +621,10 @@ Must cover at least:
 
 | Risk / dependency | Mitigation |
 |-------------------|------------|
-| Live Rivhit row not verified in Architecture session | Hard gate D-117-0 / AC-117-0 |
+| Live Rivhit row not verified in Architecture session | D-117-0 / AC-117-0 for Rivhit E2E only |
+| Accidental hard-coding of Rivhit field names into engine | D-117-16 / AC-117-29 synthetic schema test |
 | Hidden duplicate iframe | Top-frame-only inject (D-117-8) |
-| Meta-refresh splash `online1.rivhit.co.il/` | Bind Login Entry to `/loginmanager/login` |
+| Meta-refresh splash `online1.rivhit.co.il/` | Bind Login Entry to `/loginmanager/login` (Rivhit config) |
 | jQuery Validate on Rivhit | Existing fill-executor events; verify post-fill |
 | Broad extension `https://*/*` host permissions | Security review; do not expand scope casually |
 | Confusion between `credentialMode` and `supportState` | Namespaced `autofillProfile.supportState` |
@@ -537,21 +637,35 @@ Must cover at least:
 
 ## Handoff Notes for Manager
 
-1. Open with **D-117-0** as Milestone 0; block all code until green.
-2. Split milestones: contract (incl. configVersion / validation.metadataVersion) → Admin structural → extension executor → Hub routing → tests → Security package → Rivhit activation.
+1. Milestone 0 = D-117-0 only when Rivhit E2E validation is scheduled; do not encode Rivhit field names into the generic implementation plan.
+2. Split milestones: contract (incl. configVersion / validation.metadataVersion + schema-dynamic joins) → Admin structural → extension executor → Hub routing → tests (**include synthetic schema**) → Security package → Rivhit activation.
 3. Keep Rivhit as **config evidence**, not a named code path.
 4. Coordinate Security Owner early; do not schedule production `validated` before approval.
 5. Tika for Admin/DH microcopy only after structural UI exists.
 6. Do not authorize Phase 113 copy edits under this phase.
 7. Require tests for explicit state reset vs mapping-clear side effects; forbid implicit `not_configured`.
+8. Treat failure of AC-117-29 as architectural failure of Phase 117 genericity.
+9. Latency amendment (D-117-17 / D-117-18): Operator Rivhit retest before Phase 117 close.
+10. Tab placement + concurrency (D-117-19 / D-117-20): authorize Developer immediately; regression per AC-117-36/37; Operator retest after automated verification.
 
 ---
 
 ## Architect Review
-ARCHITECT_REVIEW_STATUS: READY_FOR_REVIEW
+ARCHITECT_REVIEW_STATUS: APPROVED
 
 ### Review Notes
-Architecture review corrections applied 2026-09-15: explicit support-state transitions only; `validation.metadataVersion` bound to Managed Autofill `configVersion`; AC-117-23…28 and tests 22–26 added. **Not approved for Developer implementation** until Architecture/CEO accept this revision and Manager produces an approved Detailed Design.
+Architecture accepted 2026-09-16 for Manager Detailed Design handoff.
+
+**Latency amendment approved 2026-09-16:** D-117-17 / D-117-18; AC-117-30…35.
+
+**Tab placement + concurrency approved 2026-09-16:** D-117-19 / D-117-20; AC-117-36 revised; AC-117-37. **Implementation authorized.**
+
+Phase 117 remains **OPEN** until:
+
+1. Automated regression evidence (adjacent tab, placement fallback, concurrency keys, clear-on-terminal, no global busy, prior Managed/security/genericity tests)
+2. Operator Rivhit retest PASS (performance already accepted)
+
+All existing Phase 117 security/runtime constraints remain. No production code authored by Architecture in this review.
 
 ### Required Corrections
-_(applied — awaiting Architecture acceptance)_
+_(none — implement)_

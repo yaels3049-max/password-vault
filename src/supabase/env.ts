@@ -69,5 +69,9 @@ export function toBrowserAccessibleStorageUrl(publicUrl: string): string {
 }
 
 export function isSupabaseConfigured(): boolean {
-  return getSupabaseConfig() !== null;
+  try {
+    return getSupabaseConfig() !== null;
+  } catch {
+    return false;
+  }
 }
