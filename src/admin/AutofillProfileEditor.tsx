@@ -18,6 +18,9 @@ import {
   ANALYZE_LOGIN_PAGE_LABEL_HE,
   ANALYZING_LOGIN_PAGE_LABEL_HE,
   NOT_CONFIDENTLY_MAPPED_LABEL_HE,
+  startVisualMappingForField,
+  VISUAL_MAPPING_IN_PROGRESS_LABEL_HE,
+  VISUAL_MAPPING_LABEL_HE,
 } from '../assistedMapping';
 
 interface AutofillProfileEditorProps {
@@ -62,6 +65,7 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [visualMappingFieldId, setVisualMappingFieldId] = useState<string | null>(null);
   const [approveConfirmOpen, setApproveConfirmOpen] = useState(false);
 
   useEffect(() => {
@@ -122,26 +126,35 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
   const canAnalyze =
     !saving &&
     !analyzing &&
+    !visualMappingFieldId &&
     fields.length > 0 &&
+    Boolean(originFromHttpsLoginEntry(loginEntryUrl));
+  const canVisualMap =
+    !saving &&
+    !analyzing &&
+    !visualMappingFieldId &&
     Boolean(originFromHttpsLoginEntry(loginEntryUrl));
   const canSave =
     !saving &&
     !analyzing &&
+    !visualMappingFieldId &&
     hasUnsavedChanges &&
     (structural.ok || (formIsEmpty && Boolean(existing)));
   const canApprove =
     !saving &&
     !analyzing &&
+    !visualMappingFieldId &&
     operatorFunctionalActivateAllowed &&
     Boolean(existing) &&
     structural.ok &&
     !hasUnsavedChanges &&
     existing!.supportState !== 'validated';
   /** Clears current form inputs only — does not mutate persisted mapping. */
-  const canClear = !saving && !analyzing && formHasAnyLocator;
+  const canClear = !saving && !analyzing && !visualMappingFieldId && formHasAnyLocator;
   const canMarkUnsupported =
     !saving &&
     !analyzing &&
+    !visualMappingFieldId &&
     Boolean(existing) &&
     (existing!.supportState === 'validated' || existing!.supportState === 'unsupported');
 
@@ -181,6 +194,35 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
       setError('לא ניתן לנתח את דף הכניסה כרגע. נסו שוב.');
     } finally {
       setAnalyzing(false);
+    }
+  }
+
+  async function requestVisualMapping(fieldId: string): Promise<void> {
+    if (!canVisualMap) {
+      return;
+    }
+    setError(null);
+    setSuccess(null);
+    setVisualMappingFieldId(fieldId);
+    try {
+      const result = await startVisualMappingForField({
+        fieldId,
+        loginEntryUrl,
+      });
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      setLocators((current) => ({
+        ...current,
+        [result.fieldId]: result.locator,
+      }));
+      setUnmappedFieldIds((current) => current.filter((id) => id !== result.fieldId));
+      setSuccess(result.message);
+    } catch {
+      setError('לא ניתן להשלים מיפוי חזותי כרגע. נסו שוב.');
+    } finally {
+      setVisualMappingFieldId(null);
     }
   }
 
@@ -281,8 +323,9 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
     <section className="admin-panel admin-autofill-profile">
       <h3 className="admin-panel-title">מילוי אוטומטי מנוהל</h3>
       <p className="admin-panel-hint">
-        בורר CSS לכל שדה כניסה פעיל. שמירה מבצעת בדיקה מבנית בלבד ואינה מסמנת את האתר כמאומת.
-        ניתוח דף כניסה מציע מיפויים בביטחון גבוה בלבד — ללא שמירה אוטומטית.
+        מיפוי חזותי: בחרו שדה ולחצו על הבקרה בדף הכניסה האמיתי (ללא הקלדת CSS). ניתוח דף
+        כניסה מציע מיפויים בביטחון גבוה בלבד. שמירה מבצעת בדיקה מבנית בלבד ואינה מסמנת את
+        האתר כמאומת — ללא שמירה אוטומטית.
       </p>
       <p className="admin-autofill-state">
         מצב תמיכה: <strong>{supportLabel(existing?.supportState ?? null)}</strong>
@@ -292,29 +335,53 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
             · <span role="status">{ANALYZING_LOGIN_PAGE_LABEL_HE}</span>
           </>
         ) : null}
+        {visualMappingFieldId ? (
+          <>
+            {' '}
+            · <span role="status">{VISUAL_MAPPING_IN_PROGRESS_LABEL_HE}</span>
+          </>
+        ) : null}
       </p>
       <div className="admin-autofill-fields">
         {fields.map((field) => {
           const emptyAndUnmapped =
             !(locators[field.id] ?? '').trim() && unmappedFieldIds.includes(field.id);
+          const fieldBusy = visualMappingFieldId === field.id;
           return (
-            <label key={field.id} className="admin-field">
-              <span>
-                {field.label} <code>{field.id}</code>
-                {emptyAndUnmapped ? (
-                  <span className="admin-muted"> · {NOT_CONFIDENTLY_MAPPED_LABEL_HE}</span>
-                ) : null}
-              </span>
-              <input
-                value={locators[field.id] ?? ''}
-                onChange={(event) =>
-                  setLocators((current) => ({ ...current, [field.id]: event.target.value }))
-                }
-                placeholder="#field-selector"
-                dir="ltr"
-                disabled={analyzing}
-              />
-            </label>
+            <div key={field.id} className="admin-autofill-field-row">
+              <label className="admin-field">
+                <span>
+                  {field.label} <code>{field.id}</code>
+                  {emptyAndUnmapped ? (
+                    <span className="admin-muted"> · {NOT_CONFIDENTLY_MAPPED_LABEL_HE}</span>
+                  ) : null}
+                </span>
+                <input
+                  value={locators[field.id] ?? ''}
+                  onChange={(event) =>
+                    setLocators((current) => ({ ...current, [field.id]: event.target.value }))
+                  }
+                  placeholder="נגזר ממיפוי חזותי או ניתוח"
+                  dir="ltr"
+                  disabled={analyzing || Boolean(visualMappingFieldId)}
+                  aria-label={`בורר CSS ל-${field.label}`}
+                />
+              </label>
+              <button
+                type="button"
+                className="admin-btn admin-btn-secondary"
+                disabled={!canVisualMap}
+                data-action="visual-mapping"
+                data-field-id={field.id}
+                data-enabled={canVisualMap ? 'true' : 'false'}
+                aria-disabled={!canVisualMap}
+                onClick={() => {
+                  void requestVisualMapping(field.id);
+                }}
+              >
+                {fieldBusy ? VISUAL_MAPPING_IN_PROGRESS_LABEL_HE : VISUAL_MAPPING_LABEL_HE}
+              </button>
+            </div>
           );
         })}
       </div>

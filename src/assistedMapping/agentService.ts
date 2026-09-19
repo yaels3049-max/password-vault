@@ -1,11 +1,16 @@
 import {
   AGENT_TASK_PROPOSE_FIELD_MAPPINGS,
-  INSPECTION_CAPABILITY_SINGLE_PAGE_TOP,
   type CredentialSchemaField,
+  type InspectionCapability,
   type MappingLlmProvider,
   type SafePageStructure,
   type StructuredMappingProposal,
 } from './types';
+import {
+  defaultInspectionCapability,
+  resolveInspectionCapability,
+  unsupportedCapabilityProposal,
+} from './capabilities';
 import { applySafetyAndConfidence } from './safetyValidation';
 import { MockMappingLlmProvider } from './mockProvider';
 import {
@@ -58,7 +63,21 @@ export async function proposeFieldMappings(input: {
   schema: CredentialSchemaField[];
   page: SafePageStructure;
   provider?: MappingLlmProvider;
+  /** Phase 119.1 — defaults to single_page_top; unsupported fails closed. */
+  inspectionCapability?: InspectionCapability | string;
 }): Promise<StructuredMappingProposal> {
+  const capabilityResolution = resolveInspectionCapability(
+    input.inspectionCapability ?? defaultInspectionCapability(),
+  );
+  if (!capabilityResolution.ok) {
+    return unsupportedCapabilityProposal({
+      requestId: input.requestId,
+      serviceId: input.serviceId,
+      schema: input.schema,
+      page: input.page,
+    });
+  }
+
   const inputs = input.page?.inputs;
   // D-118-14 / AC-118-26 — fail closed before any MappingLlmProvider call.
   if (!Array.isArray(inputs) || inputs.length === 0) {
@@ -79,7 +98,7 @@ export async function proposeFieldMappings(input: {
   try {
     const raw = await provider.proposeMappings({
       systemContractVersion: SYSTEM_CONTRACT_VERSION,
-      inspectionCapability: INSPECTION_CAPABILITY_SINGLE_PAGE_TOP,
+      inspectionCapability: capabilityResolution.capability,
       agentTask: AGENT_TASK_PROPOSE_FIELD_MAPPINGS,
       schema: input.schema,
       page: input.page,

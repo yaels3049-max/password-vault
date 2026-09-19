@@ -4,9 +4,15 @@
 PHASE=119
 
 ## Status
-STATUS: READY_FOR_OWNER_REVIEW
+STATUS: APPROVED
+
+APPROVED: 2026-09-17 — Architecture Owner APPROVED corrected `arch-phase119.md` as normative Phase 119 contract.
 
 CREATED: 2026-09-17 — Architecture definition for Owner review. **Does not authorize Manager Detailed Design or Developer implementation** until Owner APPROVES this contract.
+
+AMENDED: 2026-09-17 — Owner REJECT correction applied: do **not** pre-commit same-origin iframe as Slice 119.3. After Visual Mapping, Slice 119.3 is **evidence-driven capability selection**. Structural implementation slices only after generic evidence classifies the unseen-control structure. CLOSE requires 119.1+119.2; later structural capabilities are authorized-from-evidence or explicitly deferred.
+
+SLICE AUTHORIZATION: **119.1 ACCEPTED**. **119.2 ACCEPTED / LIVE VERIFIED**. **119.3 Investigation COMPLETE** (Owner A → readiness). **`readiness_wait_inputs` = LIVE VERIFIED / ACCEPTED** (AC-119-R-1…R-9 PASS; Owner retest 2026-09-20 after explicit Chrome unpacked Reload). Prior R-9 fail = **D1 stale extension** (ACCEPTED). **All other structural capabilities NOT authorized.**
 
 ## Title
 Phase 119 — Generic Advanced Login Mapping
@@ -33,7 +39,7 @@ The AI remains an **AUTHORING assistant only**. It must **never** participate in
 ### In scope (Phase 119)
 
 - Define a **Login Experience capability model** that can grow incrementally (iframe, Shadow DOM, modal, multi-step, dynamic controls, Visual Mapping) without per-service adapters.
-- Implement **independently testable development slices** (see §13), starting with framework + Visual Mapping + the first evidence-backed structural inspect capability.
+- Implement **independently testable development slices** (see §13), starting with framework + Visual Mapping; **then** evidence-driven selection of any further structural capability.
 - Preserve Phase 117 Managed Autofill and Phase 118 Assisted Mapping contracts; extend enums/contracts rather than replace them.
 - Use Bank Hapoalim as a **validation / investigation target**, not as architecture.
 
@@ -54,7 +60,7 @@ The AI remains an **AUTHORING assistant only**. It must **never** participate in
 | | |
 |---|---|
 | **North Star** | Arbitrary web login experiences become **configurable** without permanent service-specific production code. |
-| **Phase 119** | Establish the **generic capability framework** and ship **small, evidence-ordered slices** that make advanced authoring possible. Success ≠ every site works. |
+| **Phase 119** | Establish the **generic capability framework** and ship **119.1 + 119.2** (committed). Further structural capabilities only after **evidence-driven** authorization. Success ≠ every site works. |
 | **Rule** | A newly supported login pattern should normally require a new **GENERIC CAPABILITY**, not a new service-specific adapter. |
 
 Forbidden unless Architecture explicitly approves an exceptional case:
@@ -260,23 +266,47 @@ Phase 119 **must not** silently fall back to heuristic/`POC_GENERIC_FILL` or sit
 
 ---
 
-## 12. Hapoalim structural investigation findings (read-only)
+## 12. Hapoalim structural investigation — facts vs hypotheses
 
-**Login Entry (Phase 118):** `https://login.bankhapoalim.co.il/ng-portals/auth/he/login`  
-**Observed:** tab opens; `SafePageStructure.inputs.length === 0`; D-118-14 correctly skips provider.
+**Login Entry (Phase 118 live):** `https://login.bankhapoalim.co.il/ng-portals/auth/he/login`  
+**Role:** validation / investigation **target only** — not architecture; no Hapoalim-specific product logic.
 
-### Code-backed classification
+### 12.1 OBSERVED FACT (live + code)
 
-| Cause | Likelihood | Evidence |
-|---|---|---|
-| **Iframe** — fields outside top frame | **High** | Inspect hard-coded `frameIds: [0]`; Phase 110 docs/dev notes: banking portals often need `allFrames: true` for fillable fields |
-| **Dynamic rendering / too early** | **Medium–High** | Inspect `initialDelayMs: 0`; no wait-for-inputs; Angular `ng-portals` SPA; Phase 110 used multi-second SPA settle for banks |
-| **Shadow DOM** | **Medium** as gap; lower as sole proof without live pierce evidence | Inspect does not traverse shadow; legacy detector pierces **open** shadow only |
-| **Locator-candidate filter** | **Low–Medium** | Inputs without id/name/autocomplete/aria-label dropped |
-| **Custom non-input controls** | **Low–Medium** | Collector only `input`/`textarea` |
-| **Navigation / wrong origin** | **Low** for empty success | Empty `ok: true` implies origin matched |
+| Fact | Source |
+|---|---|
+| Login Entry tab opened successfully | Phase 118 live |
+| Phase 118 `single_page_top` inspect returned `page.inputs.length === 0` | Phase 118 live Request payload |
+| D-118-14 correctly stops before provider when inputs empty | Phase 118 live + code |
+| Current inspector examines **top document only** (`frameIds: [0]`) | `extension/background.js` |
+| Current inspector does **not** pierce Shadow DOM | `page-structure-inspect.js` |
+| Current inspector does **not** wait/retry for delayed controls (`initialDelayMs: 0`, no empty-input retry) | inspect path |
+| Current collector only queries light-DOM `input`/`textarea` (with locator-candidate filter) | `page-structure-inspect.js` |
 
-**Conclusion:** Limitation is **structural capture / capability**, not AI mapping quality. Hapoalim remains a **validation target** for advanced inspect/Visual Mapping slices — **not** an architecture fork.
+These facts prove a **capability boundary** of `single_page_top`, **not** which advanced structure Hapoalim uses.
+
+### 12.2 CAPABILITY HYPOTHESIS (not proven; must not drive normative slice choice)
+
+Any of the following **may** explain unseen controls; **none** is established by current live evidence alone:
+
+- child **iframe** (same-origin or cross-origin)  
+- **Shadow DOM** (open or closed)  
+- **delayed SPA** rendering  
+- **custom / non-input** controls  
+- locator-candidate filter dropping present inputs  
+- other structure / state  
+
+Historical Phase 110 notes about banking portals and `allFrames` are **hypothesis-supporting context only**, not Phase 119 proof that Hapoalim fields are in a same-origin iframe.
+
+### 12.3 Architecture rule
+
+```text
+OBSERVED FACT  → informs that advanced capture/Visual Mapping is needed
+CAPABILITY HYPOTHESIS → must be confirmed by generic inspection evidence
+                         BEFORE authorizing a structural implementation slice
+```
+
+Bank Hapoalim must **not** be the reason Phase 119 pre-commits to same-origin iframe inspection (or any other single structural capability).
 
 ---
 
@@ -284,21 +314,43 @@ Phase 119 **must not** silently fall back to heuristic/`POC_GENERIC_FILL` or sit
 
 Slices are **independently testable**. Implementation is **not authorized** by this document until Owner APPROVES and Manager issues DD **per slice**.
 
-### Slice order (evidence-based)
+### 13.1 Committed initial implementation scope
 
-| Slice | Name | Rationale |
+| Slice | Name | Status |
 |---|---|---|
-| **119.1** | Login Experience inspection / capability model | Framework first: enums, fail-closed unsupported capability, contract stubs, D-118-14 preserved |
-| **119.2** | Visual Mapping (MVP) | Unblocks Admin when structure/AI cannot map; matches product direction; no third-party embed |
-| **119.3** | Same-origin frame inspect (policy-bound) | Highest-likelihood Hapoalim/Phase-110 gap vs `single_page_top` |
-| **119.4** | Readiness wait-for-inputs (bounded) | Co-factor for SPA banks; small; pairs with 119.3 |
-| **119.5+** | Open-shadow pierce / modal activation / multi-step | Later; only when evidence justifies; each a separate authorization |
+| **119.1** | Login Experience Capability / Inspection Framework | **ACCEPTED** (Owner 2026-09-17) |
+| **119.2** | Visual Mapping MVP | **ACCEPTED / LIVE VERIFIED** (Owner 2026-09-20) |
 
-**Illustrative only if Owner reorders after review** — default order above is normative for handoff unless Owner amends.
+### 13.2 After Visual Mapping — evidence gate (not a pre-chosen capability)
+
+| Slice | Name | Status |
+|---|---|---|
+| **119.3** | Evidence-Driven Advanced Capture Investigation / Capability Selection | **COMPLETE** (Owner decision **A** 2026-09-20) |
+
+### 13.3 Evidence-authorized implementation slices
+
+| Slice | Capability | Status |
+|---|---|---|
+| **119.3-impl / readiness** | `readiness_wait_inputs` | **LIVE VERIFIED / ACCEPTED** (Owner 2026-09-20; AC-119-R-1…R-9 PASS) |
+| iframe / Shadow DOM / modal / multi-step / other | — | **NOT AUTHORIZED** |
+
+### 13.4 Subsequent structural slices (illustrative — still not pre-authorized)
+
+Only after further evidence (or residual failure after readiness) may Owner authorize **one** of, for example:
+
+- same-origin iframe inspection  
+- open Shadow DOM traversal  
+- custom-control targeting  
+- modal activation  
+- another generic capability  
+
+Each such slice gets its own AC table when authorized.
+
+**Residual rule after readiness:** If live Analyze still reports zero inputs while controls are visibly rendered, **STOP** — return to Architecture investigation. Do **not** auto-add another capability.
 
 ### Per-slice rule
 
-Manager creates DD **only** for the individually authorized slice. Developer implements **only** that slice. No “support everything” mega-implementation.
+Manager creates DD **only** for the individually authorized slice. Developer implements **only** that slice. No “support everything” mega-implementation. No pre-commitment to iframe implementation from likelihood alone.
 
 ---
 
@@ -329,35 +381,39 @@ Manager creates DD **only** for the individually authorized slice. Developer imp
 | AC-119.2-9 | Synthetic fixture E2E: pick control → locator appears in editor |
 | AC-119.2-10 | Phase 117/118 regression PASS |
 
-### Slice 119.3 — Same-origin frame inspect
+### Slice 119.3 — Evidence-Driven Advanced Capture Investigation / Capability Selection
 
 | ID | Criterion |
 |---|---|
-| AC-119.3-1 | Capability-gated frame inspect aggregates same-origin (policy) frame inputs into SafePageStructure |
-| AC-119.3-2 | Cross-origin frames not scraped |
-| AC-119.3-3 | Synthetic iframe fixture: child-frame inputs visible to inspect when capability enabled |
-| AC-119.3-4 | Default/`single_page_top` path unchanged when capability not requested |
-| AC-119.3-5 | No service-specific frame rules |
-| AC-119.3-6 | Operator optional: Hapoalim re-inspect under capability — report `inputs.length` only (no site-specific code) |
-| AC-119.3-7 | Phase 117/118 regression PASS |
+| AC-119.3-1 | Investigation produces a written classification of unseen-control structure using **generic** evidence (not service-specific code) |
+| AC-119.3-2 | Report explicitly separates **OBSERVED FACT** from **CAPABILITY HYPOTHESIS** / conclusion |
+| AC-119.3-3 | Classification is specific enough to select **or defer** a next generic capability (iframe / shadow / wait / custom / modal / other / inconclusive) |
+| AC-119.3-4 | Optional Operator targets (e.g. Hapoalim) used only as validation evidence; no hostname/serviceId product branching |
+| AC-119.3-5 | Architecture records either (A) authorization of exactly one next structural slice with AC, or (B) explicit deferral of all structural slices |
+| AC-119.3-6 | No structural inspect/runtime capability is implemented under the 119.3 slice itself |
+| AC-119.3-7 | Phase 117/118 regression unaffected (investigation-only; or any throwaway probe tooling is DEV-only and removed/gated) |
 
-### Slice 119.4 — Readiness wait-for-inputs
+### Slice readiness_wait_inputs — bounded Admin inspect readiness (AUTHORIZED)
 
 | ID | Criterion |
 |---|---|
-| AC-119.4-1 | Bounded wait/retry until inputs appear or timeout |
-| AC-119.4-2 | Timeout → fail closed / empty structure; D-118-14 applies |
-| AC-119.4-3 | Synthetic delayed-render fixture PASS |
-| AC-119.4-4 | No hostname-specific delays |
-| AC-119.4-5 | Phase 117/118 regression PASS |
+| AC-119-R-1 | Admin Analyze/inspect uses bounded observation/retry for eligible top-document inputs (not a single arbitrary sleep as the sole architecture) |
+| AC-119-R-2 | If eligible inputs already present → continue without unnecessary full-window wait |
+| AC-119-R-3 | If eligible inputs appear within the readiness window → captured in SafePageStructure |
+| AC-119-R-4 | If window expires with zero eligible inputs → D-118-14 applies; **zero** MappingLlmProvider calls |
+| AC-119-R-5 | Top-document scope unchanged (`frameIds: [0]`); allowedOrigin enforced; no iframe/shadow/modal/multi-step |
+| AC-119-R-6 | No hostname/serviceId branching; no Hapoalim-specific timing/selectors |
+| AC-119-R-7 | No credentials or live input values captured; no auto-submit; Phase 117 Managed runtime unchanged; Phase 118 safety filtering unchanged |
+| AC-119-R-8 | Automated verify covers present / delayed / timeout+D-118-14 / origin safety + Phase 117/118 regression PASS |
+| AC-119-R-9 | Live residual (Bank Hapoalim): Analyze observes `#userCode` / `#password` after readiness. **Owner live retest 2026-09-20 after explicit Chrome unpacked Reload: PASS** |
 
-Later slices (shadow/modal/multi-step) receive AC tables when Architecture authorizes them.
+**Post-119.3 structural slices:** AC tables authored only when Architecture authorizes that capability from evidence.
 
 ---
 
 ## 15. Regression requirements (Phases 117 / 118)
 
-Before any slice CLOSE:
+Before any **implementation** slice CLOSE (119.1, 119.2, and any later authorized structural slice):
 
 | Suite | Requirement |
 |---|---|
@@ -365,6 +421,8 @@ Before any slice CLOSE:
 | `verifyPhase118AssistedMapping.mjs` | PASS |
 | Existing validated services (e.g. Rivhit / Meuhedet Managed) | Must not regress Operator-known PASS behavior |
 | No new LLM on Managed runtime | Static/grep PASS |
+
+Slice **119.3** (investigation) must not regress production behavior.
 
 ---
 
@@ -378,7 +436,7 @@ Before any slice CLOSE:
 - Embedding third-party login pages in Admin  
 - Weakening Phase 117 deterministic rules  
 - Replacing Phase 118 Assisted Mapping  
-- Closed Shadow DOM as mandatory 119 deliverable  
+- **Pre-committing to same-origin iframe inspect (or any structural capability) without evidence-backed Architecture authorization**  
 - Completing D-118-13 inside Phase 119 by default (remains production gate unless Owner expands)
 
 ---
@@ -389,9 +447,10 @@ Before any slice CLOSE:
 |---|---|
 | **Autofill Runtime Convergence** | **DEFERRED** — inventory preserved: `team-Yuri/inventory-autofill-runtime-convergence.md` (htzone, practice, `POC_GENERIC_FILL`, medium/identity-first, Clalit/legacy consumers) |
 | **D-118-13** | Production Admin security/privacy review — deferred readiness |
-| **Hapoalim / zero-capture as full product support** | Deferred capability beyond slices that generically improve capture |
+| **Hapoalim / zero-capture as full product support** | Deferred capability; Hapoalim remains a validation target only |
 | **Filtered-network operational NFR** | Deferred production-readiness |
-| **Modal / multi-step / closed shadow** | Deferred to later slices/phases unless evidence elevates them |
+| **Same-origin iframe inspect / open shadow / modal / multi-step** | **Not committed** — remain deferred unless separately authorized from residual evidence |
+| **`readiness_wait_inputs`** | **AUTHORIZED** (Owner 2026-09-20) — see implementation charter; not deferred |
 
 ---
 
@@ -399,13 +458,16 @@ Before any slice CLOSE:
 
 Phase 119 may CLOSE only when:
 
-1. Owner-approved slices through **at least 119.1 + 119.2** are implemented, verified, and Operator-accepted (or Owner explicitly narrows CLOSE to a declared subset).  
-2. Slice **119.3** either PASS or explicitly deferred by Owner with rationale (Hapoalim evidence).  
-3. Phase 117 + 118 regression PASS.  
-4. No service-specific adapters introduced by 119.  
-5. Visual Mapping MVP meets AC-119.2-* (if 119.2 in CLOSE set).  
-6. Deferred workstreams remain explicitly listed (Convergence, D-118-13, etc.) — not silently marked complete.  
-7. Architecture Owner formal CLOSE review recorded.
+1. **Committed scope:** Slices **119.1** and **119.2** are implemented, verified, and Operator-accepted (unless Owner explicitly narrows further — not below both without amendment).  
+2. **Evidence gate:** Slice **119.3** investigation is complete with Architecture record of either:  
+   - **(A)** a specific structural capability authorized from evidence and that slice completed to PASS, **or**  
+   - **(B)** all post–Visual Mapping structural capabilities **explicitly deferred**.  
+3. Phase 119 CLOSE **must not** require Same-Origin Frame Inspect (or any other structural capability) **unless** Architecture later authorized that capability from evidence under (A).  
+4. Phase 117 + 118 regression PASS for all implementation slices in the CLOSE set.  
+5. No service-specific adapters introduced by 119.  
+6. Visual Mapping MVP meets AC-119.2-*.  
+7. Deferred workstreams remain explicitly listed (Convergence, D-118-13, structural caps under (B), etc.) — not silently marked complete.  
+8. Architecture Owner formal CLOSE review recorded.
 
 ---
 
@@ -417,12 +479,13 @@ Phase 119 may CLOSE only when:
 | **D-119-2: AI authoring-only** | Preserve Phase 117 determinism | No LLM on fill path |
 | **D-119-3: Visual Mapping via real tab + extension** | Avoid embedding untrusted login UI in Admin | Hub field select + page click → derived target |
 | **D-119-4: Slice-based delivery** | Independently testable; no “support everything” | Manager DD per authorized slice only |
-| **D-119-5: Evidence-ordered structural slices** | Hapoalim/Phase 110 point to frames + SPA timing | 119.3 frame inspect; 119.4 readiness after Visual Mapping MVP |
-| **D-119-6: Hapoalim is validation target only** | Empty inputs = capability gap | No Hapoalim-specific product logic |
+| **D-119-5: Facts vs hypotheses; evidence before structural impl** | Empty top-doc inputs ≠ proof of iframe/shadow/delay class | 119.3 = investigation/selection; no pre-commit to iframe |
+| **D-119-6: Hapoalim is validation target only** | Observed capability gap only | No Hapoalim-specific product logic |
 | **D-119-7: Convergence deferred** | Separate workstream | Do not migrate/delete htzone/practice/generic in 119 |
 | **D-119-8: Fail closed, no silent fallback** | Safety | Unsupported → honest failure |
 | **D-119-9: Extend 117/118, do not replace** | Compatibility | Additive contracts; regression mandatory |
 | **D-119-10: Untrusted page + Admin-only** | Security | Injection-safe; no secrets to AI |
+| **D-119-11: Initial CLOSE scope = 119.1 + 119.2** | Owner correction | Structural caps after VM are (A) evidence-authorized or (B) deferred |
 
 ---
 
@@ -433,7 +496,8 @@ Phase 119 may CLOSE only when:
 - No automatic submit.  
 - No credential values to AI.  
 - Preserve validated Managed services.  
-- D-118-14 remains in force.
+- D-118-14 remains in force.  
+- Do not implement structural inspect capabilities under 119.3 itself.
 
 ---
 
@@ -450,7 +514,7 @@ Phase 119 may CLOSE only when:
 
 - **Admin:** Visual Mapping session on synthetic fixture Login Entry; Assisted Mapping still works for simple top-doc.  
 - **Runtime:** Managed fill using Visual Mapping–authored locator on fixture.  
-- **Optional Operator:** Hapoalim inspect under 119.3/119.4 capabilities — evidence only.  
+- **119.3:** Generic evidence package + Architecture (A)/(B) decision; optional Operator target reports without product branching.  
 - **Expected:** Capability failures fail closed; simple sites unchanged.
 
 ---
@@ -458,17 +522,308 @@ Phase 119 may CLOSE only when:
 ## Handoff Notes for Manager
 
 1. **Do not** create Developer DD until Architecture Owner marks this document **APPROVED**.  
-2. After APPROVED, authorize **one slice at a time** starting **119.1** unless Owner reorders.  
-3. Do not open Convergence migrations under Phase 119.  
-4. Do not add Hapoalim-specific tasks — only generic capability work + optional Operator evidence.  
-5. Security Owner: keep D-118-13 visible as production gate.  
-6. Verification: require Phase 117/118 scripts PASS every slice.
+2. After APPROVED, authorize **119.1**, then **119.2**, then **119.3 investigation** — each with its own DD/authorization.  
+3. **Do not** open same-origin iframe (or other structural) DD until Architecture completes 119.3 and authorizes that capability.  
+4. Do not open Convergence migrations under Phase 119.  
+5. Do not add Hapoalim-specific implementation tasks.  
+6. Security Owner: keep D-118-13 visible as production gate.  
+7. Verification: require Phase 117/118 scripts PASS every **implementation** slice.
 
 ## Architect Review
-ARCHITECT_REVIEW_STATUS: READY_FOR_OWNER_REVIEW
+ARCHITECT_REVIEW_STATUS: APPROVED
 
 ### Review Notes
-Architecture definition complete for Owner review (2026-09-17). Hapoalim investigation (read-only) informs slice order: Visual Mapping + same-origin frame inspect + readiness. Convergence deferred. No implementation authorized.
+2026-09-17 — Initial draft for Owner review.  
+2026-09-17 — **Owner REJECT correction applied:** Slice 119.3 is evidence-driven capability selection (not pre-committed iframe). CLOSE = 119.1+119.2 + (A) evidence-authorized structural slice or (B) explicit deferral. Hapoalim §12 separates OBSERVED FACT vs CAPABILITY HYPOTHESIS. Convergence deferred. No implementation authorized.
+
+2026-09-17 — **Owner APPROVED.** Slice **119.1** authorized only. 119.2 / 119.3 / structural caps not authorized.
+
+2026-09-17 — **Slice 119.1 COMPLETE (pending Owner acceptance).** Manager DD → Developer → Verification finished. Evidence: `team-Yuri/dev-phase119.md`, `team-Yuri/manager-phase119.md`. AC-119.1-1…5 PASS; Phase 117 + 118 regression PASS; tsc PASS. **119.2 / 119.3 / structural / Convergence still NOT authorized.**
+
+2026-09-17 — **Owner ACCEPTED Slice 119.1.** Evidence package accepted. **Slice 119.2 AUTHORIZED only.** 119.3 / structural / Convergence remain NOT authorized.
+
+2026-09-20 — **Owner ACCEPTED / LIVE VERIFIED Slice 119.2.** Independent real-site cases: Meuhedet + Spotify via Visual Mapping → explicit approval → Managed Autofill PASS. **119.3 investigation later authorized separately.**
+
+2026-09-20 — **Owner AUTHORIZED 119.3 — INVESTIGATION ONLY.** See Slice 119.3 charter. Structural implementation NOT authorized.
+
+2026-09-20 — **Owner decision (A):** 119.3 investigation COMPLETE. Authorize implementation slice **`readiness_wait_inputs`** (Admin Analyze/inspect bounded observation/retry). Residual live gate: Hapoalim Analyze must observe `#userCode` / `#password` after render. iframe/shadow/modal/multi-step/Convergence remain NOT AUTHORIZED.
 
 ### Required Corrections
-None pending Owner review feedback.
+None.
+
+---
+
+## Slice 119.1 — Completion / Evidence Package (Architecture Owner Review)
+
+### Verdict
+**119.1 ACCEPTED** (Owner 2026-09-17) — Capability / Inspection Framework.
+
+### What shipped
+| Item | Detail |
+|---|---|
+| Catalog | `LOGIN_EXPERIENCE_CAPABILITY_CATALOG` (shipped + reserved ids) |
+| Supported set | `SUPPORTED_INSPECTION_CAPABILITIES` = [`single_page_top`] only |
+| Hub gate | `proposeFieldMappings` fail-closed on unsupported before provider / before D-118-14 empty path |
+| Edge gate | `inspectionCapability !== 'single_page_top'` → `unsupported_capability` (400) |
+| Error code | `unsupported_capability` on `MappingProposalErrorCode` |
+
+### Acceptance criteria
+| AC | Result |
+|---|---|
+| AC-119.1-1 | **PASS** — catalog + supported set enforced |
+| AC-119.1-2 | **PASS** — unsupported → zero provider calls; structured error |
+| AC-119.1-3 | **PASS** — `single_page_top` preserved (118 verify + 119.1 verify) |
+| AC-119.1-4 | **PASS** — D-118-14 empty inputs → zero provider calls |
+| AC-119.1-5 | **PASS** — no host/service branching in capability module |
+
+### Regression
+| Suite | Result |
+|---|---|
+| `verifyPhase119CapabilityFramework.mjs` | **PASS** |
+| `verifyPhase118AssistedMapping.mjs` | **PASS** |
+| `verifyPhase117ManagedAutofill.mjs` | **PASS** |
+| `tsc -p tsconfig.app.json --noEmit` | **PASS** |
+
+### Explicitly not done at 119.1 acceptance time (historical)
+- 119.2 / 119.3 / structural / Convergence were not authorized at 119.1 acceptance
+
+### Artifacts
+- Architecture: `team-Yuri/arch-phase119.md` (this document)
+- Manager DD: `team-Yuri/manager-phase119.md`
+- Developer evidence: `team-Yuri/dev-phase119.md`
+- Code: `src/assistedMapping/capabilities.ts`, Hub `agentService.ts`, Edge `propose-field-mappings`, verify script
+
+### Owner ask
+~~Accept Slice 119.1~~ → **ACCEPTED** (Owner 2026-09-17).
+
+---
+
+## Slice 119.2 — Completion / Evidence Package (Architecture Owner Review)
+
+### Verdict
+**119.2 ACCEPTED / LIVE VERIFIED** (Owner 2026-09-20) — Visual Mapping MVP.
+
+### What shipped
+| Item | Detail |
+|---|---|
+| UX | Admin selects field → מיפוי חזותי → real Login Entry tab → click control → CSS locator prefills editor → explicit Save |
+| Extension | `visual-target-pick.js` + `ADMIN_VISUAL_MAPPING_START` (top document only) |
+| Hub | `startVisualMappingForField` — no LLM, no credentials, no persist |
+| Safety | Origin bind; unsupported/non-exact-one fail closed; no auto-submit |
+| Fixture | `scripts/fixtures/phase119-visual-pick-login.html` (`#visual-user`) |
+
+### Acceptance criteria (automated / prior package)
+| AC | Result |
+|---|---|
+| AC-119.2-1 | **PASS** — Hub field + extension pick → locator prefill |
+| AC-119.2-2 | **PASS** — no Login Entry embed in Admin |
+| AC-119.2-3 | **PASS** — derived CSS; Admin need not type CSS |
+| AC-119.2-4 | **PASS** — no credential values |
+| AC-119.2-5 | **PASS** — config/prefill only until Save |
+| AC-119.2-6 | **PASS** — no automatic submit |
+| AC-119.2-7 | **PASS** — origin bind / mismatch abort |
+| AC-119.2-8 | **PASS** — Admin editor only |
+| AC-119.2-9 | **PASS** — synthetic fixture → `#visual-user` |
+| AC-119.2-10 | **PASS** — Phase 117/118 regression |
+
+### Regression (package)
+| Suite | Result |
+|---|---|
+| `verifyPhase119VisualMapping.mjs` | **PASS** |
+| `verifyPhase119CapabilityFramework.mjs` | **PASS** |
+| `verifyPhase118AssistedMapping.mjs` | **PASS** |
+| `verifyPhase117ManagedAutofill.mjs` | **PASS** |
+| `tsc -p tsconfig.app.json --noEmit` | **PASS** |
+
+### Owner live validation (2026-09-20) — independent of Analyze / AI
+
+Normative proof path confirmed:
+
+```text
+Admin field selection
+  → real-tab visual target selection
+  → locator derivation
+  → explicit Admin approval
+  → validated Managed configuration
+  → deterministic Managed Autofill
+```
+
+**Constraints held during live validation:** no Analyze Login Page; no AI mapping; no manual CSS entry; no service-specific implementation; no auto-submit.
+
+#### CASE 1 — Meuhedet
+| Step | Evidence |
+|---|---|
+| Start | Existing mappings cleared |
+| Visual Mapping | `id_number` → `#Username`; `mobile_number` → `#MobilePhoneNumber` |
+| Approval | Operator explicitly approved |
+| Runtime | Digital Home → Meuhedet → Managed Autofill |
+| Result | identification number filled **PASS**; mobile number filled **PASS** |
+
+#### CASE 2 — Spotify
+| Step | Evidence |
+|---|---|
+| Login Entry | `https://accounts.spotify.com/en/login?...` (Operator-provided) |
+| Schema | credential field `email` |
+| Visual Mapping | `email` → `#username` |
+| Note | Initial runtime before mapping approval is **not** classified as a defect |
+| After approval | `supportState = validated` |
+| Runtime | Digital Home → Spotify → Managed Autofill |
+| Result | email field filled automatically **PASS** |
+
+### Explicitly not done (authorization boundaries held)
+- 119.3 investigation — **COMPLETE** (Owner decision A)
+- `readiness_wait_inputs` — **AUTHORIZED** separately (implementation charter)
+- iframe / Shadow DOM / modal / multi-step **implementation** — **NOT AUTHORIZED**
+- Autofill Runtime Convergence — **DEFERRED**
+- Bank Hapoalim / any service-specific product logic — **NONE**
+
+### Artifacts
+- Manager DD: `team-Yuri/manager-phase119.md` (Slice 119.2)
+- Developer evidence: `team-Yuri/dev-phase119.md` (Manager/Verification to append live evidence)
+- Code: `extension/generic/visual-target-pick.js`, `extension/background.js`, `src/assistedMapping/visualMapping.ts`, `src/admin/AutofillProfileEditor.tsx`
+
+### Owner ask
+~~Accept Slice 119.2~~ → **ACCEPTED / LIVE VERIFIED** (Owner 2026-09-20).
+
+2026-09-17 — Slice 119.2 package COMPLETE (automated).  
+2026-09-20 — **Owner ACCEPTED / LIVE VERIFIED** with Meuhedet + Spotify cases.
+
+---
+
+## Slice 119.3 — Investigation COMPLETE + Owner Decision (A)
+
+### Investigation status
+**COMPLETE.** Owner reviewed evidence and selected **(A) AUTHORIZE next implementation slice**.
+
+### Classification (Owner-accepted OBSERVED FACT)
+**Delayed / dynamic rendering (readiness / timing)** on the Analyze-owned tab lifecycle:
+
+1. Login Entry tab opens.  
+2. Inspection completes.  
+3. Visible login controls appear only afterward.
+
+Therefore current inspection can execute **before** eligible login inputs exist.
+
+### Additional OBSERVED FACT (post-render Visual Mapping)
+After rendering, Visual Mapping successfully selected:
+- `user_code` → `#userCode`
+- `password` → `#password`
+
+### Architecture decision (A)
+Authorize generic capability **`readiness_wait_inputs`** for **Admin Analyze/inspection** only.
+
+### Decision (B) not selected
+Structural deferral of readiness is **not** chosen.
+
+### Explicitly not authorized by this decision
+iframe · Shadow DOM · modal · multi-step · Convergence · Hapoalim-specific anything · Managed runtime changes
+
+---
+
+## Slice `readiness_wait_inputs` — Implementation Charter (AUTHORIZED)
+
+### Status
+**AUTHORIZED** for Manager DD → Developer → Verification (Owner 2026-09-20).  
+Return evidence package to Architecture Owner **before** Owner live acceptance.
+
+### Capability
+Catalog id: `readiness_wait_inputs` (already reserved in `LOGIN_EXPERIENCE_CAPABILITY_CATALOG`).
+
+### Normative behavior
+Admin Analyze/inspection **must not** immediately conclude zero inputs when the page may still be rendering eligible top-document controls.
+
+Use **bounded observation/retry**:
+- maximum total wait  
+- controlled retry/observation interval  
+- **immediate continuation** once eligible inputs are observed  
+- timeout → fail-closed / empty structure → **D-118-14** (zero provider calls)
+
+**Do not** use a single arbitrary sleep as the architecture. Exact parameters are Manager DD responsibility, justified as **generic defaults** — not Hapoalim-tuned.
+
+### Scope
+| In | Out |
+|---|---|
+| Admin Analyze / inspect path readiness | Phase 117 Managed fill timing changes |
+| Top document only (`frameIds: [0]`) | iframe / Shadow DOM / modal / multi-step |
+| Origin bind preserved | hostname/serviceId / Hapoalim-specific timing or selectors |
+| Eligible input observation (same eligibility spirit as inspect) | Capturing credential/current input values |
+| D-118-14 if still zero after window | Auto-submit; AI/runtime Autofill changes; weakening Phase 118 safety |
+
+### Verification (required before Owner live)
+**Automated:** AC-119-R-1…R-8 signals (present / delayed appear / timeout+D-118-14 / origin / 117+118 regression).
+
+**Live residual — Bank Hapoalim (Operator):** Analyze normally; PASS requires inspection payload to observe rendered login inputs corresponding to `#userCode` and `#password`. If controls visibly rendered but inspection still zero → **STOP** → Architecture investigation; do not auto-add another capability.
+
+### Manager / Developer roles
+- **Manager:** Detailed Design for `readiness_wait_inputs` only (parameters + verify plan); no other structural DD.  
+- **Developer:** implement only approved readiness DD.  
+- **Verification:** AC-119-R-* + 117/118; package for Architect/Owner.  
+- **Architect:** review evidence; no production code.
+
+### Checkpoint notes
+**`readiness_wait_inputs` LIVE VERIFIED / ACCEPTED** (Owner 2026-09-20). Prior AC-119-R-9 FAIL classified as **D1 stale extension**. No further structural slices authorized from this acceptance.
+
+---
+
+## `readiness_wait_inputs` — LIVE VERIFIED / ACCEPTED (Owner 2026-09-20)
+
+### Status
+**AC-119-R-9 = OWNER LIVE PASS** (retest after explicit Chrome unpacked-extension Reload).  
+**`readiness_wait_inputs` = LIVE VERIFIED / ACCEPTED.**  
+Discrepancy investigation **CLOSED**.
+
+### Prior failure (historical — ACCEPTED root cause)
+| Item | Record |
+|---|---|
+| First live attempt | AC-119-R-9 FAIL (~0.5s Analyze complete before controls; no-high-confidence) |
+| Root cause | **D1 — stale loaded Chrome extension** (pre-readiness build still executing) |
+| Classification | Implementation/integration execution discrepancy — **not** a new structural capability gap |
+| D2 eligibility tightening | **Not required** by retest evidence |
+| iframe / Shadow DOM / modal / multi-step | **Not required** for this validation target on current evidence |
+
+### Owner OBSERVED FACT — live retest (after Reload)
+| Fact | Status |
+|---|---|
+| Explicit Chrome unpacked-extension Reload performed | OBSERVED |
+| Analyze did **not** complete immediately | OBSERVED |
+| Analyze waited while Login Entry page rendered | OBSERVED |
+| Login controls became available | OBSERVED |
+| Analyze successfully produced/populated field mappings | OBSERVED |
+| Approved readiness behavior exhibited with current build loaded | OBSERVED |
+
+### Architecture conclusions
+1. Repo readiness wiring is validated live when the **current** extension build is loaded.  
+2. Automated R-1…R-8 PASS + Owner R-9 PASS after reload = capability **LIVE VERIFIED**.  
+3. Operator procedure note: after readiness (or any extension) code changes, **Reload** unpacked extension before live Analyze residual tests.  
+4. No additional structural capability is authorized by this acceptance.
+
+### Residual rule (unchanged)
+If a future live Analyze reports zero inputs while controls are visibly rendered **with a confirmed-current extension build**, STOP → Architecture investigation. Do not auto-add capability.
+
+### Hard stops (unchanged)
+No iframe / Shadow DOM / modal / multi-step implementation. No Hapoalim-specific product logic. Convergence remains deferred.
+
+### Architect Review note
+2026-09-20 — **AC-119-R-9 PASS** after explicit extension Reload. **D1 ACCEPTED** as root cause of prior FAIL. **`readiness_wait_inputs` LIVE VERIFIED / ACCEPTED.** No further structural slices authorized.
+
+---
+
+## Phase 119 — Status Snapshot (post readiness live accept)
+
+| Item | Status |
+|---|---|
+| 119.1 Capability framework | **ACCEPTED** |
+| 119.2 Visual Mapping | **ACCEPTED / LIVE VERIFIED** |
+| 119.3 Investigation | **COMPLETE** → Owner **(A)** readiness |
+| `readiness_wait_inputs` | **LIVE VERIFIED / ACCEPTED** (R-1…R-9) |
+| iframe / shadow / modal / multi-step | **NOT AUTHORIZED** |
+| Autofill Runtime Convergence | **DEFERRED** |
+| D-118-13 | **Deferred** production Admin Analyze gate |
+
+### CLOSE readiness (Architecture view)
+Per §18: committed 119.1+119.2 accepted; 119.3 evidence gate satisfied via **(A)** with readiness slice completed to Owner live PASS. Remaining CLOSE blockers are Owner formal CLOSE review plus explicit listing of deferred workstreams (Convergence, D-118-13, other structural caps). **Architect does not CLOSE Phase 119 in this note** without Owner formal CLOSE authorization.
+
+### Next architecture checkpoint
+1. Manager / Developer / Verification **record** Owner retest evidence (reload + wait + Hapoalim Analyze success + D1 classification) in `manager-phase119.md` / `dev-phase119.md`.  
+2. Owner decides: **formal Phase 119 CLOSE**, or authorize any further work (none recommended from Hapoalim readiness evidence).  
+3. Until Owner CLOSE: Phase 119 remains **ACTIVE** with deferred items listed; no structural implementation.

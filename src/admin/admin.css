@@ -1188,6 +1188,23 @@
   margin-bottom: 0.75rem;
 }
 
+.admin-autofill-field-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+}
+
+.admin-autofill-field-row .admin-field {
+  flex: 1 1 14rem;
+  margin: 0;
+}
+
+.admin-autofill-field-row .admin-btn {
+  flex: 0 0 auto;
+  margin-bottom: 0.1rem;
+}
+
 .admin-autofill-fields code {
   font-size: 0.75rem;
   color: var(--admin-muted);

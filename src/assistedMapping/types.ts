@@ -107,7 +107,8 @@ export type MappingProposalErrorCode =
   | 'missing_schema'
   | 'missing_login_entry'
   | 'inspect_failed'
-  | 'tab_load_timeout';
+  | 'tab_load_timeout'
+  | 'unsupported_capability';
 
 export interface StructuredMappingProposal {
   schemaVersion: typeof MAPPING_PROPOSAL_SCHEMA_VERSION;
@@ -150,6 +151,7 @@ export interface MappingLlmProvider {
 }
 
 export const ADMIN_LOGIN_PAGE_INSPECT_MESSAGE = 'ADMIN_LOGIN_PAGE_INSPECT';
+export const ADMIN_VISUAL_MAPPING_START_MESSAGE = 'ADMIN_VISUAL_MAPPING_START';
 
 export const ANALYZE_LOGIN_PAGE_LABEL_HE = 'נתח דף כניסה';
 export const ANALYZING_LOGIN_PAGE_LABEL_HE = 'מנתח דף כניסה...';
@@ -160,3 +162,17 @@ export const ANALYZE_NEED_SCHEMA_LABEL_HE =
   'יש להגדיר שדות הזדהות לפני ניתוח.';
 export const ANALYZE_NEED_LOGIN_ENTRY_LABEL_HE =
   'יש להגדיר כתובת כניסה לפני ניתוח.';
+
+export const VISUAL_MAPPING_LABEL_HE = 'מיפוי חזותי';
+export const VISUAL_MAPPING_IN_PROGRESS_LABEL_HE =
+  'לחצו על השדה בדף הכניסה שנפתח...';
+export const VISUAL_MAPPING_FAILED_LABEL_HE =
+  'לא ניתן להשלים מיפוי חזותי כרגע. נסו שוב.';
+export const VISUAL_MAPPING_NEED_LOGIN_ENTRY_LABEL_HE =
+  'יש להגדיר כתובת כניסה לפני מיפוי חזותי.';
+export const VISUAL_MAPPING_SUCCESS_LABEL_HE =
+  'הבורר נגזר מהשדה שנבחר. בדקו ושמרו ידנית.';
+export const VISUAL_MAPPING_UNSUPPORTED_TARGET_LABEL_HE =
+  'האלמנט שנבחר אינו נתמך למיפוי. בחרו שדה קלט גלוי.';
+export const VISUAL_MAPPING_ORIGIN_MISMATCH_LABEL_HE =
+  'המקור בדף הכניסה אינו תואם. המיפוי בוטל.';

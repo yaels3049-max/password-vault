@@ -4142,24 +4142,22 @@ Normative contract (Architecture definition): `team-Yuri/arch-phase119.md`.
 
 **Status:** Architecture definition for Owner review. **No Manager DD / no Developer implementation** until `arch-phase119.md` is APPROVED and a specific slice is authorized.
 
-**Goal:** Extend Phase 117/118 beyond simple top-document automatic mapping via a **Generic Login Experience Framework** and small independently testable slices (capability model → Visual Mapping → evidence-backed frame inspect / readiness → later shadow/modal/multi-step). AI remains authoring-only; Managed Autofill remains deterministic.
+**Development slices:** **119.1** capability framework → **119.2** Visual Mapping MVP (committed initial scope) → **119.3** evidence-driven advanced capture investigation / capability selection → only then (A) authorize a specific structural capability from evidence, or (B) explicitly defer. AI remains authoring-only; Managed Autofill remains deterministic.
 
 **North Star (not a Phase 119 AC):** Arbitrary login experiences configurable without permanent service-specific production code.
 
 **Authoring model:** Agent analyzes → Admin visually maps/corrects → Admin validates → deterministic Managed runtime executes.
 
-**Development slices (default order):** 119.1 capability model → 119.2 Visual Mapping MVP → 119.3 same-origin frame inspect → 119.4 readiness wait-for-inputs → 119.5+ later capabilities.
-
-**Hapoalim:** Validation/investigation target only (Phase 118: empty top-doc inputs). Likely iframe and/or SPA timing gaps vs `single_page_top` — **no** Hapoalim-specific product logic.
+**Hapoalim:** Validation/investigation target only. **OBSERVED:** top-doc `inputs.length === 0`; inspector limits (top-only, no shadow pierce, no wait). **NOT proven:** iframe vs shadow vs delay vs custom. No Hapoalim-specific product logic; no pre-commit to iframe inspect.
 
 **Deferred (explicit, not silently complete):**
 
 - **Autofill Runtime Convergence** — inventory: `team-Yuri/inventory-autofill-runtime-convergence.md`  
 - **D-118-13** — production Admin security/privacy gate  
-- Zero-capture / advanced experiences beyond authorized slices  
+- Structural capabilities after Visual Mapping until 119.3 evidence authorizes them  
 - Filtered-network operational NFR  
 
-**Non-goals:** support every website in 119; runtime AI; auto-submit; per-service adapters; Convergence migrations/deletes; embedding third-party login pages in Admin.
+**Non-goals:** support every website in 119; runtime AI; auto-submit; per-service adapters; Convergence migrations/deletes; embedding third-party login pages in Admin; pre-committing same-origin iframe (or any structural) impl without evidence.
 
 ---
 
@@ -5330,5 +5328,7 @@ flowchart LR
 | **5.55** | 2026-09-17 | **Phase 118 CLOSED.** Live AI quality A/B/C PASS; D-118-14 live verified; Phase 117 regression PASS; AC-118-1…26 PASS (AC-118-13 soft). **Deferred (explicit):** D-118-13 production Admin security/privacy review; Autofill Runtime Convergence; zero-capture portals; DEV proxy/filtered-network NFR. |
 | **5.56** | 2026-09-17 | **Phase 119 opened (Architecture pending).** Name: **Autofill Runtime Convergence**. `PHASE.md` → 119. No implementation. Inventory input: `team-Yuri/inventory-autofill-runtime-convergence.md`. Carried deferred: D-118-13; Hapoalim/zero-capture; filtered-network NFR. |
 | **5.57** | 2026-09-17 | **Phase 119 renamed/refocused — Generic Advanced Login Mapping.** Architecture definition: `arch-phase119.md` (Owner review). Capability framework + Visual Mapping + evidence-ordered structural slices. Autofill Runtime Convergence **DEFERRED** (inventory preserved). No implementation authorized. |
+| **5.58** | 2026-09-17 | **Phase 119 Owner REJECT correction.** Do not pre-commit same-origin iframe as 119.3. Committed scope: 119.1 + 119.2. Slice 119.3 = evidence-driven capability selection. Structural impl only after evidence (A) or explicit deferral (B). CLOSE must not require iframe inspect. |
+| **5.59** | 2026-09-17 | **Phase 119 architecture APPROVED.** Slice **119.1** (Capability / Inspection Framework) authorized for Manager→Developer→Verification only. 119.2/119.3/structural NOT authorized. |
 
 Implementation plans for individual production phases may be authored separately; they must align with this document and must not duplicate it as a second architecture source.

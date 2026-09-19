@@ -1,5 +1,7 @@
 /**
  * Phase 118 — top-document SafePageStructure extraction.
+ * Phase 119 — readiness_wait_inputs: bounded observe/retry until eligible inputs
+ * appear or max wait (Admin inspect timing only; not Managed Autofill).
  * Never reads typed input contents, document cookies, or storage.
  * Loaded into page MAIN world for Admin inspect only.
  */
@@ -7,6 +9,10 @@
   var MAX_INPUTS = 40;
   var MAX_STRING = 120;
   var MAX_CANDIDATES = 8;
+  /** Default readiness window — generic product default; not hostname-tuned. */
+  var DEFAULT_READINESS_MAX_WAIT_MS = 10000;
+  /** Default observation cadence — generic UI poll; not hostname-tuned. */
+  var DEFAULT_READINESS_POLL_MS = 250;
 
   function truncate(value) {
     if (typeof value !== 'string') return undefined;
@@ -149,5 +155,106 @@
     };
   }
 
+  function sleepMs(ms) {
+    return new Promise(function (resolve) {
+      global.setTimeout(resolve, ms);
+    });
+  }
+
+  function originMatchesExpected(expectedOrigin) {
+    if (typeof expectedOrigin !== 'string' || !expectedOrigin) {
+      return false;
+    }
+    if (typeof global.location === 'undefined') {
+      return false;
+    }
+    return global.location.origin === expectedOrigin;
+  }
+
+  /**
+   * Bounded poll/observe until eligible top-doc inputs appear or timeout.
+   * Early-exits on first non-empty collectSafePageStructure().inputs.
+   * Does not use a single arbitrary sleep as the sole readiness mechanism.
+   * Never reads input values / cookies / storage.
+   *
+   * @param {{ expectedOrigin: string, maxTotalWaitMs?: number, pollIntervalMs?: number }} options
+   * @returns {Promise<{ ok: true, page: object, readiness: object } | { ok: false, reason: string }>}
+   */
+  async function collectSafePageStructureWithReadiness(options) {
+    var expectedOrigin =
+      options && typeof options.expectedOrigin === 'string'
+        ? options.expectedOrigin
+        : '';
+    var maxTotalWaitMs =
+      options && typeof options.maxTotalWaitMs === 'number'
+        ? options.maxTotalWaitMs
+        : DEFAULT_READINESS_MAX_WAIT_MS;
+    var pollIntervalMs =
+      options && typeof options.pollIntervalMs === 'number'
+        ? options.pollIntervalMs
+        : DEFAULT_READINESS_POLL_MS;
+
+    if (!originMatchesExpected(expectedOrigin)) {
+      return { ok: false, reason: 'origin_mismatch' };
+    }
+
+    var startedAt =
+      typeof Date.now === 'function' ? Date.now() : new Date().getTime();
+
+    while (true) {
+      if (!originMatchesExpected(expectedOrigin)) {
+        return { ok: false, reason: 'origin_mismatch' };
+      }
+
+      var page = collectSafePageStructure();
+      if (!page || page.origin !== expectedOrigin) {
+        return { ok: false, reason: 'origin_mismatch' };
+      }
+
+      var waitedMs =
+        (typeof Date.now === 'function' ? Date.now() : new Date().getTime()) -
+        startedAt;
+      var eligibleCount = Array.isArray(page.inputs) ? page.inputs.length : 0;
+
+      if (eligibleCount > 0) {
+        return {
+          ok: true,
+          page: page,
+          readiness: {
+            capability: 'readiness_wait_inputs',
+            waitedMs: waitedMs,
+            earlyExit: true,
+            timedOut: false,
+          },
+        };
+      }
+
+      if (waitedMs >= maxTotalWaitMs) {
+        return {
+          ok: true,
+          page: page,
+          readiness: {
+            capability: 'readiness_wait_inputs',
+            waitedMs: waitedMs,
+            earlyExit: false,
+            timedOut: true,
+          },
+        };
+      }
+
+      var remaining = maxTotalWaitMs - waitedMs;
+      var delay = Math.min(pollIntervalMs, remaining);
+      await sleepMs(delay);
+    }
+  }
+
   global.collectSafePageStructure = collectSafePageStructure;
+  global.collectSafePageStructureWithReadiness =
+    collectSafePageStructureWithReadiness;
+  /** Verify-only helpers (synthetic fixtures). */
+  global.__pageStructureInspectHelpers = {
+    DEFAULT_READINESS_MAX_WAIT_MS: DEFAULT_READINESS_MAX_WAIT_MS,
+    DEFAULT_READINESS_POLL_MS: DEFAULT_READINESS_POLL_MS,
+    originMatchesExpected: originMatchesExpected,
+  };
 })(typeof window !== 'undefined' ? window : globalThis);

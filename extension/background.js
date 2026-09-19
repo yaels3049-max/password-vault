@@ -657,6 +657,14 @@ const GENERIC_REAL_SITE_INITIAL_DELAY_MS = 4000;
  * After URL match + top-frame inject path, attempt mappings immediately (readiness + adaptive retry).
  */
 const MANAGED_AUTOFILL_INITIAL_DELAY_MS = 0;
+/**
+ * Phase 119 readiness_wait_inputs — Admin Login Page inspect only.
+ * Generic product defaults for Assisted Mapping authoring (not hostname/service-tuned).
+ * Normative readiness is poll/early-exit in page-structure-inspect; residual
+ * post-load initialDelayMs on Admin inspect remains 0 and is subordinate.
+ */
+const ADMIN_INSPECT_READINESS_MAX_WAIT_MS = 10000;
+const ADMIN_INSPECT_READINESS_POLL_MS = 250;
 /** Bounded adaptive retry spacing for Managed mapped-target readiness (not a multi-second sleep). */
 const MANAGED_AUTOFILL_RETRY_DELAY_MS = 300;
 /** Time allowed for a heavy real-site login page to reach the target URL. */
@@ -1703,6 +1711,136 @@ function buildManagedTabCreateProperties(sender) {
 }
 
 /**
+ * Phase 119.2 Admin Visual Mapping — open Login Entry, arm top-doc click pick.
+ * No credentials, no fill, no submit, no LLM. frameIds: [0] only.
+ */
+function openPageAndVisualMapping(message, sendResponse, sender) {
+  var loginEntryUrl =
+    message && typeof message.loginEntryUrl === 'string'
+      ? message.loginEntryUrl.trim()
+      : '';
+  var allowedOrigin =
+    message && typeof message.allowedOrigin === 'string'
+      ? message.allowedOrigin.trim()
+      : '';
+  var fieldId =
+    message && typeof message.fieldId === 'string' ? message.fieldId.trim() : '';
+  if (!loginEntryUrl || !allowedOrigin || !fieldId) {
+    sendResponse({ ok: false, reason: 'missing_visual_mapping_payload' });
+    return false;
+  }
+
+  var visualOptions = {
+    initialDelayMs: MANAGED_AUTOFILL_INITIAL_DELAY_MS,
+  };
+  var placement = buildManagedTabCreateProperties(sender);
+  if (placement) {
+    visualOptions.tabCreateProperties = placement;
+  }
+
+  return openGenericRealSiteTab(
+    loginEntryUrl,
+    sendResponse,
+    'admin-visual-mapping',
+    function (tabId, finishSession) {
+      var navAbortArmed = false;
+
+      function onNavAbort(updatedTabId, changeInfo) {
+        if (updatedTabId !== tabId) {
+          return;
+        }
+        if (typeof changeInfo.url === 'string' && changeInfo.url) {
+          try {
+            var nextOrigin = new URL(changeInfo.url).origin;
+            if (nextOrigin !== allowedOrigin) {
+              chrome.tabs.onUpdated.removeListener(onNavAbort);
+              finishSession({
+                ok: false,
+                reason: 'origin_mismatch',
+                fieldId: fieldId,
+              });
+            }
+          } catch (err) {
+            chrome.tabs.onUpdated.removeListener(onNavAbort);
+            finishSession({
+              ok: false,
+              reason: 'origin_mismatch',
+              fieldId: fieldId,
+            });
+          }
+        }
+      }
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tabId, frameIds: [0] },
+          world: 'MAIN',
+          files: ['generic/visual-target-pick.js'],
+        },
+        function () {
+          if (chrome.runtime.lastError) {
+            finishSession({
+              ok: false,
+              reason:
+                chrome.runtime.lastError.message || 'visual_pick_inject_failed',
+              fieldId: fieldId,
+            });
+            return;
+          }
+          if (!navAbortArmed) {
+            navAbortArmed = true;
+            chrome.tabs.onUpdated.addListener(onNavAbort);
+          }
+          chrome.scripting.executeScript(
+            {
+              target: { tabId: tabId, frameIds: [0] },
+              world: 'MAIN',
+              func: function (expectedOrigin, mappedFieldId) {
+                if (typeof armVisualTargetPick !== 'function') {
+                  return Promise.resolve({
+                    ok: false,
+                    reason: 'visual_pick_fn_missing',
+                    fieldId: mappedFieldId,
+                  });
+                }
+                return armVisualTargetPick({
+                  expectedOrigin: expectedOrigin,
+                  fieldId: mappedFieldId,
+                });
+              },
+              args: [allowedOrigin, fieldId],
+            },
+            function (results) {
+              chrome.tabs.onUpdated.removeListener(onNavAbort);
+              if (chrome.runtime.lastError) {
+                finishSession({
+                  ok: false,
+                  reason:
+                    chrome.runtime.lastError.message ||
+                    'visual_pick_run_failed',
+                  fieldId: fieldId,
+                });
+                return;
+              }
+              var result =
+                results && results[0] && results[0].result
+                  ? results[0].result
+                  : {
+                      ok: false,
+                      reason: 'no_result',
+                      fieldId: fieldId,
+                    };
+              finishSession(result);
+            },
+          );
+        },
+      );
+    },
+    visualOptions,
+  );
+}
+
+/**
  * Phase 118 Admin inspect — SafePageStructure only (no values / fill / submit).
  */
 function openPageAndInspectLoginStructure(message, sendResponse, sender) {
@@ -1720,6 +1858,7 @@ function openPageAndInspectLoginStructure(message, sendResponse, sender) {
   }
 
   var inspectOptions = {
+    // Subordinate settle only; readiness_wait_inputs poll/early-exit is normative.
     initialDelayMs: MANAGED_AUTOFILL_INITIAL_DELAY_MS,
   };
   var placement = buildManagedTabCreateProperties(sender);
@@ -1750,23 +1889,26 @@ function openPageAndInspectLoginStructure(message, sendResponse, sender) {
             {
               target: { tabId: tabId, frameIds: [0] },
               world: 'MAIN',
-              func: function (expectedOrigin) {
-                if (typeof collectSafePageStructure !== 'function') {
-                  return { ok: false, reason: 'inspect_fn_missing' };
-                }
+              func: function (expectedOrigin, maxTotalWaitMs, pollIntervalMs) {
                 if (
-                  typeof location === 'undefined' ||
-                  location.origin !== expectedOrigin
+                  typeof collectSafePageStructureWithReadiness !== 'function'
                 ) {
-                  return { ok: false, reason: 'origin_mismatch' };
+                  return Promise.resolve({
+                    ok: false,
+                    reason: 'inspect_fn_missing',
+                  });
                 }
-                var page = collectSafePageStructure();
-                if (!page || page.origin !== expectedOrigin) {
-                  return { ok: false, reason: 'origin_mismatch' };
-                }
-                return { ok: true, page: page };
+                return collectSafePageStructureWithReadiness({
+                  expectedOrigin: expectedOrigin,
+                  maxTotalWaitMs: maxTotalWaitMs,
+                  pollIntervalMs: pollIntervalMs,
+                });
               },
-              args: [allowedOrigin],
+              args: [
+                allowedOrigin,
+                ADMIN_INSPECT_READINESS_MAX_WAIT_MS,
+                ADMIN_INSPECT_READINESS_POLL_MS,
+              ],
             },
             function (results) {
               if (chrome.runtime.lastError) {
@@ -1975,6 +2117,15 @@ chrome.runtime.onMessageExternal.addListener(function (
    */
   if (message.type === 'ADMIN_LOGIN_PAGE_INSPECT') {
     openPageAndInspectLoginStructure(message, sendResponse, sender);
+    return true;
+  }
+
+  /**
+   * Phase 119.2 — Admin Visual Mapping (real Login Entry tab click → CSS locator).
+   * No fill, no credentials, no LLM, no iframe/shadow pierce.
+   */
+  if (message.type === 'ADMIN_VISUAL_MAPPING_START') {
+    openPageAndVisualMapping(message, sendResponse, sender);
     return true;
   }
 

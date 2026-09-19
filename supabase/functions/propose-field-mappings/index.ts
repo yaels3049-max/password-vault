@@ -141,13 +141,20 @@ Deno.serve(async (req) => {
   }
 
   if (
-    payload.inspectionCapability !== 'single_page_top' ||
     payload.agentTask !== 'propose_field_mappings' ||
     !Array.isArray(payload.schema) ||
     !payload.page ||
     typeof payload.page !== 'object'
   ) {
     return jsonResponse(req, 400, { ok: false, reason: 'invalid_request' });
+  }
+
+  // Phase 119.1 — capability gate (fail closed before OpenAI / empty-input path).
+  if (payload.inspectionCapability !== 'single_page_top') {
+    return jsonResponse(req, 400, {
+      ok: false,
+      reason: 'unsupported_capability',
+    });
   }
 
   // D-118-14 / AC-118-26 — fail closed before OpenAI when no observed inputs.
