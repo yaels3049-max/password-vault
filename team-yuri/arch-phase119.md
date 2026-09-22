@@ -4,7 +4,9 @@
 PHASE=119
 
 ## Status
-STATUS: APPROVED
+STATUS: CLOSED
+
+CLOSED: 2026-09-20 — Architecture Owner **FORMAL CLOSE**.
 
 APPROVED: 2026-09-17 — Architecture Owner APPROVED corrected `arch-phase119.md` as normative Phase 119 contract.
 
@@ -12,7 +14,7 @@ CREATED: 2026-09-17 — Architecture definition for Owner review. **Does not aut
 
 AMENDED: 2026-09-17 — Owner REJECT correction applied: do **not** pre-commit same-origin iframe as Slice 119.3. After Visual Mapping, Slice 119.3 is **evidence-driven capability selection**. Structural implementation slices only after generic evidence classifies the unseen-control structure. CLOSE requires 119.1+119.2; later structural capabilities are authorized-from-evidence or explicitly deferred.
 
-SLICE AUTHORIZATION: **119.1 ACCEPTED**. **119.2 ACCEPTED / LIVE VERIFIED**. **119.3 Investigation COMPLETE** (Owner A → readiness). **`readiness_wait_inputs` = LIVE VERIFIED / ACCEPTED** (AC-119-R-1…R-9 PASS; Owner retest 2026-09-20 after explicit Chrome unpacked Reload). Prior R-9 fail = **D1 stale extension** (ACCEPTED). **All other structural capabilities NOT authorized.**
+SLICE AUTHORIZATION (at CLOSE): **119.1 ACCEPTED**. **119.2 ACCEPTED / LIVE VERIFIED**. **119.3 Investigation COMPLETE**. **`readiness_wait_inputs` LIVE VERIFIED / ACCEPTED**. No iframe/Shadow DOM/modal/multi-step authorized or implemented in Phase 119.
 
 ## Title
 Phase 119 — Generic Advanced Login Mapping
@@ -530,13 +532,15 @@ Phase 119 may CLOSE only when:
 7. Verification: require Phase 117/118 scripts PASS every **implementation** slice.
 
 ## Architect Review
-ARCHITECT_REVIEW_STATUS: APPROVED
+ARCHITECT_REVIEW_STATUS: CLOSED
 
 ### Review Notes
 2026-09-17 — Initial draft for Owner review.  
 2026-09-17 — **Owner REJECT correction applied:** Slice 119.3 is evidence-driven capability selection (not pre-committed iframe). CLOSE = 119.1+119.2 + (A) evidence-authorized structural slice or (B) explicit deferral. Hapoalim §12 separates OBSERVED FACT vs CAPABILITY HYPOTHESIS. Convergence deferred. No implementation authorized.
 
 2026-09-17 — **Owner APPROVED.** Slice **119.1** authorized only. 119.2 / 119.3 / structural caps not authorized.
+
+2026-09-20 — **Owner FORMAL CLOSE.** See Close Review section. Phase 120 initiated.
 
 2026-09-17 — **Slice 119.1 COMPLETE (pending Owner acceptance).** Manager DD → Developer → Verification finished. Evidence: `team-Yuri/dev-phase119.md`, `team-Yuri/manager-phase119.md`. AC-119.1-1…5 PASS; Phase 117 + 118 regression PASS; tsc PASS. **119.2 / 119.3 / structural / Convergence still NOT authorized.**
 
@@ -821,9 +825,41 @@ No iframe / Shadow DOM / modal / multi-step implementation. No Hapoalim-specific
 | D-118-13 | **Deferred** production Admin Analyze gate |
 
 ### CLOSE readiness (Architecture view)
-Per §18: committed 119.1+119.2 accepted; 119.3 evidence gate satisfied via **(A)** with readiness slice completed to Owner live PASS. Remaining CLOSE blockers are Owner formal CLOSE review plus explicit listing of deferred workstreams (Convergence, D-118-13, other structural caps). **Architect does not CLOSE Phase 119 in this note** without Owner formal CLOSE authorization.
+~~Pending Owner formal CLOSE~~ → **FORMAL CLOSE recorded 2026-09-20** (see Close Review below).
 
 ### Next architecture checkpoint
-1. Manager / Developer / Verification **record** Owner retest evidence (reload + wait + Hapoalim Analyze success + D1 classification) in `manager-phase119.md` / `dev-phase119.md`.  
-2. Owner decides: **formal Phase 119 CLOSE**, or authorize any further work (none recommended from Hapoalim readiness evidence).  
-3. Until Owner CLOSE: Phase 119 remains **ACTIVE** with deferred items listed; no structural implementation.
+~~Owner formal CLOSE~~ → **DONE.** Successor phase: **Phase 120 — Unified Managed Autofill Runtime** (`arch-phase120.md`). Autofill Runtime Convergence deferred workstream is superseded by Phase 120 initiation (inventory-first; no deletion in 120.1).
+
+---
+
+## Close Review (Owner FORMAL CLOSE — 2026-09-20)
+
+### Verdict
+**PHASE 119 = CLOSED.**
+
+### Accepted outcomes
+| Item | Status |
+|---|---|
+| 119.1 Capability / Inspection Framework | **ACCEPTED** |
+| 119.2 Visual Mapping | **ACCEPTED / LIVE VERIFIED** (Meuhedet, Spotify) |
+| 119.3 evidence-driven investigation | **COMPLETE** |
+| Owner decision (A) | Authorized `readiness_wait_inputs` |
+| `readiness_wait_inputs` | **ACCEPTED / LIVE VERIFIED** |
+| Bank Hapoalim live Analyze | **PASS** after current extension build reload |
+| Prior AC-119-R-9 FAIL | Classified **D1 stale loaded extension** (ACCEPTED) |
+
+### Explicitly not in Phase 119
+iframe · Shadow DOM · modal · multi-step · other structural capabilities · Autofill Runtime Convergence migrations/deletions · Hapoalim-specific product logic
+
+### Deferred / carried forward (not Phase 119 incomplete work)
+| Item | Disposition |
+|---|---|
+| Autofill Runtime Convergence | **Superseded by Phase 120** (inventory-first; no big-bang delete) |
+| D-118-13 | Remains production Admin Analyze readiness gate (deferred) |
+| Other structural caps (iframe/shadow/…) | Remain unauthorized unless future evidence + Owner gate |
+| Managed Autofill Health Monitoring / Mapping Drift Detection | **Reserved for future architecture** (not Phase 119; recorded under Phase 120 as reserved/not 120.1) |
+
+### Architect Review
+ARCHITECT_REVIEW_STATUS: CLOSED
+
+2026-09-20 — Owner FORMAL CLOSE accepted. Phase 120 initiated.

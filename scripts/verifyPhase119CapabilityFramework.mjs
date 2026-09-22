@@ -31,11 +31,12 @@ function fixturePage(overrides = {}) {
         type: 'text',
         idAttr: 'commercial',
         visible: true,
+        managedEligible: true,
         editable: true,
         disabled: false,
         readOnly: false,
         locatorCandidates: [
-          { strategy: 'css', locator: '#commercial', stabilityHint: 'id' },
+          { strategy: 'css', locator: '#commercial', stabilityHint: 'id', matchCount: 1 },
         ],
       },
     ],

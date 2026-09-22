@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { parseHTML } from 'linkedom';
+import { installManagedDomGeometry } from './lib/linkedomManagedHarness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -72,15 +73,12 @@ async function main() {
   // AC-119.2-3 / AC-119.2-9 synthetic pick → derived #id locator
   assert(fixtureSrc.includes('id="visual-user"'), 'AC-119.2-9 fixture has visual-user');
   const { window, document } = parseHTML(fixtureSrc);
-  window.getComputedStyle = () => ({
-    display: 'block',
-    visibility: 'visible',
-    opacity: '1',
+  Object.defineProperty(window, 'location', {
+    value: { origin: 'https://fixture.example.test', href: 'https://fixture.example.test/login' },
+    configurable: true,
   });
-  const proto = window.Element.prototype;
-  proto.getBoundingClientRect = function () {
-    return { width: 100, height: 24, top: 0, left: 0, bottom: 24, right: 100 };
-  };
+  window.top = window;
+  installManagedDomGeometry(window);
   // linkedom may expose disabled as empty-string-ish; normalize for eligibility tests
   const userEl = document.getElementById('visual-user');
   if (userEl) {
@@ -90,17 +88,26 @@ async function main() {
   globalThis.CSS = {
     escape: (v) => String(v).replace(/([^a-zA-Z0-9_-])/g, '\\$1'),
   };
-  // Evaluate pick IIFE against linkedom window
+  // Evaluate eligibility + pick IIFE against linkedom window
+  const eligibilitySrc = read('extension/generic/managed-target-eligibility.js');
+  const determinismSrc = read('extension/generic/locator-determinism.js');
   // eslint-disable-next-line no-new-func
-  const runPick = new Function('window', 'globalThis', 'CSS', `${pickSrc}; return window;`);
+  const runPick = new Function(
+    'window',
+    'globalThis',
+    'CSS',
+    `${eligibilitySrc}\n${determinismSrc}\n${pickSrc}; return window;`,
+  );
   const g = runPick(window, globalThis, globalThis.CSS);
   assert(typeof g.armVisualTargetPick === 'function', 'armVisualTargetPick exported');
   assert(g.__visualTargetPickHelpers, 'helpers exported for verify');
+  assert(g.ManagedTargetEligibility, 'ManagedTargetEligibility loaded for Visual');
 
   const user = document.getElementById('visual-user');
   assert(user, 'fixture user input');
   const helpers = g.__visualTargetPickHelpers;
-  assert(helpers.isEligibleControl(user), 'AC-119.2-9 user input eligible');
+  assert(helpers.isIdentifiableControl(user), 'AC-119.2-9 user input identifiable');
+  assert(helpers.managedEligibleFor(user) === true, 'AC-119.2-9 user Managed-eligible');
   const candidates = helpers.buildCandidates(user);
   assert(
     candidates.some((c) => c.locator === '#visual-user'),
@@ -111,8 +118,8 @@ async function main() {
 
   const submit = document.getElementById('visual-submit');
   assert(
-    submit && !helpers.isEligibleControl(submit),
-    'AC-119.2-6 submit button not eligible (no auto-submit target)',
+    submit && !helpers.isIdentifiableControl(submit),
+    'AC-119.2-6 submit button not identifiable (no auto-submit target)',
   );
 
   // AC-119.2-4 never read values

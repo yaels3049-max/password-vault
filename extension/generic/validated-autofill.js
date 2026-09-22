@@ -48,24 +48,47 @@
       }
 
       if (!nodes || nodes.length === 0) {
-        return { ready: false, reason: 'targets_not_ready', fieldId: fieldId, detail: 'zero_match' };
-      }
-      if (nodes.length !== 1) {
-        return { ready: false, reason: 'targets_not_ready', fieldId: fieldId, detail: 'multi_match' };
-      }
-
-      var element = nodes[0];
-      if (!executor.isSafeFillTarget(element)) {
         return {
           ready: false,
           reason: 'targets_not_ready',
           fieldId: fieldId,
-          detail:
-            element && element.type === 'hidden'
-              ? 'hidden_target'
-              : element && (element.disabled || element.readOnly)
-                ? 'non_editable'
-                : 'unsafe_target',
+          locator: locator,
+          detail: 'zero_match',
+          observedUrl: String(root.location.href || ''),
+        };
+      }
+      if (nodes.length !== 1) {
+        return {
+          ready: false,
+          reason: 'targets_not_ready',
+          fieldId: fieldId,
+          locator: locator,
+          detail: 'multi_match',
+          observedUrl: String(root.location.href || ''),
+        };
+      }
+
+      var element = nodes[0];
+      if (!executor.isSafeFillTarget(element)) {
+        var eligibility = root.ManagedTargetEligibility;
+        var detail = 'unsafe_target';
+        if (
+          eligibility &&
+          typeof eligibility.classifyManagedIneligibility === 'function'
+        ) {
+          detail = eligibility.classifyManagedIneligibility(element) || detail;
+        } else if (element && element.type === 'hidden') {
+          detail = 'hidden_target';
+        } else if (element && element.disabled) {
+          detail = 'non_editable';
+        }
+        return {
+          ready: false,
+          reason: 'targets_not_ready',
+          fieldId: fieldId,
+          locator: locator,
+          detail: detail,
+          observedUrl: String(root.location.href || ''),
         };
       }
 
@@ -82,7 +105,9 @@
         ok: false,
         reason: readiness.reason,
         fieldId: readiness.fieldId,
+        locator: readiness.locator,
         detail: readiness.detail,
+        observedUrl: readiness.observedUrl,
       };
     }
 

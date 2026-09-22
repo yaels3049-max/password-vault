@@ -31,11 +31,12 @@ function fixturePage(overrides = {}) {
         type: 'text',
         idAttr: 'commercial',
         visible: true,
+        managedEligible: true,
         editable: true,
         disabled: false,
         readOnly: false,
         locatorCandidates: [
-          { strategy: 'css', locator: '#commercial', stabilityHint: 'id' },
+          { strategy: 'css', locator: '#commercial', stabilityHint: 'id', matchCount: 1 },
         ],
       },
       {
@@ -44,11 +45,12 @@ function fixturePage(overrides = {}) {
         type: 'password',
         idAttr: 'password',
         visible: true,
+        managedEligible: true,
         editable: true,
         disabled: false,
         readOnly: false,
         locatorCandidates: [
-          { strategy: 'css', locator: '#password', stabilityHint: 'id' },
+          { strategy: 'css', locator: '#password', stabilityHint: 'id', matchCount: 1 },
         ],
       },
     ],
@@ -78,7 +80,12 @@ async function main() {
 
   assert(bg.includes('ADMIN_LOGIN_PAGE_INSPECT'), 'AC-118 extension message registered');
   assert(bg.includes('openPageAndInspectLoginStructure'), 'AC-118 inspect orchestrator');
-  assert(bg.includes("files: ['generic/page-structure-inspect.js']"), 'inspect script inject');
+  assert(
+    bg.includes('managed-target-eligibility.js') &&
+      bg.includes('locator-determinism.js') &&
+      bg.includes('page-structure-inspect.js'),
+    'inspect script inject includes Managed eligibility + locator determinism + page structure',
+  );
   assert(bg.includes('frameIds: [0]'), 'AC-118-3 top-document inspect');
   assert(!/credentials/.test(bg.slice(bg.indexOf('openPageAndInspectLoginStructure'), bg.indexOf('function openPageAndManagedAutofill'))), 'inspect path must not mention credentials payload');
 
@@ -285,10 +292,11 @@ async function main() {
         type: 'text',
         idAttr: 'a',
         visible: true,
+        managedEligible: true,
         editable: true,
         disabled: false,
         readOnly: false,
-        locatorCandidates: [{ strategy: 'css', locator: '#a', stabilityHint: 'id' }],
+        locatorCandidates: [{ strategy: 'css', locator: '#a', stabilityHint: 'id', matchCount: 1 }],
       },
       {
         inputId: 'in-b',
@@ -296,10 +304,11 @@ async function main() {
         type: 'text',
         idAttr: 'b',
         visible: true,
+        managedEligible: true,
         editable: true,
         disabled: false,
         readOnly: false,
-        locatorCandidates: [{ strategy: 'css', locator: '#b', stabilityHint: 'id' }],
+        locatorCandidates: [{ strategy: 'css', locator: '#b', stabilityHint: 'id', matchCount: 1 }],
       },
     ],
   });
@@ -323,7 +332,7 @@ async function main() {
     'AC-118-22 ambiguous remains non-HIGH',
   );
 
-  // Prefill only HIGH / empty uncertain
+  // Prefill HIGH + MEDIUM (Section 20 supersedes Phase 118 HIGH-only Admin prefill)
   const prefill = applyHighConfidencePrefill(
     { tax_id: '', password: '' },
     semantic,
@@ -336,7 +345,7 @@ async function main() {
       proposals: [{ ...taxHigh, confidence: 'medium' }],
     },
   );
-  assert(mediumOnly.next.tax_id === '', 'AC-118-8 medium not prefilled');
+  assert(mediumOnly.next.tax_id === '#commercial', 'Section 20 MEDIUM prefill (supersedes AC-118-8 HIGH-only)');
 
   // AC-118-15 genericity second schema
   const gen = await proposeFieldMappings({
@@ -351,11 +360,12 @@ async function main() {
           type: 'text',
           idAttr: 'customer_number',
           visible: true,
+          managedEligible: true,
           editable: true,
           disabled: false,
           readOnly: false,
           locatorCandidates: [
-            { strategy: 'css', locator: '#customer_number', stabilityHint: 'id' },
+            { strategy: 'css', locator: '#customer_number', stabilityHint: 'id', matchCount: 1 },
           ],
         },
         {
@@ -364,10 +374,11 @@ async function main() {
           type: 'password',
           idAttr: 'pin',
           visible: true,
+          managedEligible: true,
           editable: true,
           disabled: false,
           readOnly: false,
-          locatorCandidates: [{ strategy: 'css', locator: '#pin', stabilityHint: 'id' }],
+          locatorCandidates: [{ strategy: 'css', locator: '#pin', stabilityHint: 'id', matchCount: 1 }],
         },
       ],
     }),

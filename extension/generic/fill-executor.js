@@ -73,18 +73,13 @@
   }
 
   function isSafeFillTarget(element) {
-    if (!element || element.tagName !== 'INPUT') {
-      return false;
+    var shared = root.ManagedTargetEligibility;
+    if (shared && typeof shared.isSafeFillTarget === 'function') {
+      return shared.isSafeFillTarget(element);
     }
-    if (element.type === 'hidden' || element.disabled) {
-      return false;
-    }
-    // readOnly is cleared during fill — banks often set it until focus to defeat autofill.
-    var detector = root.GenericFormDetector;
-    if (detector && typeof detector.isVisible === 'function') {
-      return detector.isVisible(element);
-    }
-    return true;
+    // 120.6: shared module is authoritative (incl. V8). Fail-closed without it —
+    // never ACCEPT via detector-only or unconditional true (would skip V8).
+    return false;
   }
 
   function fillField(element, value, isSecret) {

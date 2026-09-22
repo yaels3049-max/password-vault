@@ -2,6 +2,12 @@
 
 (function (root) {
   function isVisible(element) {
+    var shared = root.ManagedTargetEligibility;
+    if (shared && typeof shared.isVisible === 'function') {
+      return shared.isVisible(element);
+    }
+    // Load-order fallback (120.6): cheap gates only; no absolute ancestor aria-hidden (old V4).
+    // V8 hit-test requires shared ManagedTargetEligibility — fail-closed without it.
     if (!element || element.disabled) {
       return false;
     }
@@ -9,9 +15,6 @@
       return false;
     }
     if (element.getAttribute('aria-hidden') === 'true') {
-      return false;
-    }
-    if (element.closest && element.closest('[aria-hidden="true"]')) {
       return false;
     }
     var style = root.getComputedStyle(element);
@@ -26,7 +29,7 @@
     if (rect.width < 2 || rect.height < 2) {
       return false;
     }
-    return true;
+    return false;
   }
 
   function isFillableInput(element) {

@@ -1,6 +1,7 @@
 import type {
   ConfidenceLevel,
   CredentialSchemaField,
+  IdentifiedManagedIneligibleRow,
   MappingLlmRawProposal,
   MappingProposalErrorCode,
   MappingProposalRow,
@@ -10,15 +11,23 @@ import type {
   StructuredMappingProposal,
 } from './types';
 import { MAPPING_PROPOSAL_SCHEMA_VERSION } from './types';
+import { assertLocatorDeterministic } from './locatorDeterminism';
 
-function isAllowedTarget(input: SafePageInput): boolean {
+/**
+ * Approvable Managed mapping target (120.4 I1).
+ * Gated on managedEligible — NOT observation-only `visible`.
+ * readOnly alone does not block (Managed allows).
+ */
+function isManagedApprovableTarget(input: SafePageInput): boolean {
   return (
-    input.visible &&
-    input.editable &&
+    input.managedEligible === true &&
     !input.disabled &&
-    !input.readOnly &&
     input.locatorCandidates.some((c) => c.strategy === 'css' && c.locator.trim())
   );
+}
+
+function hasLocatorCandidate(input: SafePageInput): boolean {
+  return input.locatorCandidates.some((c) => c.strategy === 'css' && c.locator.trim());
 }
 
 function locatorAllowed(input: SafePageInput, locator: string): boolean {
@@ -30,8 +39,10 @@ function locatorAllowed(input: SafePageInput, locator: string): boolean {
 }
 
 /**
- * Deterministic safety validation + final confidence (D-118-7…9).
- * Raw modelConfidence never becomes prefill HIGH alone without safety + non-conflict.
+ * Deterministic safety validation + final confidence (D-118-7…9 / 120.4).
+ * Raw modelConfidence never becomes prefill HIGH alone without Managed eligibility.
+ * State #3 (IDENTIFIED_BUT_MANAGED_INELIGIBLE) is preserved — never NOT_IDENTIFIED.
+ * 120.9: after safety, exact-one gate before Managed-approvable locator prefill.
  */
 export function applySafetyAndConfidence(input: {
   requestId: string;
@@ -57,7 +68,9 @@ export function applySafetyAndConfidence(input: {
   }
 
   const accepted: MappingProposalRow[] = [];
+  const identifiedIneligible: IdentifiedManagedIneligibleRow[] = [];
   const warnings: string[] = [];
+  const ineligibleFieldIds = new Set<string>();
 
   for (const raw of input.rawProposals) {
     if (!schemaIds.has(raw.fieldId)) {
@@ -69,12 +82,24 @@ export function applySafetyAndConfidence(input: {
       warnings.push('rejected_invented_inputId');
       continue;
     }
-    if (!isAllowedTarget(observed)) {
-      warnings.push('rejected_unsafe_target');
+    if (!hasLocatorCandidate(observed) || !locatorAllowed(observed, raw.locator)) {
+      warnings.push('rejected_invented_locator');
       continue;
     }
-    if (!locatorAllowed(observed, raw.locator)) {
-      warnings.push('rejected_invented_locator');
+
+    if (!isManagedApprovableTarget(observed)) {
+      // State #3 — identified, Managed-ineligible. Preserve; do not approvable/prefill.
+      if (!ineligibleFieldIds.has(raw.fieldId)) {
+        ineligibleFieldIds.add(raw.fieldId);
+        identifiedIneligible.push({
+          fieldId: raw.fieldId,
+          observedInputId: raw.observedInputId,
+          locator: raw.locator.trim(),
+          state: 'IDENTIFIED_BUT_MANAGED_INELIGIBLE',
+          reason: 'managed_ineligible',
+        });
+        warnings.push('identified_but_managed_ineligible');
+      }
       continue;
     }
 
@@ -143,15 +168,33 @@ export function applySafetyAndConfidence(input: {
     proposals.push(row);
   }
 
-  const highFieldIds = new Set(
-    proposals.filter((p) => p.confidence === 'high').map((p) => p.fieldId),
+  // 120.9 — after safety, before Managed prefill eligibility: exact-one gate.
+  // Semantic HIGH/MEDIUM retained; non-deterministic locators are not approvable.
+  const gatedProposals: MappingProposalRow[] = proposals.map((row) => {
+    if (row.confidence !== 'high' && row.confidence !== 'medium') {
+      return row;
+    }
+    const observed = inputsById.get(row.observedInputId);
+    const deterministic = observed
+      ? assertLocatorDeterministic(row.locator, observed)
+      : false;
+    if (!deterministic) {
+      warnings.push('locator_not_deterministic');
+    }
+    return { ...row, locatorDeterministic: deterministic };
+  });
+
+  const confidentFieldIds = new Set(
+    gatedProposals
+      .filter((p) => p.confidence === 'high' || p.confidence === 'medium')
+      .map((p) => p.fieldId),
   );
-  const unmappedFieldIds = [...schemaIds].filter((id) => !highFieldIds.has(id));
+  const unmappedFieldIds = [...schemaIds].filter((id) => !confidentFieldIds.has(id));
 
   let status: MappingProposalStatus;
-  if (proposals.some((p) => p.confidence === 'high')) {
+  if (gatedProposals.some((p) => p.confidence === 'high' || p.confidence === 'medium')) {
     status = unmappedFieldIds.length === 0 ? 'ok' : 'partial';
-  } else if (proposals.length === 0) {
+  } else if (gatedProposals.length === 0) {
     status = 'no_confident_mapping';
   } else {
     status = 'no_confident_mapping';
@@ -162,15 +205,17 @@ export function applySafetyAndConfidence(input: {
     requestId: input.requestId,
     serviceId: input.serviceId,
     status,
-    proposals,
+    proposals: gatedProposals,
     unmappedFieldIds,
+    identifiedButManagedIneligible:
+      identifiedIneligible.length > 0 ? identifiedIneligible : undefined,
     warnings: warnings.length ? warnings : undefined,
   };
 }
 
 /**
  * Final confidence after safety. modelConfidence alone is insufficient:
- * HIGH requires model high (semantic assessment survived safety).
+ * HIGH requires model high (semantic assessment survived Managed eligibility).
  * Lexical agreement is not consulted here (D-118-8 / AC-118-25).
  */
 function toFinalConfidence(
@@ -183,19 +228,32 @@ function toFinalConfidence(
   return 'unknown';
 }
 
-/** Prefill helper: only HIGH into empty slots. */
-export function applyHighConfidencePrefill(
+/**
+ * Prefill helper: HIGH and MEDIUM into empty slots (Section 20).
+ * 120.9: only when locatorDeterministic === true (exact-one gate passed).
+ * LOW/rejected/non-deterministic never prefill Managed locator.
+ */
+export function applyConfidentPrefill(
   currentLocators: Record<string, string>,
   proposal: StructuredMappingProposal,
 ): { next: Record<string, string>; appliedFieldIds: string[] } {
   const next = { ...currentLocators };
   const appliedFieldIds: string[] = [];
   for (const row of proposal.proposals) {
-    if (row.confidence !== 'high') continue;
+    if (row.confidence !== 'high' && row.confidence !== 'medium') continue;
+    if (row.locatorDeterministic !== true) continue;
     const existing = (next[row.fieldId] ?? '').trim();
     if (existing) continue;
     next[row.fieldId] = row.locator;
     appliedFieldIds.push(row.fieldId);
   }
   return { next, appliedFieldIds };
+}
+
+/** @deprecated alias — Section 20 uses HIGH+MEDIUM via applyConfidentPrefill. */
+export function applyHighConfidencePrefill(
+  currentLocators: Record<string, string>,
+  proposal: StructuredMappingProposal,
+): { next: Record<string, string>; appliedFieldIds: string[] } {
+  return applyConfidentPrefill(currentLocators, proposal);
 }

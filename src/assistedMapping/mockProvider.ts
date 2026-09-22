@@ -67,10 +67,9 @@ export class MockMappingLlmProvider implements MappingLlmProvider {
 function firstAllowed(pageInputs: SafePageInput[]): SafePageInput | undefined {
   return pageInputs.find(
     (i) =>
-      i.visible &&
-      i.editable &&
+      // Identification candidate — may be Managed-ineligible (120.4).
+      (i.visible || i.managedEligible) &&
       !i.disabled &&
-      !i.readOnly &&
       i.locatorCandidates[0]?.locator,
   );
 }
@@ -159,7 +158,7 @@ function conflictPair(input: MappingLlmRequest): MappingLlmRawProposal[] {
 function ambiguousPair(input: MappingLlmRequest): MappingLlmRawProposal[] {
   const field = input.schema[0];
   const inputs = input.page.inputs.filter(
-    (i) => i.visible && i.editable && i.locatorCandidates[0],
+    (i) => (i.visible || i.managedEligible) && !i.disabled && i.locatorCandidates[0],
   );
   if (!field || inputs.length < 2) return [];
   return [
@@ -184,16 +183,45 @@ function defaultLiveProposals(input: MappingLlmRequest): MappingLlmRawProposal[]
   const usedInputs = new Set<string>();
   const out: MappingLlmRawProposal[] = [];
   const fields = [...input.schema];
+  // Identification surface: observation OR managedEligible — do not hide #3.
+  // readOnly allowed (Managed does not reject readOnly alone).
   const inputs = input.page.inputs.filter(
-    (i) => i.visible && i.editable && !i.disabled && !i.readOnly && i.locatorCandidates[0],
+    (i) =>
+      (i.visible || i.managedEligible) &&
+      !i.disabled &&
+      i.locatorCandidates[0],
   );
 
-  // Password-type affinity (generic, not service-specific).
+  function semanticTokens(field: CredentialSchemaField): string[] {
+    const text = [field.label, field.description]
+      .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+      .join(' ')
+      .toLowerCase();
+    return text.split(/[^\p{L}\p{N}]+/u).filter((t) => t.length > 1);
+  }
+
+  function pageHaystack(inputRow: SafePageInput): string {
+    return [
+      inputRow.idAttr,
+      inputRow.nameAttr,
+      inputRow.autocomplete,
+      inputRow.associatedLabelText,
+      inputRow.ariaLabel,
+      inputRow.placeholder,
+      inputRow.nearbySafeText,
+    ]
+      .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+      .join(' ')
+      .toLowerCase();
+  }
+
+  // Password affinity from type / label / description only — NEVER fieldId tokens (120.8).
   for (const field of fields) {
     const wantsPassword =
-      /password|secret|pin|סיסמ/i.test(field.fieldId) ||
+      field.type === 'password' ||
       /password|secret|pin|סיסמ/i.test(field.label) ||
-      field.type === 'password';
+      (typeof field.description === 'string' &&
+        /password|secret|pin|סיסמ/i.test(field.description));
     if (!wantsPassword) continue;
     const match = inputs.find(
       (i) => !usedInputs.has(i.inputId) && (i.type || '').toLowerCase() === 'password',
@@ -209,28 +237,31 @@ function defaultLiveProposals(input: MappingLlmRequest): MappingLlmRawProposal[]
     });
   }
 
-  // Lexical id/name strengtheners (optional, not mandatory for other fields).
+  // Label/description affinity against page tokens — not fieldId↔DOM id equality (120.8).
+  // Ambiguous: >1 unused input matches the same tokens → do not invent HIGH/MEDIUM.
   for (const field of fields) {
     if (out.some((p) => p.fieldId === field.fieldId)) continue;
-    const match = inputs.find(
-      (i) =>
-        !usedInputs.has(i.inputId) &&
-        (i.idAttr === field.fieldId ||
-          i.nameAttr === field.fieldId ||
-          i.autocomplete === field.fieldId),
-    );
-    if (!match?.locatorCandidates[0]) continue;
+    const tokens = semanticTokens(field);
+    if (tokens.length === 0) continue;
+    const matches = inputs.filter((i) => {
+      if (usedInputs.has(i.inputId)) return false;
+      const hay = pageHaystack(i);
+      return tokens.some((t) => hay.includes(t));
+    });
+    if (matches.length !== 1) continue;
+    const match = matches[0]!;
+    if (!match.locatorCandidates[0]) continue;
     usedInputs.add(match.inputId);
     out.push({
       fieldId: field.fieldId,
       observedInputId: match.inputId,
       locator: match.locatorCandidates[0].locator,
       modelConfidence: 'high',
-      evidence: [{ category: 'id_name_affinity' }],
+      evidence: [{ category: 'label_affinity' }],
     });
   }
 
-  // Remaining 1:1 uniqueness — semantic path without lexical equality.
+  // Remaining 1:1 uniqueness — semantic path without lexical fieldId equality.
   const remainingFields = fields.filter((f) => !out.some((p) => p.fieldId === f.fieldId));
   const remainingInputs = inputs.filter((i) => !usedInputs.has(i.inputId));
   if (remainingFields.length === 1 && remainingInputs.length === 1) {
@@ -252,11 +283,17 @@ function defaultLiveProposals(input: MappingLlmRequest): MappingLlmRawProposal[]
 }
 
 export function schemaFromLoginFields(
-  loginFields: Array<{ id: string; label: string; type?: string }>,
+  loginFields: Array<{ id: string; label: string; type?: string; description?: string }>,
 ): CredentialSchemaField[] {
-  return loginFields.map((f) => ({
-    fieldId: f.id,
-    label: f.label,
-    type: f.type,
-  }));
+  return loginFields.map((f) => {
+    const row: CredentialSchemaField = {
+      fieldId: f.id,
+      label: f.label,
+      type: f.type,
+    };
+    if (typeof f.description === 'string' && f.description.trim()) {
+      row.description = f.description.trim();
+    }
+    return row;
+  });
 }

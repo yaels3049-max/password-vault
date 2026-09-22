@@ -1249,8 +1249,46 @@
 }
 
 .admin-autofill-actions {
+  display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.admin-autofill-provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.admin-autofill-chip {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.25rem;
+}
+
+.admin-autofill-chip-high {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.admin-autofill-chip-medium {
+  color: #9a3412;
+  background: #ffedd5;
+}
+
+.admin-autofill-chip-hint {
+  font-weight: 500;
+}
+
+.admin-autofill-chip-manual,
+.admin-autofill-chip-visual,
+.admin-autofill-chip-verified,
+.admin-autofill-chip-tested {
+  color: #334155;
+  background: #e2e8f0;
 }
 
 .admin-credential-field-list {

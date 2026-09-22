@@ -145,6 +145,7 @@ export function assistedMappingAuditSummary(proposal: StructuredMappingProposal)
     errorCode: proposal.errorCode,
     proposalCount: proposal.proposals.length,
     highCount: proposal.proposals.filter((p) => p.confidence === 'high').length,
+    mediumCount: proposal.proposals.filter((p) => p.confidence === 'medium').length,
     unmappedCount: proposal.unmappedFieldIds.length,
   };
 }

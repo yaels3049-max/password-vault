@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { parseHTML } from 'linkedom';
+import { installManagedDomGeometry } from './lib/linkedomManagedHarness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -68,9 +69,11 @@ function mainStatic() {
   assert(!editor.includes('איפוס ל«לא הוגדר»'), 'Admin UI must not expose internal reset label');
   assert(
     editor.includes('liveValidationApproved') &&
+      editor.includes('managedReadinessProbePassed') &&
+      editor.includes('runManagedReadinessProbe') &&
       editor.includes("action === 'activate_validated'") &&
       editor.includes('operatorFunctionalActivateAllowed'),
-    'AC-117-20: activate only via explicit Operator functional path',
+    'AC-117-20 / AC-120.2-AP: activate via Operator path + Managed-parity probe',
   );
   assert(editor.includes('הגדר כלא נתמך'), 'unsupported action Admin label');
   assert(!editor.includes('סמן כלא נתמך'), 'old unsupported label removed');
@@ -170,6 +173,17 @@ function mainStatic() {
   );
 
   assert(bg.includes('MANAGED_AUTOFILL_INITIAL_DELAY_MS = 0'), 'AC-117-30: Managed initial delay 0');
+  assert(bg.includes('MANAGED_AUTOFILL_RETRY_DELAY_MS = 300'), 'AC-117-30: Managed retry delay 300');
+  assert(
+    bg.includes('MANAGED_AUTOFILL_DIAG_LATE_PROBE_MS') &&
+      bg.includes('[ManagedAutofillDiag]') &&
+      bg.includes('scheduleManagedLateReadinessProbes'),
+    '§5D Managed diagnostic late probes present',
+  );
+  assert(
+    !/MANAGED_AUTOFILL_RETRY_DELAY_MS\s*=\s*(?!300\b)\d+/.test(bg),
+    '§5D must not change Managed fill-path retry delay',
+  );
   assert(
     bg.includes('GENERIC_REAL_SITE_INITIAL_DELAY_MS = 4000'),
     'AC-117-33: legacy/generic 4s delay retained',
@@ -427,12 +441,17 @@ async function mainContract() {
     loginFields: sampleFields(),
     action: 'activate_validated',
     liveValidationApproved: true,
+    managedReadinessProbePassed: true,
     nowIso: '2026-09-16T00:00:00.000Z',
   });
   assert(activated.ok === true && activated.profile.supportState === 'validated', 'activate when approved');
   assert(
     activated.profile.validation.metadataVersion === activated.profile.configVersion,
     'T21/AC-117-23 stamp metadataVersion = configVersion',
+  );
+  assert(
+    activated.profile.validation.resultSummary === 'managed_readiness_ok',
+    'AC-120.2-AP-9: resultSummary reflects Managed-parity probe',
   );
 
   const noLive = mod.planAutofillProfileWrite({
@@ -443,6 +462,20 @@ async function mainContract() {
     liveValidationApproved: false,
   });
   assert(noLive.ok === false, 'T26 cannot activate without live validation flag');
+
+  const noProbe = mod.planAutofillProfileWrite({
+    previous: t1.profile,
+    proposed: t1.profile,
+    loginFields: sampleFields(),
+    action: 'activate_validated',
+    liveValidationApproved: true,
+    managedReadinessProbePassed: false,
+  });
+  assert(noProbe.ok === false, 'AC-120.2-AP-1: cannot activate without Managed-parity probe proof');
+  assert(
+    noProbe.code === 'cannotActivateWithoutManagedReadinessProbe',
+    'AC-120.2-AP-1: probe-proof error code',
+  );
 
   const locatorEdit = mod.planAutofillProfileWrite({
     previous: activated.profile,
@@ -583,7 +616,9 @@ async function mainContract() {
     loginFields: syntheticFields(),
     action: 'activate_validated',
     liveValidationApproved: true,
+    managedReadinessProbePassed: true,
   });
+  assert(syntheticActivated.ok === true, 'T28 synthetic activate with probe proof');
   assert(
     mod.isManagedAutofillEligible({
       metadata: {
@@ -604,19 +639,9 @@ function loadManagedDom(html, origin) {
     configurable: true,
   });
   window.top = window;
-  window.getComputedStyle = () => ({
-    display: 'block',
-    visibility: 'visible',
-    opacity: '1',
-  });
-  const Proto = window.HTMLElement.prototype;
-  Proto.getClientRects = function getClientRects() {
-    return [{ width: 120, height: 24, top: 0, left: 0, bottom: 24, right: 120 }];
-  };
-  Proto.getBoundingClientRect = function getBoundingClientRect() {
-    return { width: 120, height: 24, top: 0, left: 0, bottom: 24, right: 120, x: 0, y: 0 };
-  };
+  installManagedDomGeometry(window);
   const scripts = [
+    'extension/generic/managed-target-eligibility.js',
     'extension/generic/form-detector.js',
     'extension/generic/fill-executor.js',
     'extension/generic/validated-autofill.js',
@@ -667,6 +692,8 @@ function mainDom() {
     zero.ok === false && zero.reason === 'targets_not_ready' && zero.detail === 'zero_match',
     'T6 / AC-117-31 zero-match → targets_not_ready',
   );
+  assert(zero.locator === '#missing', '§5D diag: locator on targets_not_ready');
+  assert(typeof zero.observedUrl === 'string', '§5D diag: observedUrl on targets_not_ready');
 
   const clone = document.getElementById('username').cloneNode(true);
   clone.id = 'username';

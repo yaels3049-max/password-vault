@@ -21,15 +21,28 @@
     return trimmed.length > MAX_STRING ? trimmed.slice(0, MAX_STRING) : trimmed;
   }
 
-  function isVisible(el) {
+  /**
+   * Observation / identification presence — NOT Managed eligibility.
+   * May report controls that fail Managed isVisible / isSafeFillTarget.
+   * Must not equal Managed isVisible alone (120.4 §1A).
+   */
+  function isObservedForIdentification(el) {
     if (!el || el.nodeType !== 1) return false;
     if (el.disabled) return false;
     var style = global.getComputedStyle(el);
     if (!style) return true;
     if (style.display === 'none' || style.visibility === 'hidden') return false;
-    if (style.opacity === '0') return false;
+    // Do not reject opacity:0 alone (observation; Managed also does not).
     var rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
+  }
+
+  function managedEligibleFor(el) {
+    var shared = global.ManagedTargetEligibility;
+    if (shared && typeof shared.isSafeFillTarget === 'function') {
+      return shared.isSafeFillTarget(el) === true;
+    }
+    return false;
   }
 
   function cssEscapeIdent(value) {
@@ -71,10 +84,27 @@
 
   function buildCandidates(el) {
     var out = [];
+    var doc = el && el.ownerDocument ? el.ownerDocument : global.document;
     function push(locator, hint) {
       if (!locator || out.length >= MAX_CANDIDATES) return;
       if (out.some(function (c) { return c.locator === locator; })) return;
-      out.push({ strategy: 'css', locator: locator, stabilityHint: hint });
+      var matchCount = 0;
+      var shared = global.LocatorDeterminism;
+      if (shared && typeof shared.countLocatorMatches === 'function') {
+        matchCount = shared.countLocatorMatches(locator, doc);
+      } else {
+        try {
+          matchCount = doc.querySelectorAll(locator).length;
+        } catch (err) {
+          matchCount = 0;
+        }
+      }
+      out.push({
+        strategy: 'css',
+        locator: locator,
+        stabilityHint: hint,
+        matchCount: matchCount,
+      });
     }
     if (el.id) push('#' + cssEscapeIdent(el.id), 'id');
     if (el.name) {
@@ -132,7 +162,9 @@
         ariaLabel: truncate(el.getAttribute('aria-label') || ''),
         associatedLabelText: labelFor(el),
         nearbySafeText: nearbyText(el),
-        visible: isVisible(el),
+        // Observation only — may be true for Managed-ineligible controls (§1A).
+        visible: isObservedForIdentification(el),
+        managedEligible: managedEligibleFor(el),
         editable: !el.readOnly && !el.disabled,
         disabled: Boolean(el.disabled),
         readOnly: Boolean(el.readOnly),

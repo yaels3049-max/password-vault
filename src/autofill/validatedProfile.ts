@@ -3,6 +3,12 @@
  * Schema-dynamic: joins only on active login_fields[].id. No fixed field vocabulary.
  */
 
+import type { FieldAuthoringEntry } from '../assistedMapping/fieldAuthoring';
+import {
+  parseFieldAuthoringBag,
+  pruneFieldAuthoringToMappings,
+  serializeFieldAuthoringBag,
+} from '../assistedMapping/fieldAuthoring';
 import {
   classifyStoredLoginFields,
   isFieldRequired,
@@ -16,6 +22,7 @@ export type AutofillSupportState = 'not_configured' | 'validated' | 'unsupported
 export type AutofillProfileAction =
   | 'save'
   | 'reset_not_configured'
+  | 'clear_managed_mappings'
   | 'disable_unsupported'
   | 'activate_validated';
 
@@ -39,11 +46,19 @@ export interface AutofillProfile {
   allowedOrigin: string;
   fieldMappings: AutofillFieldMapping[];
   validation?: AutofillValidationEvidence;
+  /** Phase 120.8 — Admin authoring provenance (facts). Runtime fill ignores. */
+  fieldAuthoring?: FieldAuthoringEntry[];
 }
 
 export const AUTOFILL_PROFILE_META_KEY = 'autofillProfile';
 export const AUTOFILL_PROFILE_ACTION_KEY = 'autofillProfileAction';
 export const AUTOFILL_LIVE_VALIDATION_APPROVED_KEY = 'autofillLiveValidationApproved';
+/** Hub control key: true only after a successful Managed-parity readiness probe (assess-only). */
+export const AUTOFILL_MANAGED_READINESS_PROBE_PASSED_KEY =
+  'autofillManagedReadinessProbePassed';
+
+/** Evidence stamp when activate succeeded via Managed-parity probe (not UI-confirm alone). */
+export const MANAGED_READINESS_OK_SUMMARY = 'managed_readiness_ok';
 
 export const AUTOFILL_SUPPORT_STATE_LABEL_HE: Record<AutofillSupportState, string> = {
   not_configured: 'לא הוגדר',
@@ -63,8 +78,12 @@ export const AUTOFILL_PROFILE_ERROR = {
   noActiveSchema: 'אין שדות כניסה פעילים לשמירת מיפוי מילוי אוטומטי.',
   cannotActivateWithoutLiveValidation:
     'לא ניתן לסמן מאומת בלי אימות חי מאושר והפעלה מפורשת.',
+  cannotActivateWithoutManagedReadinessProbe:
+    'לא ניתן לסמן מאומת בלי בדיקת מוכנות מנוהלת מוצלחת בדף הכניסה.',
   cannotResetValidated:
     'לא ניתן לאפס ל«לא הוגדר» ממצב מאומת. יש להשבית קודם.',
+  cannotClearWithoutProfile:
+    'אין מיפוי מנוהל שמור למחיקה.',
   unknownAction: 'פעולת מילוי אוטומטי מנוהל אינה מוכרת.',
 } as const;
 
@@ -84,6 +103,7 @@ function isAutofillProfileAction(value: unknown): value is AutofillProfileAction
   return (
     value === 'save' ||
     value === 'reset_not_configured' ||
+    value === 'clear_managed_mappings' ||
     value === 'disable_unsupported' ||
     value === 'activate_validated'
   );
@@ -178,6 +198,11 @@ export function parseAutofillProfile(raw: unknown): AutofillProfile | null {
   if (validation) {
     profile.validation = validation;
   }
+  const fieldAuthoring = parseFieldAuthoringBag(raw.fieldAuthoring);
+  const pruned = pruneFieldAuthoringToMappings(fieldAuthoring, fieldMappings);
+  if (pruned.length > 0) {
+    profile.fieldAuthoring = pruned;
+  }
   return profile;
 }
 
@@ -195,6 +220,12 @@ export function serializeAutofillProfile(profile: AutofillProfile): Record<strin
   };
   if (profile.validation) {
     serialized.validation = { ...profile.validation };
+  }
+  const authoring = serializeFieldAuthoringBag(
+    pruneFieldAuthoringToMappings(profile.fieldAuthoring, profile.fieldMappings),
+  );
+  if (authoring && authoring.length > 0) {
+    serialized.fieldAuthoring = authoring;
   }
   return serialized;
 }
@@ -369,6 +400,8 @@ export interface PlanAutofillProfileWriteInput {
   loginUrl?: string | null;
   action?: AutofillProfileAction;
   liveValidationApproved?: boolean;
+  /** True only after extension assessManagedTargetsReady succeeded for this activate. */
+  managedReadinessProbePassed?: boolean;
   nowIso?: string;
 }
 
@@ -402,11 +435,32 @@ function buildCandidateFromProposed(
 /**
  * Plan a metadata write. Structural pass never yields supportState=validated.
  * Security-relevant edits while validated bump configVersion and move to unsupported.
+ * Phase 120.7: `clear_managed_mappings` forces fieldMappings=[] (skips empty-locator structural).
  */
 export function planAutofillProfileWrite(input: PlanAutofillProfileWriteInput): AutofillProfilePlan {
   const action = input.action ?? 'save';
   if (!isAutofillProfileAction(action)) {
     return fail('unknownAction');
+  }
+
+  // Phase 120.7 — configuration deletion of Managed mappings (not credentials / schema).
+  if (action === 'clear_managed_mappings') {
+    if (!input.previous) {
+      return fail('cannotClearWithoutProfile');
+    }
+    const previous = input.previous;
+    const hadNonEmptyMappings = previous.fieldMappings.some(
+      (mapping) => mapping.fieldId.trim() && mapping.locator.trim(),
+    );
+    const nextClear: AutofillProfile = {
+      supportState: 'not_configured',
+      configVersion: hadNonEmptyMappings ? previous.configVersion + 1 : previous.configVersion,
+      loginEntryUrl: previous.loginEntryUrl,
+      allowedOrigin: previous.allowedOrigin,
+      fieldMappings: [],
+    };
+    // validation + fieldAuthoring intentionally omitted (120.7 + 120.8).
+    return { ok: true, profile: nextClear };
   }
 
   const candidate = buildCandidateFromProposed(input.previous, input.proposed, input.loginUrl);
@@ -422,6 +476,17 @@ export function planAutofillProfileWrite(input: PlanAutofillProfileWriteInput): 
     return fail(structural.issues[0]!.code);
   }
 
+  const proposedRecord = isRecord(input.proposed) ? input.proposed : {};
+  const proposedAuthoring = parseFieldAuthoringBag(proposedRecord.fieldAuthoring);
+  const authoringSource =
+    proposedAuthoring.length > 0
+      ? proposedAuthoring
+      : input.previous?.fieldAuthoring ?? [];
+  const prunedAuthoring = pruneFieldAuthoringToMappings(
+    authoringSource,
+    candidate.fieldMappings,
+  );
+
   const nextBase: AutofillProfile = {
     supportState: input.previous?.supportState ?? 'not_configured',
     configVersion: input.previous?.configVersion ?? 1,
@@ -430,6 +495,9 @@ export function planAutofillProfileWrite(input: PlanAutofillProfileWriteInput): 
     fieldMappings: candidate.fieldMappings,
     validation: input.previous?.validation ? { ...input.previous.validation } : undefined,
   };
+  if (prunedAuthoring.length > 0) {
+    nextBase.fieldAuthoring = prunedAuthoring;
+  }
 
   const securityChanged = isSecurityRelevantChange(input.previous, nextBase);
   if (input.previous && securityChanged) {
@@ -469,6 +537,7 @@ export function planAutofillProfileWrite(input: PlanAutofillProfileWriteInput): 
     }
     nextBase.supportState = 'not_configured';
     delete nextBase.validation;
+    delete nextBase.fieldAuthoring;
     return { ok: true, profile: nextBase };
   }
 
@@ -476,12 +545,15 @@ export function planAutofillProfileWrite(input: PlanAutofillProfileWriteInput): 
     if (!input.liveValidationApproved) {
       return fail('cannotActivateWithoutLiveValidation');
     }
+    if (!input.managedReadinessProbePassed) {
+      return fail('cannotActivateWithoutManagedReadinessProbe');
+    }
     nextBase.supportState = 'validated';
     nextBase.validation = {
       metadataVersion: nextBase.configVersion,
       validatedAt: input.nowIso ?? new Date().toISOString(),
       validatedBy: 'admin',
-      resultSummary: 'live_validation_ok',
+      resultSummary: MANAGED_READINESS_OK_SUMMARY,
     };
     return { ok: true, profile: nextBase };
   }
@@ -500,6 +572,7 @@ export function stripAutofillControlKeys(metadata: Record<string, unknown>): Rec
   const next = { ...metadata };
   delete next[AUTOFILL_PROFILE_ACTION_KEY];
   delete next[AUTOFILL_LIVE_VALIDATION_APPROVED_KEY];
+  delete next[AUTOFILL_MANAGED_READINESS_PROBE_PASSED_KEY];
   return next;
 }
 
@@ -530,6 +603,8 @@ export function mergeAutofillProfileMetadata(input: {
   const actionRaw = input.patchMetadata[AUTOFILL_PROFILE_ACTION_KEY];
   const action: AutofillProfileAction = isAutofillProfileAction(actionRaw) ? actionRaw : 'save';
   const liveValidationApproved = input.patchMetadata[AUTOFILL_LIVE_VALIDATION_APPROVED_KEY] === true;
+  const managedReadinessProbePassed =
+    input.patchMetadata[AUTOFILL_MANAGED_READINESS_PROBE_PASSED_KEY] === true;
 
   const planned = planAutofillProfileWrite({
     previous: parseAutofillProfile(input.existingMetadata?.[AUTOFILL_PROFILE_META_KEY]),
@@ -538,6 +613,7 @@ export function mergeAutofillProfileMetadata(input: {
     loginUrl: input.loginUrl,
     action,
     liveValidationApproved,
+    managedReadinessProbePassed,
   });
   if (!planned.ok) {
     return planned;

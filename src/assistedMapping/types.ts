@@ -36,6 +36,11 @@ export interface LocatorCandidate {
   strategy: 'css';
   locator: string;
   stabilityHint: LocatorStabilityHint;
+  /**
+   * querySelectorAll(locator).length at inspect time (120.9).
+   * Exact-one Managed prefill requires matchCount === 1.
+   */
+  matchCount?: number;
 }
 
 export interface SafePageInput {
@@ -49,11 +54,33 @@ export interface SafePageInput {
   ariaLabel?: string;
   associatedLabelText?: string;
   nearbySafeText?: string;
+  /** Observation / identification presence — NOT Managed eligibility (120.4 §1A). */
   visible: boolean;
+  /**
+   * Managed Autofill eligibility = shared isSafeFillTarget.
+   * Approvable mappings require true. Distinct from `visible`.
+   */
+  managedEligible: boolean;
   editable: boolean;
   disabled: boolean;
   readOnly: boolean;
   locatorCandidates: LocatorCandidate[];
+}
+
+/** Normative 120.4 three-state model (I3). */
+export type ManagedTargetIdentificationState =
+  | 'NOT_IDENTIFIED'
+  | 'IDENTIFIED_AND_MANAGED_ELIGIBLE'
+  | 'IDENTIFIED_BUT_MANAGED_INELIGIBLE';
+
+/** Parallel Analyze channel for state #3 — never collapsed to NOT_IDENTIFIED. */
+export interface IdentifiedManagedIneligibleRow {
+  fieldId: string;
+  observedInputId: string;
+  locator: string;
+  state: 'IDENTIFIED_BUT_MANAGED_INELIGIBLE';
+  reason: 'managed_ineligible';
+  detail?: string;
 }
 
 export interface SafePageStructure {
@@ -74,6 +101,8 @@ export interface CredentialSchemaField {
   fieldId: string;
   label: string;
   type?: string;
+  /** Optional semantic disambiguation — Agent meaning, not identity (120.8). */
+  description?: string;
 }
 
 export interface MappingEvidence {
@@ -89,6 +118,11 @@ export interface MappingProposalRow {
   confidence: ConfidenceLevel;
   modelConfidence?: ConfidenceLevel;
   evidence: MappingEvidence[];
+  /**
+   * 120.9 — exact-one + same observed target. Semantic HIGH/MEDIUM may remain
+   * when false; locator must not be Managed-prefilled/persisted as approvable.
+   */
+  locatorDeterministic?: boolean;
 }
 
 export type MappingProposalStatus =
@@ -118,6 +152,8 @@ export interface StructuredMappingProposal {
   errorCode?: MappingProposalErrorCode;
   proposals: MappingProposalRow[];
   unmappedFieldIds: string[];
+  /** State #3 channel — identified but not Managed-approvable (120.4). */
+  identifiedButManagedIneligible?: IdentifiedManagedIneligibleRow[];
   warnings?: string[];
 }
 
@@ -174,5 +210,12 @@ export const VISUAL_MAPPING_SUCCESS_LABEL_HE =
   'הבורר נגזר מהשדה שנבחר. בדקו ושמרו ידנית.';
 export const VISUAL_MAPPING_UNSUPPORTED_TARGET_LABEL_HE =
   'האלמנט שנבחר אינו נתמך למיפוי. בחרו שדה קלט גלוי.';
+export const VISUAL_MAPPING_MANAGED_INELIGIBLE_LABEL_HE =
+  'השדה זוהה, אך אינו כשיר למילוי אוטומטי מנוהל.';
 export const VISUAL_MAPPING_ORIGIN_MISMATCH_LABEL_HE =
   'המקור בדף הכניסה אינו תואם. המיפוי בוטל.';
+
+export const IDENTIFIED_BUT_MANAGED_INELIGIBLE_LABEL_HE =
+  'זוהה אך אינו כשיר למילוי אוטומטי מנוהל';
+export const LOCATOR_NOT_DETERMINISTIC_LABEL_HE =
+  'זוהה, אך הבורר אינו חד-משמעי למילוי מנוהל';

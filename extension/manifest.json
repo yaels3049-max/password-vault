@@ -27,6 +27,7 @@
         "https://127.0.0.1/*"
       ],
       "js": [
+        "generic/managed-target-eligibility.js",
         "generic/form-detector.js",
         "generic/field-mapper.js",
         "generic/fill-executor.js",

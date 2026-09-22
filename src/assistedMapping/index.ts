@@ -16,6 +16,9 @@ export {
   VISUAL_MAPPING_ORIGIN_MISMATCH_LABEL_HE,
   VISUAL_MAPPING_SUCCESS_LABEL_HE,
   VISUAL_MAPPING_UNSUPPORTED_TARGET_LABEL_HE,
+  VISUAL_MAPPING_MANAGED_INELIGIBLE_LABEL_HE,
+  IDENTIFIED_BUT_MANAGED_INELIGIBLE_LABEL_HE,
+  LOCATOR_NOT_DETERMINISTIC_LABEL_HE,
 } from './types';
 export type {
   CredentialSchemaField,
@@ -23,6 +26,8 @@ export type {
   MappingLlmProvider,
   SafePageStructure,
   StructuredMappingProposal,
+  ManagedTargetIdentificationState,
+  IdentifiedManagedIneligibleRow,
 } from './types';
 export {
   ADMIN_INSPECT_READINESS_CAPABILITY_ID,
@@ -39,7 +44,28 @@ export type {
   LoginExperienceCapabilityId,
   SupportedInspectionCapability,
 } from './capabilities';
-export { applyHighConfidencePrefill, applySafetyAndConfidence } from './safetyValidation';
+export { applyConfidentPrefill, applyHighConfidencePrefill, applySafetyAndConfidence } from './safetyValidation';
+export {
+  assertLocatorDeterministic,
+  locatorCandidateIsDeterministic,
+} from './locatorDeterminism';
+export {
+  parseFieldAuthoringBag,
+  serializeFieldAuthoringBag,
+  visualTargetsEquivalent,
+  applyVisualMappingAuthoring,
+  markManualEdit,
+  stampAdminTestPassed,
+  adminTestSuccessVisible,
+  upsertFieldAuthoring,
+  CONFIDENCE_HIGH_LABEL_HE,
+  CONFIDENCE_MEDIUM_LABEL_HE,
+  CONFIDENCE_MEDIUM_REVIEW_HINT_HE,
+  VISUAL_VERIFIED_LABEL_HE,
+  MANUAL_EDITED_LABEL_HE,
+  ADMIN_TEST_PASSED_LABEL_HE,
+  type FieldAuthoringEntry,
+} from './fieldAuthoring';
 export {
   MockMappingLlmProvider,
   schemaFromLoginFields,

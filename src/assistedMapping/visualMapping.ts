@@ -3,6 +3,7 @@ import { originFromHttpsLoginEntry } from '../autofill/validatedProfile';
 import {
   ADMIN_VISUAL_MAPPING_START_MESSAGE,
   VISUAL_MAPPING_FAILED_LABEL_HE,
+  VISUAL_MAPPING_MANAGED_INELIGIBLE_LABEL_HE,
   VISUAL_MAPPING_NEED_LOGIN_ENTRY_LABEL_HE,
   VISUAL_MAPPING_ORIGIN_MISMATCH_LABEL_HE,
   VISUAL_MAPPING_SUCCESS_LABEL_HE,
@@ -16,8 +17,17 @@ export type VisualMappingResult =
       locator: string;
       locatorType: 'css';
       message: string;
+      state: 'IDENTIFIED_AND_MANAGED_ELIGIBLE';
+      observedInputId?: string;
+      locatorCandidates?: string[];
     }
-  | { ok: false; message: string; reason?: string };
+  | {
+      ok: false;
+      message: string;
+      reason?: string;
+      state?: 'NOT_IDENTIFIED' | 'IDENTIFIED_BUT_MANAGED_INELIGIBLE';
+      detail?: string;
+    };
 
 interface VisualMappingExtensionResponse {
   ok?: boolean;
@@ -25,6 +35,12 @@ interface VisualMappingExtensionResponse {
   fieldId?: string;
   locator?: string;
   locatorType?: string;
+  state?: string;
+  detail?: string;
+  identified?: boolean;
+  locatorEvidence?: string;
+  locatorCandidates?: Array<{ locator?: string } | string>;
+  meta?: { idAttr?: string; nameAttr?: string };
 }
 
 /**
@@ -69,18 +85,42 @@ export async function startVisualMappingForField(input: {
 
   if (!response?.ok || typeof response.locator !== 'string' || !response.locator.trim()) {
     const reason = response?.reason;
+    const identified =
+      response?.identified === true ||
+      response?.state === 'IDENTIFIED_BUT_MANAGED_INELIGIBLE';
     if (reason === 'origin_mismatch') {
       return {
         ok: false,
         message: VISUAL_MAPPING_ORIGIN_MISMATCH_LABEL_HE,
         reason,
+        state: 'NOT_IDENTIFIED',
+      };
+    }
+    if (reason === 'managed_ineligible') {
+      return {
+        ok: false,
+        message: VISUAL_MAPPING_MANAGED_INELIGIBLE_LABEL_HE,
+        reason,
+        state: 'IDENTIFIED_BUT_MANAGED_INELIGIBLE',
+        detail: typeof response?.detail === 'string' ? response.detail : undefined,
       };
     }
     if (reason === 'unsupported_target' || reason === 'no_locator_candidates') {
       return {
         ok: false,
-        message: VISUAL_MAPPING_UNSUPPORTED_TARGET_LABEL_HE,
+        message: identified
+          ? VISUAL_MAPPING_MANAGED_INELIGIBLE_LABEL_HE
+          : VISUAL_MAPPING_UNSUPPORTED_TARGET_LABEL_HE,
         reason,
+        state: identified ? 'IDENTIFIED_BUT_MANAGED_INELIGIBLE' : 'NOT_IDENTIFIED',
+      };
+    }
+    if (reason === 'locator_target_mismatch' || reason === 'no_exact_one_locator') {
+      return {
+        ok: false,
+        message: VISUAL_MAPPING_MANAGED_INELIGIBLE_LABEL_HE,
+        reason,
+        state: 'IDENTIFIED_BUT_MANAGED_INELIGIBLE',
       };
     }
     return {
@@ -96,5 +136,17 @@ export async function startVisualMappingForField(input: {
     locator: response.locator.trim(),
     locatorType: 'css',
     message: VISUAL_MAPPING_SUCCESS_LABEL_HE,
+    state: 'IDENTIFIED_AND_MANAGED_ELIGIBLE',
+    observedInputId:
+      typeof response.meta?.idAttr === 'string' && response.meta.idAttr.trim()
+        ? `id:${response.meta.idAttr.trim()}`
+        : typeof response.meta?.nameAttr === 'string' && response.meta.nameAttr.trim()
+          ? `name:${response.meta.nameAttr.trim()}`
+          : undefined,
+    locatorCandidates: Array.isArray(response.locatorCandidates)
+      ? response.locatorCandidates
+          .map((c) => (typeof c === 'string' ? c : typeof c?.locator === 'string' ? c.locator : ''))
+          .filter((c) => c.trim())
+      : undefined,
   };
 }

@@ -2,7 +2,7 @@ import { sendExtensionMessageAsync, probeExtensionAvailable } from '../browserIn
 import { originFromHttpsLoginEntry } from '../autofill/validatedProfile';
 import { proposeFieldMappings, assistedMappingAuditSummary } from './agentService';
 import { schemaFromLoginFields } from './mockProvider';
-import { applyHighConfidencePrefill } from './safetyValidation';
+import { applyConfidentPrefill } from './safetyValidation';
 import {
   ADMIN_LOGIN_PAGE_INSPECT_MESSAGE,
   ANALYZE_FAILED_LABEL_HE,
@@ -27,12 +27,12 @@ interface InspectResponse {
 }
 
 /**
- * Admin authoring flow: inspect Login Entry → mock/provider propose → safety → HIGH prefill.
+ * Admin authoring flow: inspect Login Entry → provider propose → safety → HIGH/MEDIUM prefill.
  * Never persists mappings or changes supportState.
  */
 export async function analyzeLoginPageForMapping(input: {
   serviceId: string;
-  loginFields: Array<{ id: string; label: string; type?: string }>;
+  loginFields: Array<{ id: string; label: string; type?: string; description?: string }>;
   loginEntryUrl: string;
   currentLocators: Record<string, string>;
 }): Promise<AnalyzeLoginPageResult> {
@@ -109,6 +109,6 @@ export async function analyzeLoginPageForMapping(input: {
     return { ok: false, message: ANALYZE_FAILED_LABEL_HE, proposal };
   }
 
-  const prefill = applyHighConfidencePrefill(input.currentLocators, proposal);
+  const prefill = applyConfidentPrefill(input.currentLocators, proposal);
   return { ok: true, proposal, prefill };
 }

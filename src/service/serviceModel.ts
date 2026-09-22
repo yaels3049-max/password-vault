@@ -20,6 +20,8 @@ export interface LoginField {
   id: string;
   label: string;
   type: LoginFieldType;
+  /** Optional free-text semantic disambiguation for Analyze (120.8). Not opaque identity. */
+  description?: string;
   /** Absent on a stored field means required. */
   required?: boolean;
   /** Absent means masked only when type is password. Independent of password role and inputType. */
@@ -248,6 +250,9 @@ function validateLoginFields(
     }
     if (entry.inputType === 'text' || entry.inputType === 'number') {
       field.inputType = entry.inputType;
+    }
+    if (typeof entry.description === 'string' && entry.description.trim()) {
+      field.description = entry.description.trim();
     }
     fields.push(field);
   }

@@ -4,6 +4,588 @@
 PHASE=120
 
 ## Status
+STATUS: **120.9-impl COMPLETE** — Authoring Locator Verification Integrity — awaiting Architecture evidence review  
+Final Phase 120 Acceptance remains **OPEN / PENDING** / **FROZEN** pending R1–R15 Architecture accept + Owner live L1–L4  
+**120.4 / 120.5 / 120.6 / 120.7 / 120.8 remain CLOSED** (not reopened)  
+Owner live L1–L4: **NOT claimed done**
+
+---
+
+# Slice 120.9-impl — Authoring Locator Verification Integrity (2026-09-22)
+
+**Authorized:** Architecture PASS on Manager DD Slice 120.9 (`arch-phase120.md` §25 ACCEPTED; §26; SLICE AUTHORIZATION **120.9-impl AUTHORIZED**).  
+**STOP:** Architecture evidence review. Do **not** close Phase 120. Do **not** claim Owner live L1–L4 done.
+
+**Re-verified (Owner-mediated Developer, 2026-09-22 ~13:10):** Fresh run of R1–R15 lock + existing suites + `npx tsc -b` — all **PASS** (see Commands below).
+
+## Goal delivered
+A locator may be `visualMappingVerified` only when the **persisted** locator itself satisfied exact-one + same clicked target + Managed-eligible. Analyze semantic HIGH/MEDIUM ≠ locator determinism.
+
+## Changed files
+
+| File | Change |
+|---|---|
+| `extension/generic/locator-determinism.js` | **NEW** — shared `assertLocatorDeterministic` / `preferExactOneLocator` / `countLocatorMatches` |
+| `extension/generic/visual-target-pick.js` | Success requires exact-one + `matches[0]===clickedEl`; fail `locator_target_mismatch` |
+| `extension/generic/page-structure-inspect.js` | Locator candidates include `matchCount` |
+| `extension/background.js` | Inject `locator-determinism.js` before Visual + Inspect |
+| `src/assistedMapping/locatorDeterminism.ts` | **NEW** — Hub inspect-backed exact-one gate |
+| `src/assistedMapping/safetyValidation.ts` | After safety: gate; `locatorDeterministic`; prefill skips non-deterministic |
+| `src/assistedMapping/fieldAuthoring.ts` | SAME = E1\|E3 only; E2 removed |
+| `src/assistedMapping/types.ts` | `matchCount`; `locatorDeterministic`; Hebrew non-det label |
+| `src/assistedMapping/visualMapping.ts` | Map `locator_target_mismatch` / `no_exact_one_locator` |
+| `src/assistedMapping/index.ts` | Export gate + label |
+| `src/admin/AutofillProfileEditor.tsx` | ALWAYS write Visual `result.locator`; non-det Analyze messaging |
+| `scripts/verifyPhase120LocatorVerification.mjs` | **NEW** — R1–R8, R12 + locks (synthetic duplicate-id) |
+| `scripts/lib/linkedomManagedHarness.mjs` | Tolerate missing `getComputedStyle` |
+| `scripts/verifyPhase117ManagedAutofill.mjs` | Harness: V8 geometry via shared helper (R15) |
+| `scripts/verifyPhase120ManagedActivateGate.mjs` | Harness: V8 geometry via shared helper |
+| `scripts/verifyPhase119VisualMapping.mjs` | Harness: V8 geometry + load locator-determinism |
+| `scripts/verifyPhase118AssistedMapping.mjs` | Fixtures `matchCount: 1`; inject assert |
+| `scripts/verifyPhase120IdentityAuthoring.mjs` | E2-alone ≠ SAME; fixtures `matchCount` |
+| `scripts/verifyPhase119CapabilityFramework.mjs` | Fixture `matchCount: 1` |
+| `scripts/verifyPhase120ManagedEligibility.mjs` | Load locator-determinism in DOM harness |
+| `scripts/verifyPhase120ManagedVisibility.mjs` | Load locator-determinism in DOM harness |
+
+## Commands and results
+
+```text
+node scripts/verifyPhase120LocatorVerification.mjs
+→ PASS — Phase 120.9 Locator Verification Integrity (R1–R8, R12 + locks)
+
+node scripts/verifyPhase120IdentityAuthoring.mjs
+→ PASS — Phase 120.8 Identity / MEDIUM / fieldAuthoring (A–K)  [R11/R12]
+
+node scripts/verifyPhase118AssistedMapping.mjs
+→ PASS
+
+node scripts/verifyPhase119VisualMapping.mjs
+→ PASS
+
+node scripts/verifyPhase119CapabilityFramework.mjs
+→ PASS
+
+node scripts/verifyPhase120ManagedEligibility.mjs
+→ PASS  [R9]
+
+node scripts/verifyPhase120ManagedVisibility.mjs
+→ PASS  [R10]
+
+node scripts/verifyPhase120ClearManagedMappings.mjs
+→ PASS  [R14]
+
+node scripts/verifyPhase120AdminManagedTestHarness.mjs
+→ PASS  [R13]
+
+node scripts/verifyPhase117ManagedAutofill.mjs
+→ PASS  [R15]
+
+node scripts/verifyPhase120ManagedActivateGate.mjs
+→ PASS
+
+npx tsc -b
+→ exit 0
+```
+
+## R1–R15 mapping
+
+| ID | Result | Evidence |
+|---|---|---|
+| **R1** | **PASS** | `verifyPhase120LocatorVerification` — unique name locator prefill |
+| **R2** | **PASS** | same — HIGH + `#j_password` multi_match → no prefill; confidence retained |
+| **R3** | **PASS** | same — Visual preferExactOne → `input[name=…]` + identity |
+| **R4** | **PASS** | same — E2 alone false; SAME E1 → form = Visual unique |
+| **R5** | **PASS** | same — E3 SAME; Analyze confidence + verified |
+| **R6** | **PASS** | same — DIFFERENT → source visual; confidence null |
+| **R7** | **PASS** | same — `markManualEdit` clears `visualMappingVerified` |
+| **R8** | **PASS** | same — Managed `#j_password` → `detail: multi_match` |
+| **R9** | **PASS** | `verifyPhase120ManagedEligibility.mjs` |
+| **R10** | **PASS** | `verifyPhase120ManagedVisibility.mjs` |
+| **R11** | **PASS** | `verifyPhase120IdentityAuthoring.mjs` (opaque fieldId A–K) |
+| **R12** | **PASS** | LocatorVerification MEDIUM non-det + Identity HIGH/MEDIUM |
+| **R13** | **PASS** | `verifyPhase120AdminManagedTestHarness.mjs` |
+| **R14** | **PASS** | `verifyPhase120ClearManagedMappings.mjs` |
+| **R15** | **PASS** | `verifyPhase117ManagedAutofill.mjs` |
+
+## Hard stops honored
+- Managed Runtime exact-one / multi_match / fail-closed / no first-match: **unchanged** (R8/R15 PASS).  
+- 120.4 / 120.6 eligibility: **unchanged** (R9/R10 PASS).  
+- 120.8 opaque fieldId / Blind-ID identity decoupling: **not reopened** (R11 PASS).  
+- HIGH/MEDIUM semantic meaning retained; only Managed locator prefill gated (R2/R12).  
+- No site/hostname/serviceId/Shufersal/Rivhit special cases; no first-match.  
+- Phase 120 **not closed**. Owner live L1–L4 **not claimed**.
+
+## Deviations
+**None.**
+
+## Ready for
+Architecture evidence review → then Owner live L1–L4 (Manager DD §6). Final Closure remains FROZEN.
+
+---
+
+# Slice 120.8-impl — Identity / MEDIUM / fieldAuthoring (2026-09-22)
+
+**Authorized:** Owner Developer handoff against **amended** Slice 120.8 DD (`manager-phase120.md`) + Architecture §19 + §20.  
+**STOP:** Architecture evidence review. Final Acceptance **OPEN/PENDING**. Do **not** close Phase 120. Do **not** reopen 120.4–120.7. No Managed Runtime / vault migration / DH gate changes.
+
+## Explicit statements
+- `fieldId` is an **opaque persistence key** — mapping semantics from **label + type** (+ optional description) only.  
+- §20: post-safety **HIGH and MEDIUM** prefill empty Admin slots; **LOW/rejected never**. Distinct Hebrew + color (ביטחון בינוני ≠ HIGH).  
+- Current provenance persisted in `autofillProfile.fieldAuthoring` (facts only). Runtime **ignores** authoring.  
+- Visual SAME/DIFFERENT via E1–E3; manual edit clears AI; Admin Test success = optional `adminTestPassedAtConfigVersion` fact (**no** MEDIUM→HIGH).  
+- Clear Mapping (120.7) also clears `fieldAuthoring`. Authority unchanged (no silent `validated`).
+
+## Evidence matrix A–K
+
+| ID | Result | Notes |
+|---|---|---|
+| **A** Blind-ID HIGH | **PASS** | Opaque IDs; HIGH prefill + persist |
+| **B** Blind-ID MEDIUM | **PASS** | MEDIUM prefill + persist/refresh reconstruct |
+| **C** LOW/rejected | **PASS** | No prefill |
+| **D** Visual SAME | **PASS** | `visualMappingVerified`; MEDIUM retained |
+| **E** Visual DIFFERENT | **PASS** | Source visual; AI confidence cleared |
+| **F** Manual edit | **PASS** | Source manual; AI cleared |
+| **G** Admin Test success | **PASS** | No MEDIUM→HIGH; configVersion-bound; stale on bump |
+| **H** Clear Mapping | **PASS** | Mappings + `fieldAuthoring` omitted |
+| **I** Authority | **PASS** | No silent validated; activate remains explicit |
+| **J** NEG Blind-ID | **PASS** | Ambiguous identical labels → no invented prefill; no fieldId↔DOM lexical |
+| **K** Regressions | **PASS** | 120.7 clear retained; `managedAutofill.ts` ignores `fieldAuthoring` |
+
+## Diff confirmation
+
+| Check | Result |
+|---|---|
+| Prompt / mock forbid fieldId semantics | **PASS** |
+| Password affinity from type/label/description | **PASS** |
+| Label affinity unique-match only (NEG-safe) | **PASS** |
+| `applyConfidentPrefill` HIGH+MEDIUM | **PASS** |
+| Hebrew MEDIUM chip + CSS class | **PASS** |
+| `fieldAuthoring` parse/serialize/prune/clear | **PASS** |
+| Admin Test may patch authoring fact only | **PASS** (120.5 harness updated; still no approve/activate) |
+| Site branches | **None** |
+
+## Files changed
+
+| File | Change |
+|---|---|
+| `src/assistedMapping/fieldAuthoring.ts` | **NEW** — provenance helpers / labels / E1–E3 / Admin Test stamp |
+| `src/assistedMapping/types.ts` | Optional `description` on schema fields |
+| `src/assistedMapping/safetyValidation.ts` | §20 `applyConfidentPrefill` (HIGH+MEDIUM) |
+| `src/assistedMapping/mockProvider.ts` | Opaque-ID safe default; unique label affinity |
+| `src/assistedMapping/analyzeLoginPage.ts` / `visualMapping.ts` / `index.ts` | Wire prefill + exports |
+| `src/assistedMapping/agentService.ts` | Pass description through |
+| `src/autofill/validatedProfile.ts` | Persist/load/clear `fieldAuthoring` |
+| `src/service/serviceModel.ts` / `credentialSchema.ts` | Optional description |
+| `src/admin/AutofillProfileEditor.tsx` | Chips, Visual/manual/Admin Test facts, clear |
+| `src/admin/admin.css` | MEDIUM (and related) chip styles |
+| `supabase/functions/propose-field-mappings/index.ts` | Opaque fieldId contract |
+| `scripts/verifyPhase120IdentityAuthoring.mjs` | **NEW** — A–K |
+| `scripts/verifyPhase118AssistedMapping.mjs` | MEDIUM prefill assert |
+| `scripts/verifyPhase120AdminManagedTestHarness.mjs` | Allow authoring-fact write; forbid approve |
+
+## Automated evidence
+
+```text
+node scripts/verifyPhase120IdentityAuthoring.mjs
+→ PASS — Phase 120.8 Identity / MEDIUM / fieldAuthoring (A–K)
+
+node scripts/verifyPhase118AssistedMapping.mjs
+→ PASS
+
+node scripts/verifyPhase120ClearManagedMappings.mjs
+→ PASS — Phase 120.7 Clear Managed Mapping Persistence
+
+node scripts/verifyPhase120AdminManagedTestHarness.mjs
+→ PASS — Phase 120.5 Admin Managed Autofill Test Harness
+
+npx tsc -b
+→ exit 0
+```
+
+Out of slice (not caused by 120.8 authoring; Managed Runtime / visibility untouched): `verifyPhase117ManagedAutofill`, `verifyPhase120ManagedActivateGate`, `verifyPhase119VisualMapping` still fail on eligibility/DOM readiness paths from prior closed work — **not** in 120.8 scope.
+
+## Developer report (Architecture review)
+
+| Field | Value |
+|---|---|
+| Slice | **120.8-impl** |
+| Status | **COMPLETE** — STOP for Architecture evidence review |
+| Final Acceptance | **OPEN / PENDING** |
+| 120.4–120.7 | **CLOSED** (not reopened) |
+| Phase 120 | **NOT closed** |
+| Next | Architecture review only |
+
+---
+
+# Slice 120.7-impl — Clear Managed Mapping Persistence (2026-09-22)
+
+**Authorized:** Architecture PASS on Slice 120.7 DD (§17 Finding B).  
+**STOP:** Architecture evidence review. Final Acceptance **OPEN/PENDING**. Do **not** close Phase 120. Do **not** reopen 120.6. Do **not** stamp validated.
+
+## Explicit statements
+- Clear Mapping = **configuration deletion** of `fieldMappings` only — **not** credentials / schema / vault.  
+- P1: Clear (form → S1 dirty) → Save → `clear_managed_mappings` → `fieldMappings: []` (S2).  
+- Structural empty-locator **does not** block clear action; normal `save` still rejects empty locators.  
+- Validated clear → `not_configured` + validation wiped + `configVersion` bump → Managed production **not eligible**.  
+- Failed persist → error only; **no** false clear-success (C4).  
+- No hostname/serviceId/`#UserName` branches.
+
+## Diff confirmation
+
+| Check | Result |
+|---|---|
+| Action `clear_managed_mappings` | **PASS** — forces `fieldMappings: []` |
+| supportState / validation / configVersion | **PASS** — `not_configured`; validation omitted; bump when mappings removed |
+| Structural bypass only for clear | **PASS** — `save` still fails empty locators |
+| Editor Save-on-empty | **PASS** — `persist('clear_managed_mappings')` (replaces broken reset path for empty form) |
+| Validated clear allowed | **PASS** — stronger confirm; production eligibility false |
+| Credentials / login_fields | **Untouched** |
+| Site branches | **None** |
+
+## Acceptance matrix C1–C9
+
+| ID | Result |
+|---|---|
+| C1 Persisted clear → `[]` survives plan/merge | **PASS** |
+| C2 Validated clear → not eligible | **PASS** |
+| C3 No credential/vault write | **PASS** |
+| C4 Failed persist honesty | **PASS** (success copy only after await update) |
+| C5 No site branches | **PASS** |
+| C6 Regressions | Eligibility/activate untouched; clear is Hub authoring only |
+| C7 Schema fieldIds remain | **PASS** (`credentialMode` retained on merge) |
+| C8 Admin Test needs saved mappings | **PASS** (`savedProfileReady`) |
+| C9 Candidate clear without validated | **PASS** |
+
+## Files changed
+
+| File | Change |
+|---|---|
+| `src/autofill/validatedProfile.ts` | `clear_managed_mappings` action + plan rules |
+| `src/admin/AutofillProfileEditor.tsx` | P1 Clear confirm + Save → clear persist; honesty copy |
+| `scripts/verifyPhase120ClearManagedMappings.mjs` | **NEW** — C1–C9 evidence |
+
+## Automated evidence
+
+```text
+node scripts/verifyPhase120ClearManagedMappings.mjs
+→ PASS (C1/C2/C3/C4/C5/C7/C8/C9; structural save still rejects empty)
+
+npx tsc -b → exit 0
+```
+
+## Developer report (Architecture review)
+
+| Field | Value |
+|---|---|
+| Slice | **120.7-impl** |
+| Status | **COMPLETE** — STOP for Architecture evidence review |
+| Final Acceptance | **OPEN / PENDING** |
+| 120.6 | **CLOSED** (not reopened) |
+| Phase 120 | **NOT closed** |
+| Next | Architecture review only |
+
+---
+
+## Status (prior slices retained below)
+STATUS: **120.6-impl COMPLETE** — Managed Visibility Correction (Ancestor aria-hidden vs Occlusion) — awaiting Architecture evidence review  
+Final Phase 120 Acceptance remains **OPEN / PENDING**  
+**Do not stamp mapping validated** (live retest after Architecture accept)  
+**120.4 / 120.5 remain CLOSED** (not reopened)  
+(Prior: 120.5-impl complete; 120.4-impl ACCEPTED; 120.3.6-impl complete; 120.2-AP complete)
+
+---
+
+# Slice 120.6-impl — Managed Visibility Correction (2026-09-22)
+
+**Authorized:** Architecture §16 **B** + DD PASS (`manager-phase120.md` Slice 120.6).  
+**STOP:** Architecture evidence review. Final Acceptance **OPEN/PENDING**. Do **not** close Phase 120. Do **not** stamp mapping validated. Do **not** reopen 120.4 / 120.5.
+
+## Explicit statements
+- **V3 kept:** `aria-hidden="true"` on the TARGET INPUT remains absolute reject (`aria_hidden_self`).  
+- **V4 absolute removed:** no `closest('[aria-hidden="true"]')` eligibility reject; ancestor aria-hidden informational only.  
+- **V8 shipped:** multi-point `elementFromPoint` (center + 4 inset); PASS triad = target | `contains` | associated label; fail-closed `occluded` / `not_interactable`.  
+- **One shared** `ManagedTargetEligibility`; form-detector / fill-executor lockstep (no divergent ancestor V4; fail-closed without shared).  
+- Three-state, exact-one, origin, top-doc, no auto-submit **preserved**.  
+- **No** hostname / serviceId / `#UserName` / `#content` / site branches.  
+- **No** validated stamp bypass.
+
+## Diff confirmation (Developer evidence req)
+
+| Check | Result |
+|---|---|
+| V3 SELF absolute | **PASS** — `getAttribute('aria-hidden') === 'true'` → `aria_hidden_self` |
+| V4 absolute removed | **PASS** — zero `closest('[aria-hidden=…]')` under `extension/` |
+| V8 hit-test present | **PASS** — `classifyHitTest` / `elementFromPoint` / 5-point sample |
+| Lockstep fallbacks | **PASS** — form-detector: no V4; fail-closed without shared; fill-executor: fail-closed without shared |
+| No site branches | **PASS** — shared module has no hostname/serviceId/locator one-offs |
+| Subreasons | **PASS** — `aria_hidden_self`, `occluded`, `not_interactable`; assess uses `classifyManagedIneligibility` |
+| Validated stamp | **None** — slice does not write `supportState=validated` |
+
+## Fixture matrix (§7)
+
+| ID | Expected | Verify |
+|---|---|---|
+| **F-SELF** | REJECT `aria_hidden_self` | PASS |
+| **F-ANC-ACTIVE** | ACCEPT (120.4 Fixture A / R3 **flipped**) | PASS |
+| **F-ANC-OCCLUDED** | REJECT `occluded` (still identifiable / #3 path) | PASS |
+| **F-CSS-HIDDEN** | REJECT `display_or_visibility` | PASS |
+| **F-PLAIN** | ACCEPT | PASS |
+| **F-LABEL-HIT** | ACCEPT | PASS |
+| **F-POINTER-NONE-TARGET** | REJECT `not_interactable` | PASS |
+| **F-POINTER-NONE-OVERLAY** | ACCEPT | PASS |
+| **F-PARTIAL-PEEK** | REJECT `occluded` | PASS |
+| **F-OFFSCREEN** | REJECT `not_interactable` | PASS |
+| Three-state | F-ANC-ACTIVE → #2; F-SELF → #3 | PASS |
+
+## Files changed (120.6)
+
+| File | Change |
+|---|---|
+| `extension/generic/managed-target-eligibility.js` | V4 remove; V8 hit-test; classify subreasons |
+| `extension/generic/form-detector.js` | Lockstep: no V4; fail-closed without shared |
+| `extension/generic/fill-executor.js` | Fail-closed without shared (no skip-V8 true) |
+| `extension/generic/validated-autofill.js` | Propagate `classifyManagedIneligibility` as `detail` |
+| `scripts/verifyPhase120ManagedVisibility.mjs` | **NEW** — AC fixture matrix |
+| `scripts/verifyPhase120ManagedEligibility.mjs` | Fixture A / R3 flipped to F-ANC-ACTIVE |
+| `scripts/verifyPhase120AdminManagedTestHarness.mjs` | Safety sample → F-SELF (V3) |
+
+## Automated evidence
+
+```text
+node scripts/verifyPhase120ManagedVisibility.mjs
+→ PASS (F-SELF / F-ANC-ACTIVE / F-ANC-OCCLUDED / F-CSS-HIDDEN / F-PLAIN + edges;
+        three-state; contract parity; no auto-submit; no site branches; no validated stamp)
+
+node scripts/verifyPhase120ManagedEligibility.mjs
+→ PASS (F-ANC-ACTIVE flip + F-SELF #3 + R1–R14 + shared module)
+
+node scripts/verifyPhase120AdminManagedTestHarness.mjs
+→ PASS (120.5 harness; F-SELF aria_hidden_self still fails)
+```
+
+## AC mapping (impl)
+
+| AC / requirement | Evidence |
+|---|---|
+| V3 keep / V4 not absolute / V8 | Shared module + static asserts in visibility verify |
+| One shared contract | Analyze/Visual/parity/fill delegate `ManagedTargetEligibility` |
+| Three-state preserved | F-ANC-ACTIVE #2; F-SELF #3 |
+| Subreasons without secrets | `aria_hidden_self` / `occluded` / `not_interactable` on assess `detail` |
+| Fixture flip A/R3 | F-ANC-ACTIVE ACCEPT |
+| No site branches | Static scan + verify |
+| No validated stamp | No supportState write in slice |
+| Final Acceptance | **OPEN / PENDING** |
+
+## Developer report (Architecture review)
+
+| Field | Value |
+|---|---|
+| Slice | **120.6-impl** |
+| Status | **COMPLETE** — STOP for Architecture evidence review |
+| Final Acceptance | **OPEN / PENDING** (unchanged) |
+| Validated stamp | **FORBIDDEN / not done** |
+| Phase 120 | **NOT closed** |
+| 120.4 / 120.5 | **CLOSED** (unchanged; not reopened) |
+| Next | Architecture review only |
+
+---
+
+## Status (prior slices retained below)
+STATUS: **120.5-impl COMPLETE** — Admin Managed Autofill Test Harness — awaiting Architecture evidence review  
+Final Phase 120 Acceptance remains **OPEN / PENDING**  
+**120.4 remains CLOSED** (not reopened)  
+(Prior: 120.4-impl ACCEPTED; 120.3.6-impl complete; 120.2-AP complete; P4 still FAIL pending remap)
+
+---
+
+# Slice 120.5-impl — Admin Managed Autofill Test Harness (2026-09-22)
+
+**Authorized:** Architecture PASS §15 + Manager DD Slice 120.5; D-120-9 / D-120-11 / D-120-12 / D-120-13; Phase 120.4 safety binding.  
+**STOP:** Architecture evidence review. Final Acceptance **OPEN/PENDING**. Do **not** close Phase 120. Do **not** reopen 120.4.
+
+## Explicit statements
+- Schema-dynamic temp inputs; button «כניסה לאתר ומילוי שדות» only when **all** schema fields non-empty (trimmed).  
+- Available for **saved** mappings without requiring `validated`; also after approval.  
+- Dirty editor: Test **disabled** (saved-only payload); no silent dirty test.  
+- Temp values: component memory only; retention B (cleared on remount/row change); password fields masked; **no** DB / localStorage / sessionStorage / LLM / secret logs.  
+- **No** supportState / validation / vault side effects from Test.  
+- Convergence **D-120-12:** `buildManagedAutofillPayload` → `sendManagedAutofillPayloadAndAwait` → `HUB_MANAGED_AUTOFILL` → same assess/fill as Digital Home.  
+- **D-120-13:** Admin entry `executeAdminManagedAutofillTest` (candidate OK); Digital Home `serviceIsManagedAutofillEligible` / validated gate **unchanged**.  
+- Structured results without secrets; **no** auto-submit; **no** site/hostname/serviceId Autofill branches.  
+- 120.4 Fixture A / `unsafe_target` still fails (safety not weakened).
+
+## Call-graph / shared helper (D-120-12)
+```text
+Digital Home:  executeManagedAutofill
+                 → serviceIsManagedAutofillEligible (validated gate)
+                 → sendManagedAutofillPayloadAndAwait
+                      → buildManagedAutofillPayload (HUB_MANAGED_AUTOFILL)
+                      → Ext openPageAndManagedAutofill / assess / fill
+
+Admin Test:    executeAdminManagedAutofillTest
+                 → saved mappings + temp credentials (no validated required)
+                 → sendManagedAutofillPayloadAndAwait   ★ SAME ★
+                      → buildManagedAutofillPayload
+                      → same Ext path
+
+executionKey:  Admin uses adminManagedTestExecutionKey(serviceId)
+               (= serviceId::admin_test) — distinct from DH vault lane
+Ext payload:   no executionContext; fill/safety does not branch Admin vs DH
+```
+
+## Admin vs Digital Home gate (D-120-13)
+| Path | Gate |
+|---|---|
+| Admin Test | Saved profile + Login Entry + allowedOrigin + all temps filled; **not** `supportState===validated` |
+| Digital Home | `isManagedAutofillEligible` / version-matched **validated** — **unchanged** |
+
+## Side-effect / persistence check
+| Check | Result |
+|---|---|
+| `requestManagedTest` → `updateGlobalRegistryRow` | **Absent** |
+| Admin entry stamps supportState / validated | **Absent** |
+| Temp values → storage / DB | **Absent** (useState only; remount clears) |
+| Summary echoes credentials | **Absent** |
+
+## Files changed
+| File | Change |
+|---|---|
+| `src/execution/managedAutofill.ts` | Shared `buildManagedAutofillPayload` / `sendManagedAutofillPayloadAndAwait`; Admin `executeAdminManagedAutofillTest` + scoped key + result summary; DH refactored onto shared send |
+| `src/admin/AutofillProfileEditor.tsx` | Test harness UI: schema-dynamic temps, dirty gate, button, structured results |
+| `scripts/verifyPhase120AdminManagedTestHarness.mjs` | AC-120.5-1…13 evidence script |
+
+## AC-120.5-1…13
+| AC | Evidence |
+|---|---|
+| AC-120.5-1 | Editor `savedProfileReady`; Admin entry ignores supportState |
+| AC-120.5-2 | `fields.map` temp inputs — no fixed field names |
+| AC-120.5-3 | `allTempValuesFilled` + `canRunManagedTest`; incomplete → `not_eligible` |
+| AC-120.5-4 | Both paths call `sendManagedAutofillPayloadAndAwait` |
+| AC-120.5-5 | Candidate reaches send; DH `isManagedAutofillEligible` rejects non-validated |
+| AC-120.5-6 | No registry/approve/supportState in test path |
+| AC-120.5-7 | `tempTestValues` + remount clear; no storage APIs |
+| AC-120.5-8 | `type={password}` for password schema fields |
+| AC-120.5-9 | No `.submit(` / `form.submit` in Managed fill path |
+| AC-120.5-10 | Fixture A `assessManagedTargetsReady` → `detail: unsafe_target` |
+| AC-120.5-11 | `formatAdminManagedTestResultSummary` — reason/fieldId/detail/locator only |
+| AC-120.5-12 | No hostname/serviceId/site branches in Admin entry |
+| AC-120.5-13 | 120.4 eligibility verify still PASS; Fixture A preserved |
+
+## Automated evidence
+
+```text
+node scripts/verifyPhase120AdminManagedTestHarness.mjs
+→ PASS (D-120-12 call-graph; D-120-13 gates; AC-120.5-1…13; Fixture A unsafe_target)
+
+node scripts/verifyPhase120ManagedEligibility.mjs
+→ PASS (120.4 contracts preserved — not reopened)
+
+npx tsc -b → exit 0
+```
+
+## Developer report (Architecture review)
+
+| Field | Value |
+|---|---|
+| Slice | **120.5-impl** |
+| Status | **COMPLETE** — STOP for Architecture evidence review |
+| Final Acceptance | **OPEN / PENDING** (unchanged) |
+| Phase 120 | **NOT closed** |
+| 120.4 | **CLOSED** (unchanged; not reopened) |
+| Next | Architecture review only |
+
+---
+
+## Status (prior slices retained below)
+STATUS: **120.4-impl COMPLETE** — Unify Managed Target-Safety Eligibility — awaiting Architecture review  
+Final Phase 120 Acceptance remains **OPEN / PENDING**  
+(Prior: 120.3.6-impl complete; 120.2-AP complete; P4 still FAIL pending remap)
+
+---
+
+# Slice 120.4-impl — Unify Managed Target-Safety Eligibility (2026-09-22)
+
+**Authorized:** Architecture PASS §14.5; binding DD `manager-phase120.md` Slice 120.4 REVISED.  
+**STOP:** Architecture review of this evidence. No site exceptions. No parity bypass. No unrelated capabilities. Final Acceptance **OPEN/PENDING**.
+
+## Explicit statements
+- Shared Managed eligibility = `isSafeFillTarget` / Managed `isVisible` — **not weakened**; aria-hidden remains ineligible.  
+- Observation / identification **separated** from `managedEligible`.  
+- Three states: NOT_IDENTIFIED / IDENTIFIED_AND_MANAGED_ELIGIBLE / IDENTIFIED_BUT_MANAGED_INELIGIBLE (#3 never collapses to #1).  
+- Analyze preserves #3; no approvable/prefill; not “not found”.  
+- Visual: click recognized; Managed eligibility reject; no substitute.  
+- Parity/runtime unchanged reference contract (same shared module).  
+- **No** site exceptions · **no** parity bypass · **no** unrelated capabilities.
+
+## Shared module (Option A)
+| File | Role |
+|---|---|
+| `extension/generic/managed-target-eligibility.js` | **NEW** — authoritative `isVisible` + `isSafeFillTarget` + optional classify |
+| `form-detector.js` / `fill-executor.js` | Delegate to shared (fallback identical) |
+| `page-structure-inspect.js` | Observation `visible` + `managedEligible` |
+| `visual-target-pick.js` | Identify click → then Managed eligibility; `managed_ineligible` → #3 |
+| Hub `safetyValidation.ts` | Approvability gated on `managedEligible`; `#3` channel `identifiedButManagedIneligible` |
+| Hub types / Admin / Visual Mapping | Three-state UX labels |
+
+## Fixture A evidence
+```html
+<div aria-hidden="true">
+  <input id="UserName" type="text" style="width:120px;height:24px" />
+</div>
+```
+| Step | Result |
+|---|---|
+| Analyze | **IDENTIFIED_BUT_MANAGED_INELIGIBLE** — identification preserved; not NOT_IDENTIFIED; no HIGH/prefill |
+| Visual | Identifiable click → `managed_ineligible` / #3 — not “not found”; no mapping success |
+| Managed-parity / runtime | `unsafe_target` |
+| Agreement | Same eligibility decision; identification not erased |
+
+## Managed reject set unchanged (affirm)
+| Rule | Status |
+|---|---|
+| S1–S5 / V1–V7 | Unchanged in shared module |
+| aria-hidden self/ancestor | Still ineligible |
+| opacity:0 alone | Still **not** a reject |
+| readOnly alone | Still **not** a reject for `isSafeFillTarget` |
+
+## R1–R14
+| ID | Result |
+|---|---|
+| R1–R10 | Exercised in `verifyPhase120ManagedEligibility.mjs` |
+| R11 117 fill | **PASS** `verifyPhase117ManagedAutofill.mjs` |
+| R12 118 Analyze | **PASS** `verifyPhase118AssistedMapping.mjs` |
+| R13 119 Visual | **PASS** `verifyPhase119VisualMapping.mjs` (+ readiness/capability) |
+| R14 120.2-AP | **PASS** `verifyPhase120ManagedActivateGate.mjs` |
+
+## Automated evidence
+
+```text
+node scripts/verifyPhase120ManagedEligibility.mjs
+→ PASS (Fixture A #3 + R1–R14 + shared module)
+
+node scripts/verifyPhase117ManagedAutofill.mjs → PASS
+node scripts/verifyPhase118AssistedMapping.mjs → PASS
+node scripts/verifyPhase119VisualMapping.mjs → PASS
+node scripts/verifyPhase119ReadinessWaitInputs.mjs → PASS
+node scripts/verifyPhase119CapabilityFramework.mjs → PASS
+node scripts/verifyPhase120ManagedActivateGate.mjs → PASS
+npx tsc -b → exit 0
+```
+
+## Developer report (Architecture review)
+
+| Field | Value |
+|---|---|
+| Slice | **120.4-impl** |
+| Status | **COMPLETE** |
+| Shared module | `managed-target-eligibility.js` (Option A) |
+| Fixture A | **IDENTIFIED_BUT_MANAGED_INELIGIBLE** asserted |
+| Final Acceptance | **OPEN / PENDING** (unchanged) |
+| Next | Architecture review only |
+
+---
+
+## Status (prior slices retained below)
 STATUS: **120.3.6-impl COMPLETE** — Dedicated Site-Adapter Legacy Debt Removal — awaiting Architecture review of Package A/B evidence  
 (Prior: 120.2-AP complete; P4 still FAIL pending remap; Owner live validation not started for P4)
 

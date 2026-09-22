@@ -117,6 +117,9 @@ export function classifyStoredLoginFields(raw: unknown): StoredCredentialSchema 
     if (entry.inputType === 'text' || entry.inputType === 'number') {
       field.inputType = entry.inputType;
     }
+    if (typeof entry.description === 'string' && entry.description.trim()) {
+      field.description = entry.description.trim();
+    }
     seen.add(id);
     fields.push(field);
   }

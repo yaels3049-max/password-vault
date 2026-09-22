@@ -427,11 +427,13 @@ function openLocalPageAndFill(urlString, sendResponse, externalMessage) {
 
 const GENERIC_REAL_SITE_SCRIPT_FILES = {
   detect: [
+    'generic/managed-target-eligibility.js',
     'generic/form-detector.js',
     'generic/field-mapper.js',
     'generic/login-form-detect.js',
   ],
   fill: [
+    'generic/managed-target-eligibility.js',
     'generic/form-detector.js',
     'generic/field-mapper.js',
     'generic/fill-executor.js',
@@ -439,12 +441,14 @@ const GENERIC_REAL_SITE_SCRIPT_FILES = {
     'generic/identity-first-autofill.js',
   ],
   identityFirst: [
+    'generic/managed-target-eligibility.js',
     'generic/form-detector.js',
     'generic/field-mapper.js',
     'generic/fill-executor.js',
     'generic/identity-first-autofill.js',
   ],
   managed: [
+    'generic/managed-target-eligibility.js',
     'generic/form-detector.js',
     'generic/fill-executor.js',
     'generic/validated-autofill.js',
@@ -1895,7 +1899,11 @@ function openPageAndVisualMapping(message, sendResponse, sender) {
         {
           target: { tabId: tabId, frameIds: [0] },
           world: 'MAIN',
-          files: ['generic/visual-target-pick.js'],
+          files: [
+            'generic/managed-target-eligibility.js',
+            'generic/locator-determinism.js',
+            'generic/visual-target-pick.js',
+          ],
         },
         function () {
           if (chrome.runtime.lastError) {
@@ -1995,7 +2003,11 @@ function openPageAndInspectLoginStructure(message, sendResponse, sender) {
         {
           target: { tabId: tabId, frameIds: [0] },
           world: 'MAIN',
-          files: ['generic/page-structure-inspect.js'],
+          files: [
+            'generic/managed-target-eligibility.js',
+            'generic/locator-determinism.js',
+            'generic/page-structure-inspect.js',
+          ],
         },
         function () {
           if (chrome.runtime.lastError) {
