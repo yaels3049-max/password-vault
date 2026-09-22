@@ -7,15 +7,10 @@ import {
 } from './serviceModel';
 
 /**
- * Future adapter binding for catalog entries that use site-specific adapters today.
- * Prefer {@link Service.adapterId} on the legacy runtime shape when present.
- */
-const LEGACY_ADAPTER_ID_BY_SERVICE_ID: Readonly<Record<string, string>> = {};
-
-/**
  * Map a legacy runtime Service to a canonical ServiceDefinition.
  * Source must be explicit (options.source or service.source).
  * Never infer source from the id prefix (custom-* is identity only).
+ * Adapter routing uses {@link Service.adapterId} only (no dead id→adapter map).
  */
 export function legacyServiceToDefinition(
   service: Service,
@@ -27,7 +22,7 @@ export function legacyServiceToDefinition(
       `Legacy service "${service.id}" has no authoritative source; refuse to infer from id`,
     );
   }
-  const adapterId = service.adapterId ?? LEGACY_ADAPTER_ID_BY_SERVICE_ID[service.id];
+  const adapterId = service.adapterId?.trim() || undefined;
 
   const candidate: ServiceDefinition = {
     schemaVersion: SERVICE_SCHEMA_VERSION,

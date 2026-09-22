@@ -9,7 +9,6 @@ import {
   type LoginField,
   type Service,
 } from './mockServices';
-import { htzoneAdapter } from './execution/adapters/htzoneAdapter';
 import { practiceAdapter } from './execution/adapters/practiceAdapter';
 import { executeGenericAutofill } from './execution/genericAutofill';
 import { executeServiceFromTile } from './execution/serviceExecution';
@@ -30,12 +29,10 @@ export const POC_MOCK_3_FIELD_CREDENTIALS = {
   password: 'demo-pass',
 };
 
-export const HTZONE_SERVICE_ID = 'htzone';
 export const SHUFERSAL_SERVICE_ID = 'shufersal';
 export const CLALIT_SERVICE_ID = 'clalit';
 export { HUB_PRACTICE_LOGIN_ID };
 export const HUB_PRACTICE_DEMO_PATH = '/demo-login.html';
-export const POC_IL_SITE_URL = 'https://www.htzone.co.il/login';
 
 function findRuntimeService(serviceId: string): Service | undefined {
   return mockServices.find((service) => service.id === serviceId);
@@ -75,20 +72,6 @@ export function openDemoAndFill(): void {
 export function openDemo3FieldsAndFill(): void {
   const url = localDemoUrl('/demo-login-3-fields.html');
   if (!sendExtensionMessage({ type: 'POC_FILL_DEMO', url }, url)) {
-    openUrlInNewTab(url);
-  }
-}
-
-/** HTZone mock test: open login and fill mock email/password only. */
-export function openIsraeliSiteAutofillTest(): void {
-  const htzoneService = findRuntimeService(HTZONE_SERVICE_ID);
-  const url = htzoneService ? getServiceOpenUrl(htzoneService) : POC_IL_SITE_URL;
-  if (
-    !sendExtensionMessage(
-      { type: 'POC_FILL_IL', url, withAutofillParam: true },
-      url,
-    )
-  ) {
     openUrlInNewTab(url);
   }
 }
@@ -136,27 +119,6 @@ export async function openClalitLoginFromTile(
   return tileExecutionToGenericResult(
     await executeServiceFromTile(clalitService, credential, loginFields),
   );
-}
-
-/** Dev-only: exercise HTZone adapter directly. */
-export function openHtzoneTile(
-  credential: Credential | undefined,
-  loginFields: LoginField[] = DEFAULT_LOGIN_FIELDS,
-): void {
-  const htzoneService = findRuntimeService(HTZONE_SERVICE_ID);
-  htzoneAdapter.execute({
-    service: htzoneService ?? {
-      id: HTZONE_SERVICE_ID,
-      name: 'הייטקזון',
-      icon: '🛒',
-      url: POC_IL_SITE_URL,
-      category: 'shopping',
-      adapterId: 'htzone',
-    },
-    openUrl: htzoneService ? getServiceOpenUrl(htzoneService) : POC_IL_SITE_URL,
-    credential,
-    loginFields: htzoneService?.loginFields ?? loginFields,
-  });
 }
 
 /** Dev-only: exercise practice adapter directly. */
