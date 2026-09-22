@@ -11,7 +11,7 @@
  *
  * Usage: node scripts/verifyPhase108AdapterRouting.mjs
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -49,21 +49,26 @@ function main() {
     'supabase/migrations/20260712150000_phase108_adapter_id_compliance.sql',
   );
 
-  assert(registry.includes("'htzone'") && registry.includes("'practice'"), 'Adapters: htzone + practice');
+  assert(registry.includes("'practice'"), 'Adapters: practice only (120.3.6)');
+  assert(!registry.includes("'htzone'"), '120.3.6: htzone adapter removed from registry');
   assert(!registry.includes('genericAutofillAdapter') && !registry.includes('generic:'), 'No generic adapter registry entry');
 
   assert(execution.includes('isSiteSpecificAdapter') && execution.includes('executeGenericAutofill'), 'Orchestrator: adapter then generic');
   assert(!/shufersal|clalit|leumi|hapoalim/.test(execution), 'Orchestrator must not branch on service ids');
   assert(!/shufersal|clalit|leumi|hapoalim/.test(eligibility), 'Eligibility must not branch on service ids');
 
-  assert(readAdapterIdForService('htzone') === 'htzone', 'HTZone catalog adapterId=htzone');
+  assert(readAdapterIdForService('htzone') === null, '120.3.6: HTZone catalog adapterId cleared');
   assert(readAdapterIdForService('hub-practice-login') === 'practice', 'Practice catalog adapterId=practice');
   assert(readAdapterIdForService('clalit') === null, 'Clalit catalog adapterId must be null (generic)');
   assert(readAdapterIdForService('shufersal') === null, 'Shufersal catalog adapterId must be null (generic)');
 
   assert(seed.includes("'clalit'") && !/'clalit'[\s\S]{0,500}'generic'/.test(seed), 'SQL seed: clalit must not use generic adapter');
   assert(seed.includes("'shufersal'") && !/'shufersal'[\s\S]{0,500}'generic'/.test(seed), 'SQL seed: shufersal must not use generic adapter');
-  assert(/'htzone'[\s\S]{0,500}'htzone'/.test(seed), 'SQL seed must keep htzone adapter_id');
+  // Historical phase102 seed may still list htzone adapter_id; 120.3.6 migration clears live rows.
+  assert(
+    existsSync(join(root, 'supabase/migrations/20260922120000_phase120_clear_htzone_adapter_id.sql')),
+    '120.3.6 migration clears htzone adapter_id',
+  );
 
   assert(
     persistence.includes("p_adapter_id: definition.adapterId ?? null"),
@@ -73,11 +78,12 @@ function main() {
     compliance.includes("adapter_id = 'htzone'") &&
       compliance.includes("adapter_id = null") &&
       compliance.includes('adapter_id = excluded.adapter_id'),
-    'Compliance migration must clear generic, force htzone, seed-wins on restore',
+    'Historical compliance migration (superseded for htzone by 120.3.6 clear)',
   );
 
-  console.log('PASS: Phase 108 adapterId architecture compliance (static)');
-  console.log('  adapters: htzone, practice only');
+  console.log('PASS: Phase 108 adapterId architecture compliance (static) — post 120.3.6');
+  console.log('  adapters: practice only');
+  console.log('  htzone: adapterId cleared (no dedicated Autofill)');
   console.log('  clalit/shufersal: generic autofill (adapterId null)');
   console.log('  empty-DB restore: adapterId from builtinCatalog seed');
 }

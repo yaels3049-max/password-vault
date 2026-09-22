@@ -72,7 +72,10 @@ function main() {
     !registry.includes('generic:'),
     'generic adapter id must not be registered',
   );
-  assert(registry.includes('htzone'), 'htzone adapter must remain');
+  assert(
+    !registry.includes('htzone'),
+    '120.3.6: htzone adapter must be removed',
+  );
   assert(registry.includes('practice'), 'practice adapter must remain');
 
   assert(
@@ -84,8 +87,8 @@ function main() {
     'clalit must not use adapterId generic in builtinCatalog',
   );
   assert(
-    readAdapterIdForService('htzone') === 'htzone',
-    'htzone must keep htzone adapter',
+    readAdapterIdForService('htzone') === null,
+    '120.3.6: htzone catalog adapterId cleared',
   );
 
   const overlay = read('src/catalog/builtinCatalogOverlay.ts');
@@ -107,18 +110,21 @@ function main() {
   );
 
   // M3 — no tile-click discovery; execution via the single entry.
-  // Phase 104 (AC-104-17) extracts a shared open-with-profile helper, so the
-  // Dashboard may reach executeServiceFromTile directly OR through that helper.
+  // Phase 104 (AC-104-17) extracts a shared open-with-profile helper.
+  // Phase 113 routes Digital Home tiles through Login Assistance → executeServiceFromTile.
   const dashboard = read('src/Dashboard.tsx');
   const sharedOpenExists = existsSync(join(root, 'src/serviceManagement/openWithProfile.ts'));
   const openHelper = sharedOpenExists
     ? read('src/serviceManagement/openWithProfile.ts')
     : '';
+  const assistanceActions = read('src/loginAssistance/assistanceActions.ts');
   assert(
     dashboard.includes('executeServiceFromTile') ||
       (dashboard.includes('openServiceWithProfile') &&
-        openHelper.includes('executeServiceFromTile')),
-    'Dashboard must execute via executeServiceFromTile (directly or via the shared open helper)',
+        openHelper.includes('executeServiceFromTile')) ||
+      (dashboard.includes('LoginAssistancePanel') &&
+        assistanceActions.includes('executeServiceFromTile')),
+    'Dashboard must execute via executeServiceFromTile (directly, shared open helper, or Login Assistance)',
   );
   assert(
     !/discoverAndPersistLoginUrl|discoverLogin/.test(dashboard),
@@ -158,7 +164,7 @@ function main() {
   console.log('PASS: Phase 103 unified execution (static)');
   console.log(`  extension manifest version: ${version}`);
   console.log('  orchestrator: executeServiceFromTile (metadata-driven generic autofill)');
-  console.log('  adapters: htzone, practice only');
+  console.log('  adapters: practice only (120.3.6; htzone dedicated adapter retired)');
   console.log('');
   console.log('Regression gate (manual UAT — required for Manager approval):');
   console.log('  T1 Shufersal — loginUrl open + extension generic fill');

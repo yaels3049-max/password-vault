@@ -51,7 +51,7 @@ const client = createClient(url, anonKey, {
 const expected = {
   shufersal: null,
   clalit: null,
-  htzone: 'htzone',
+  htzone: null,
 };
 
 const { data, error } = await client

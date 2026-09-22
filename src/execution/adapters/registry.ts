@@ -1,11 +1,10 @@
-import { htzoneAdapter } from './htzoneAdapter';
 import { practiceAdapter } from './practiceAdapter';
 import type { ServiceAdapter } from './types';
 
-const SITE_SPECIFIC_ADAPTER_IDS = new Set(['htzone', 'practice']);
+/** Site-specific adapters registered for Digital Home adapter-first routing. Practice only after 120.3.6. */
+const SITE_SPECIFIC_ADAPTER_IDS = new Set(['practice']);
 
 const ADAPTERS: Record<string, ServiceAdapter> = {
-  htzone: htzoneAdapter,
   practice: practiceAdapter,
 };
 

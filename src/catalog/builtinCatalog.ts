@@ -173,7 +173,6 @@ export const BUILTIN_CATALOG_DEFINITIONS: ServiceDefinition[] = [
     icon: '🛒',
     category: 'shopping',
     source: 'built-in-catalog',
-    adapterId: 'htzone',
     metadata: faviconSite('https://www.htzone.co.il'),
     loginFields: [
       { id: 'email', label: 'אימייל', type: 'text' },

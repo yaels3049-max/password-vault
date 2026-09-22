@@ -60,7 +60,7 @@ export interface ServiceExecutionResult {
 /**
  * Phase 103 unified tile execution (async) — orchestration shell unchanged:
  * 1. openUrl = loginUrl ?? primaryUrl
- * 2. Site-specific adapters (htzone, practice) only
+ * 2. Site-specific adapters (practice) only
  * 3. Soft-read Login Intelligence (Phase 112): basic→110, medium→112 async identity-first,
  *    complex→open(+guidance). Medium never silent (AC-112-26).
  * 4. Failure never blocks navigation; no auto-submit

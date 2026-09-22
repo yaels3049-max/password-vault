@@ -28,8 +28,8 @@ export function resolveLoginAssistanceLevel(service: Service): LoginAssistanceLe
     return raw;
   }
 
-  // Site-specific adapters already present at runtime (103) — not Phase 112 LI.
-  if (service.adapterId === 'htzone' || service.adapterId === 'practice') {
+  // Site-specific adapters already present at runtime — practice DEV path only (120.3.6).
+  if (service.adapterId === 'practice') {
     return 'automatic_supported';
   }
 

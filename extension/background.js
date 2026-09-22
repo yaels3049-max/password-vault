@@ -13,13 +13,6 @@ const MOCK_3_FIELD_CREDENTIALS = {
   password: 'demo-pass',
 };
 
-const MOCK_HTZONE_CREDENTIALS = {
-  email: 'demo-user@mock.test',
-  password: 'demo-pass',
-};
-
-const HTZONE_LOGIN_PATH = '/login';
-
 const PAGE_CONFIGS = [
   {
     id: 'demo-login-3-fields.html',
@@ -52,23 +45,7 @@ const PAGE_CONFIGS = [
   },
 ];
 
-function isHtzoneLoginUrl(urlString) {
-  try {
-    const url = new URL(urlString);
-    const isHtzone =
-      url.hostname === 'www.htzone.co.il' || url.hostname === 'htzone.co.il';
-    const path = url.pathname.replace(/\/$/, '');
-    return isHtzone && (path === HTZONE_LOGIN_PATH || path.indexOf('/login/') === 0);
-  } catch (_error) {
-    return false;
-  }
-}
-
 function getPageConfig(urlString) {
-  if (isHtzoneLoginUrl(urlString)) {
-    return { id: 'htzone-login' };
-  }
-
   try {
     const url = new URL(urlString);
     for (let i = 0; i < PAGE_CONFIGS.length; i += 1) {
@@ -352,103 +329,6 @@ function waitForPracticeDemoTabReady(tabId, sendResponse, onReady) {
   });
 }
 
-const HTZONE_RETRY_DELAYS_MS = [0, 500, 1500, 2500, 4000, 6000, 8000, 10000];
-
-function invokeHtzoneFill(tabId, credentials, onDone) {
-  chrome.scripting.executeScript(
-    {
-      target: { tabId: tabId },
-      world: 'MAIN',
-      func: function (creds) {
-        if (typeof window.__israeliVaultHtzoneFill !== 'function') {
-          return {
-            ok: false,
-            reason: 'adapter_function_missing',
-          };
-        }
-        return window.__israeliVaultHtzoneFill(creds);
-      },
-      args: [credentials],
-    },
-    function (results) {
-      if (chrome.runtime.lastError) {
-        console.log(
-          '[Israeli Vault POC] HTZone invoke lastError:',
-          chrome.runtime.lastError.message,
-        );
-      }
-      const result =
-        results && results[0] ? results[0].result : { ok: false };
-      console.log('[Israeli Vault POC] HTZone invoke result:', result);
-      onDone(result);
-    },
-  );
-}
-
-function runHtzoneAdapterFill(tabId, credentials, attempt, onDone) {
-  console.log(
-    '[Israeli Vault POC] HTZone injecting htzone-adapter.js attempt:',
-    attempt,
-  );
-  chrome.scripting.executeScript(
-    {
-      target: { tabId: tabId },
-      files: ['htzone-adapter.js'],
-      world: 'MAIN',
-    },
-    function () {
-      if (chrome.runtime.lastError) {
-        console.log(
-          '[Israeli Vault POC] HTZone adapter injection failed:',
-          chrome.runtime.lastError.message,
-        );
-        scheduleHtzoneRetry(tabId, credentials, attempt, onDone, {
-          ok: false,
-          reason: chrome.runtime.lastError.message,
-        });
-        return;
-      }
-
-      console.log('[Israeli Vault POC] HTZone htzone-adapter.js injected: true');
-      invokeHtzoneFill(tabId, credentials, function (result) {
-        if (result && result.ok) {
-          onDone(Object.assign({ via: 'htzone-adapter' }, result));
-          return;
-        }
-        scheduleHtzoneRetry(tabId, credentials, attempt, onDone, result);
-      });
-    },
-  );
-}
-
-function scheduleHtzoneRetry(tabId, credentials, attempt, onDone, lastResult) {
-  if (attempt < HTZONE_RETRY_DELAYS_MS.length - 1) {
-    const delay =
-      HTZONE_RETRY_DELAYS_MS[attempt + 1] - HTZONE_RETRY_DELAYS_MS[attempt];
-    setTimeout(function () {
-      console.log(
-        '[Israeli Vault POC] HTZone retry attempt:',
-        attempt + 1,
-      );
-      invokeHtzoneFill(tabId, credentials, function (result) {
-        if (result && result.ok) {
-          onDone(Object.assign({ via: 'htzone-adapter' }, result));
-          return;
-        }
-        scheduleHtzoneRetry(tabId, credentials, attempt + 1, onDone, result);
-      });
-    }, delay);
-    return;
-  }
-
-  onDone(
-    Object.assign({ via: 'htzone-adapter' }, lastResult || {
-      ok: false,
-      reason: 'htzone_fill_failed',
-    }),
-  );
-}
-
 function openLocalPageAndFill(urlString, sendResponse, externalMessage) {
   const hasVaultCredentials =
     externalMessage &&
@@ -463,7 +343,7 @@ function openLocalPageAndFill(urlString, sendResponse, externalMessage) {
   }
 
   const pageConfig = getPageConfig(urlString);
-  if (!pageConfig || pageConfig.id === 'htzone-login') {
+  if (!pageConfig) {
     if (hasVaultCredentials) {
       console.log('[Practice] Page config rejected for URL:', urlString);
     }
@@ -545,82 +425,6 @@ function openLocalPageAndFill(urlString, sendResponse, externalMessage) {
   return true;
 }
 
-function openHtzonePageAndFill(urlString, credentials, options, sendResponse) {
-  const urlMatchesHtzone = isHtzoneLoginUrl(urlString);
-  console.log('[Israeli Vault POC] HTZone request received');
-  console.log('[Israeli Vault POC] HTZone target URL:', urlString);
-  console.log(
-    '[Israeli Vault POC] HTZone URL matches htzone.co.il/login:',
-    urlMatchesHtzone,
-  );
-
-  if (!urlMatchesHtzone) {
-    console.log(
-      '[Israeli Vault POC] HTZone rejected: URL does not match htzone login',
-    );
-    sendResponse({ ok: false, reason: 'not_htzone_login' });
-    return false;
-  }
-
-  const useAutofillParam = options && options.withAutofillParam;
-  const targetUrl = useAutofillParam ? withAutofillParam(urlString) : urlString;
-  const fillCredentials = credentials || MOCK_HTZONE_CREDENTIALS;
-
-  if (credentials && credentials.email) {
-    console.log('[Israeli Vault POC] HTZone fill source: vault');
-  } else {
-    console.log('[Israeli Vault POC] HTZone fill source: mock');
-  }
-
-  chrome.tabs.create({ url: targetUrl }, function (tab) {
-    if (chrome.runtime.lastError || !tab || !tab.id) {
-      if (chrome.runtime.lastError) {
-        console.log(
-          '[Israeli Vault POC] HTZone tabs.create lastError:',
-          chrome.runtime.lastError.message,
-        );
-      }
-      sendResponse({
-        ok: false,
-        reason: chrome.runtime.lastError
-          ? chrome.runtime.lastError.message
-          : 'no_tab',
-      });
-      return;
-    }
-
-    const tabId = tab.id;
-    console.log('[Israeli Vault POC] HTZone tab opened:', tabId, targetUrl);
-
-    function onTabUpdated(updatedTabId, changeInfo) {
-      if (updatedTabId !== tabId) {
-        return;
-      }
-
-      if (changeInfo.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(onTabUpdated);
-        console.log('[Israeli Vault POC] HTZone tab load complete, starting fill');
-        setTimeout(function () {
-          runHtzoneAdapterFill(tabId, fillCredentials, 0, sendResponse);
-        }, 800);
-        return;
-      }
-
-      if (
-        changeInfo.status === 'loading' &&
-        changeInfo.url === 'chrome-error://chromewebdata/'
-      ) {
-        chrome.tabs.onUpdated.removeListener(onTabUpdated);
-        sendResponse({ ok: false, reason: 'tab_load_error' });
-      }
-    }
-
-    chrome.tabs.onUpdated.addListener(onTabUpdated);
-  });
-
-  return true;
-}
-
 const GENERIC_REAL_SITE_SCRIPT_FILES = {
   detect: [
     'generic/form-detector.js',
@@ -667,6 +471,11 @@ const ADMIN_INSPECT_READINESS_MAX_WAIT_MS = 10000;
 const ADMIN_INSPECT_READINESS_POLL_MS = 250;
 /** Bounded adaptive retry spacing for Managed mapped-target readiness (not a multi-second sleep). */
 const MANAGED_AUTOFILL_RETRY_DELAY_MS = 300;
+/**
+ * Phase 120 §5D — post-failure assess-only probe offsets (diagnostic only).
+ * Does NOT change fill-path retry timing (MANAGED_AUTOFILL_RETRY_DELAY_MS unchanged).
+ */
+const MANAGED_AUTOFILL_DIAG_LATE_PROBE_MS = [2000, 5000, 10000];
 /** Time allowed for a heavy real-site login page to reach the target URL. */
 const GENERIC_REAL_SITE_TAB_LOAD_TIMEOUT_MS = 120000;
 /** Time allowed for detect/fill once the login page is ready (retries included). */
@@ -781,6 +590,7 @@ function tabUrlMatchesGenericTarget(tabUrl, urlString) {
  *   Managed Autofill must pass MANAGED_AUTOFILL_INITIAL_DELAY_MS (0).
  * @param {object} [options.tabCreateProperties] — Managed-only placement hints
  *   (e.g. index, openerTabId). Legacy/generic must omit this.
+ * @param {function(number): void} [options.onTabCreatedDiag] — Managed §5D only.
  */
 function openGenericRealSiteTab(urlString, sendResponse, sessionLabel, onTabReady, options) {
   if (!isAllowedGenericAutofillUrl(urlString)) {
@@ -855,6 +665,14 @@ function openGenericRealSiteTab(urlString, sendResponse, sessionLabel, onTabRead
     }
 
     var tabId = tab.id;
+
+    if (options && typeof options.onTabCreatedDiag === 'function') {
+      try {
+        options.onTabCreatedDiag(tabId);
+      } catch (_diagErr) {
+        // Diagnostic must never block Managed/generic sessions.
+      }
+    }
 
     function startReadyWork() {
       if (readyWorkStarted || settled) {
@@ -1613,6 +1431,151 @@ function isManagedAutofillRetryable(result) {
   );
 }
 
+/** Phase 120 §5D — Managed diagnostic logs only (never credentials). */
+function logManagedAutofillDiag(event, fields) {
+  console.log('[ManagedAutofillDiag]', event, fields || {});
+}
+
+function attachManagedAutofillDiagLifecycle(tabId) {
+  function onUpdated(updatedTabId, changeInfo, tab) {
+    if (updatedTabId !== tabId) {
+      return;
+    }
+    logManagedAutofillDiag('onUpdated', {
+      tabId: tabId,
+      status: changeInfo && changeInfo.status,
+      url: (changeInfo && changeInfo.url) || (tab && tab.url) || undefined,
+    });
+  }
+
+  function onRemoved(removedTabId) {
+    if (removedTabId !== tabId) {
+      return;
+    }
+    logManagedAutofillDiag('onRemoved', { tabId: tabId });
+    chrome.tabs.onUpdated.removeListener(onUpdated);
+    chrome.tabs.onRemoved.removeListener(onRemoved);
+  }
+
+  chrome.tabs.onUpdated.addListener(onUpdated);
+  chrome.tabs.onRemoved.addListener(onRemoved);
+
+  return function detachManagedAutofillDiagLifecycle() {
+    chrome.tabs.onUpdated.removeListener(onUpdated);
+    chrome.tabs.onRemoved.removeListener(onRemoved);
+  };
+}
+
+function enrichManagedTargetsNotReadyResult(tabId, result, done) {
+  chrome.tabs.get(tabId, function (tab) {
+    var gone = Boolean(chrome.runtime.lastError) || !tab;
+    var tabUrl = gone ? undefined : tab.url;
+    var enriched = {
+      ok: false,
+      reason: result && result.reason ? result.reason : 'targets_not_ready',
+      fieldId: result && result.fieldId,
+      locator: result && result.locator,
+      detail: result && result.detail,
+      observedUrl: result && result.observedUrl,
+      tabId: tabId,
+      finalObservedUrl: tabUrl || (result && result.observedUrl) || undefined,
+      tabExistsAtFailure: !gone,
+    };
+    logManagedAutofillDiag('targets_not_ready', {
+      tabId: enriched.tabId,
+      fieldId: enriched.fieldId,
+      locator: enriched.locator,
+      detail: enriched.detail,
+      observedUrl: enriched.observedUrl,
+      finalObservedUrl: enriched.finalObservedUrl,
+      tabExistsAtFailure: enriched.tabExistsAtFailure,
+    });
+    done(enriched);
+  });
+}
+
+/**
+ * Phase 120 §5D — assess-only late probes AFTER Hub already received targets_not_ready.
+ * No credentials. No fill. Does not alter fill-path retry timing.
+ */
+function scheduleManagedLateReadinessProbes(tabId, payload) {
+  var mappings =
+    payload && Array.isArray(payload.fieldMappings) ? payload.fieldMappings : [];
+  var allowedOrigin = payload && payload.allowedOrigin;
+  var offsets = MANAGED_AUTOFILL_DIAG_LATE_PROBE_MS;
+
+  for (var i = 0; i < offsets.length; i += 1) {
+    (function (offsetMs) {
+      setTimeout(function () {
+        chrome.tabs.get(tabId, function (tab) {
+          if (chrome.runtime.lastError || !tab) {
+            logManagedAutofillDiag('lateProbe', {
+              offsetMs: offsetMs,
+              tabId: tabId,
+              tabExists: false,
+            });
+            return;
+          }
+          chrome.scripting.executeScript(
+            {
+              target: { tabId: tabId, frameIds: [0] },
+              world: 'MAIN',
+              files: GENERIC_REAL_SITE_SCRIPT_FILES.managed,
+            },
+            function () {
+              if (chrome.runtime.lastError) {
+                logManagedAutofillDiag('lateProbe', {
+                  offsetMs: offsetMs,
+                  tabId: tabId,
+                  tabExists: true,
+                  error: chrome.runtime.lastError.message,
+                });
+                return;
+              }
+              chrome.scripting.executeScript(
+                {
+                  target: { tabId: tabId, frameIds: [0] },
+                  world: 'MAIN',
+                  func: function (opts) {
+                    if (typeof assessManagedTargetsReady !== 'function') {
+                      return { ready: false, reason: 'assess_fn_missing' };
+                    }
+                    return assessManagedTargetsReady(opts);
+                  },
+                  args: [
+                    {
+                      allowedOrigin: allowedOrigin,
+                      fieldMappings: mappings,
+                    },
+                  ],
+                },
+                function (results) {
+                  var assessment =
+                    results && results[0] && results[0].result
+                      ? results[0].result
+                      : { ready: false, reason: 'no_result' };
+                  logManagedAutofillDiag('lateProbe', {
+                    offsetMs: offsetMs,
+                    tabId: tabId,
+                    tabExists: true,
+                    tabUrl: tab.url,
+                    ready: assessment.ready === true,
+                    reason: assessment.reason,
+                    fieldId: assessment.fieldId,
+                    locator: assessment.locator,
+                    detail: assessment.detail,
+                    observedUrl: assessment.observedUrl,
+                  });
+                },
+              );
+            },
+          );
+        });
+      }, offsetMs);
+    })(offsets[i]);
+  }
+}
+
 function runManagedAutofillOnTab(tabId, payload, attempt, onDone) {
   chrome.scripting.executeScript(
     {
@@ -1688,6 +1651,163 @@ function runManagedAutofillOnTab(tabId, payload, attempt, onDone) {
         },
       );
     },
+  );
+}
+
+/**
+ * Phase 120.2-AP — Admin Managed-parity readiness probe (assess-only).
+ * Same assessManagedTargetsReady contract as Managed fill. No credentials. No fill.
+ * Reuses existing Managed retry spacing — does not add timing as uniqueness substitute.
+ */
+function runManagedReadinessProbeOnTab(tabId, payload, attempt, onDone) {
+  chrome.scripting.executeScript(
+    {
+      target: { tabId: tabId, frameIds: [0] },
+      world: 'MAIN',
+      files: GENERIC_REAL_SITE_SCRIPT_FILES.managed,
+    },
+    function () {
+      if (chrome.runtime.lastError) {
+        if (attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+          setTimeout(function () {
+            runManagedReadinessProbeOnTab(tabId, payload, attempt + 1, onDone);
+          }, MANAGED_AUTOFILL_RETRY_DELAY_MS);
+          return;
+        }
+        onDone({
+          ok: false,
+          reason: chrome.runtime.lastError.message || 'script_injection_failed',
+        });
+        return;
+      }
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tabId, frameIds: [0] },
+          world: 'MAIN',
+          func: function (opts) {
+            if (typeof assessManagedTargetsReady !== 'function') {
+              return { ready: false, reason: 'assess_fn_missing' };
+            }
+            return assessManagedTargetsReady(opts);
+          },
+          args: [
+            {
+              allowedOrigin: payload.allowedOrigin,
+              fieldMappings: payload.fieldMappings,
+            },
+          ],
+        },
+        function (results) {
+          if (chrome.runtime.lastError) {
+            if (attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS) {
+              setTimeout(function () {
+                runManagedReadinessProbeOnTab(tabId, payload, attempt + 1, onDone);
+              }, MANAGED_AUTOFILL_RETRY_DELAY_MS);
+              return;
+            }
+            onDone({
+              ok: false,
+              reason: chrome.runtime.lastError.message || 'probe_run_failed',
+            });
+            return;
+          }
+
+          var assessment =
+            results && results[0] && results[0].result
+              ? results[0].result
+              : { ready: false, reason: 'no_result' };
+
+          if (assessment && assessment.ready === true) {
+            var mappingCount = Array.isArray(payload.fieldMappings)
+              ? payload.fieldMappings.length
+              : 0;
+            onDone({
+              ok: true,
+              ready: true,
+              mappingCount: mappingCount,
+              reason: 'managed_readiness_ok',
+            });
+            return;
+          }
+
+          var probeFail = {
+            ok: false,
+            ready: false,
+            reason: (assessment && assessment.reason) || 'targets_not_ready',
+            fieldId: assessment && assessment.fieldId,
+            locator: assessment && assessment.locator,
+            detail: assessment && assessment.detail,
+            observedUrl: assessment && assessment.observedUrl,
+          };
+
+          if (
+            attempt < GENERIC_REAL_SITE_MAX_ATTEMPTS &&
+            isManagedAutofillRetryable(probeFail)
+          ) {
+            setTimeout(function () {
+              runManagedReadinessProbeOnTab(tabId, payload, attempt + 1, onDone);
+            }, MANAGED_AUTOFILL_RETRY_DELAY_MS);
+            return;
+          }
+
+          onDone(probeFail);
+        },
+      );
+    },
+  );
+}
+
+/**
+ * Phase 120.2-AP — open Login Entry and run assess-only Managed readiness probe.
+ * Top document only. No vault credentials in payload.
+ */
+function openPageAndManagedReadinessProbe(message, sendResponse, sender) {
+  var loginEntryUrl =
+    message && typeof message.loginEntryUrl === 'string'
+      ? message.loginEntryUrl.trim()
+      : '';
+  var allowedOrigin =
+    message && typeof message.allowedOrigin === 'string'
+      ? message.allowedOrigin.trim()
+      : '';
+  var fieldMappings =
+    message && Array.isArray(message.fieldMappings) ? message.fieldMappings : null;
+
+  if (!loginEntryUrl || !allowedOrigin || !fieldMappings || fieldMappings.length === 0) {
+    sendResponse({ ok: false, reason: 'missing_probe_payload' });
+    return false;
+  }
+
+  // Explicitly reject any credentials key — assess-only contract.
+  if (message && message.credentials) {
+    sendResponse({ ok: false, reason: 'credentials_forbidden_on_probe' });
+    return false;
+  }
+
+  var probeOptions = {
+    initialDelayMs: MANAGED_AUTOFILL_INITIAL_DELAY_MS,
+  };
+  var placement = buildManagedTabCreateProperties(sender);
+  if (placement) {
+    probeOptions.tabCreateProperties = placement;
+  }
+
+  var payload = {
+    allowedOrigin: allowedOrigin,
+    fieldMappings: fieldMappings,
+  };
+
+  return openGenericRealSiteTab(
+    loginEntryUrl,
+    sendResponse,
+    'admin-managed-readiness-probe',
+    function (tabId, finishSession) {
+      runManagedReadinessProbeOnTab(tabId, payload, 0, function (result) {
+        finishSession(result || { ok: false, reason: 'no_result' });
+      });
+    },
+    probeOptions,
   );
 }
 
@@ -1954,12 +2074,35 @@ function openPageAndManagedAutofill(urlString, payload, sendResponse, sender) {
     managedOptions.tabCreateProperties = placement;
   }
 
+  var detachDiag = null;
+  managedOptions.onTabCreatedDiag = function (createdTabId) {
+    logManagedAutofillDiag('createdTabId', { tabId: createdTabId });
+    detachDiag = attachManagedAutofillDiagLifecycle(createdTabId);
+  };
+
   return openGenericRealSiteTab(
     urlString,
     sendResponse,
     'managed-autofill',
     function (tabId, finishSession) {
-      runManagedAutofillOnTab(tabId, payload, 0, finishSession);
+      runManagedAutofillOnTab(tabId, payload, 0, function (result) {
+        function afterFinish(finalResult) {
+          finishSession(finalResult);
+          if (detachDiag) {
+            detachDiag();
+            detachDiag = null;
+          }
+          if (finalResult && finalResult.reason === 'targets_not_ready') {
+            scheduleManagedLateReadinessProbes(tabId, payload);
+          }
+        }
+
+        if (result && result.reason === 'targets_not_ready') {
+          enrichManagedTargetsNotReadyResult(tabId, result, afterFinish);
+          return;
+        }
+        afterFinish(result || { ok: false, reason: 'no_result' });
+      });
     },
     managedOptions,
   );
@@ -1979,17 +2122,6 @@ chrome.runtime.onMessageExternal.addListener(function (
 
   if (message.type === 'POC_FILL_DEMO') {
     openLocalPageAndFill(message.url, sendResponse, message);
-    return true;
-  }
-
-  if (message.type === 'POC_FILL_IL') {
-    console.log('[Israeli Vault POC] HTZone external message POC_FILL_IL received');
-    openHtzonePageAndFill(
-      message.url,
-      message.credentials,
-      { withAutofillParam: message.withAutofillParam !== false },
-      sendResponse,
-    );
     return true;
   }
 
@@ -2117,6 +2249,15 @@ chrome.runtime.onMessageExternal.addListener(function (
    */
   if (message.type === 'ADMIN_LOGIN_PAGE_INSPECT') {
     openPageAndInspectLoginStructure(message, sendResponse, sender);
+    return true;
+  }
+
+  /**
+   * Phase 120.2-AP — Admin Managed-parity readiness probe (assess-only).
+   * Same assessManagedTargetsReady as Managed fill. No credentials. No fill.
+   */
+  if (message.type === 'ADMIN_MANAGED_READINESS_PROBE') {
+    openPageAndManagedReadinessProbe(message, sendResponse, sender);
     return true;
   }
 

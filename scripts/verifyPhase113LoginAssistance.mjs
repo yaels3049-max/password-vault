@@ -38,7 +38,7 @@ function resolveLevel(service) {
   ) {
     return raw;
   }
-  if (service.adapterId === 'htzone' || service.adapterId === 'practice') {
+  if (service.adapterId === 'practice') {
     return 'automatic_supported';
   }
   const open = resolveOpenUrl(service);
@@ -65,7 +65,8 @@ function mainBehavioral() {
   const none = resolveOpenUrl({ url: '  ', loginUrl: '' });
   assert(none.kind === 'unavailable' && none.message.includes('אין קישור'), 'AC-113-3 message');
 
-  assert(resolveLevel({ adapterId: 'htzone', loginUrl: 'https://x/l', url: 'https://x' }) === 'automatic_supported');
+  assert(resolveLevel({ adapterId: 'practice', loginUrl: 'https://x/l', url: 'https://x' }) === 'automatic_supported');
+  assert(resolveLevel({ adapterId: 'htzone', loginUrl: 'https://x/l', url: 'https://x' }) === 'best_effort');
   assert(resolveLevel({ loginUrl: 'https://x/l', url: 'https://x' }) === 'best_effort');
   assert(resolveLevel({ url: 'https://www.leumi.co.il' }) === 'manual_only');
   assert(
