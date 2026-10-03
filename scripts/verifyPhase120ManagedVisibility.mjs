@@ -266,11 +266,11 @@ const origin = 'https://fixture.example.test';
     fieldMappings: [{ fieldId: 'username', locatorType: 'css', locator: '#UserName' }],
   });
   assert(assess.ready === true, 'F-ANC-ACTIVE parity ready');
-  const fillOk = win.runManagedAutofill({
+  const fillOk = await Promise.resolve(win.runManagedAutofill({
     allowedOrigin: origin,
     fieldMappings: [{ fieldId: 'username', locatorType: 'css', locator: '#UserName' }],
     credentials: { username: 'u' },
-  });
+  }));
   assert(fillOk.ok === true, 'F-ANC-ACTIVE runtime fill ok');
   assert(win.__visualTargetPickHelpers.managedEligibleFor(el) === true, 'F-ANC-ACTIVE visual');
   console.log('  ✓ F-ANC-ACTIVE ACCEPT (Fixture A / R3 flipped)');

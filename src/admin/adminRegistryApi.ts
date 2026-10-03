@@ -26,6 +26,15 @@ import { getSupabaseClient } from '../supabase/client';
 import { isSupabaseConfigured } from '../supabase/env';
 import { formatUnknownError } from '../formatErrorChain';
 import { mergeAutofillProfileMetadata, stripAutofillControlKeys } from '../autofill/validatedProfile';
+import {
+  LOGIN_CONTRACT_ACTIVATE_INTENT_KEY,
+  LOGIN_CONTRACT_ACTIVATION_META_KEY,
+  LOGIN_FLOW_PLAN_META_KEY,
+  mergeLoginContractMetadata,
+  resolveActiveLoginContract,
+  stripLoginContractControlKeys,
+} from '../loginContract';
+import { withoutLoginContractKeys } from './contractSafeMetadata';
 
 export interface AdminCategory {
   id: string;
@@ -287,6 +296,92 @@ export async function fetchPendingSubmissions(): Promise<AdminRegistryRow[]> {
   return (data ?? []) as AdminRegistryRow[];
 }
 
+export interface SubmitterProfile {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+}
+
+/** Phase 122.7 — names / emails of submitters (admin-only RPC; users who own a user-submitted row). */
+export async function fetchSubmitterProfiles(userIds: readonly string[]): Promise<SubmitterProfile[]> {
+  if (userIds.length === 0) return [];
+  await ensureSession();
+  const supabase = requireSupabase();
+
+  const { data, error } = await supabase.rpc('admin_submitter_profiles', {
+    p_user_ids: [...userIds],
+  });
+
+  if (error) {
+    throw mapRegistryError(error, 'לא ניתן לטעון את פרטי המגישים.');
+  }
+
+  return (data ?? []) as SubmitterProfile[];
+}
+
+/** Phase 122.8 R4 — admin-only internal note of one service (`public.admin_service_notes`). */
+export interface AdminServiceNote {
+  service_id: string;
+  body: string;
+  updated_at: string;
+}
+
+export const ADMIN_NOTE_MAX_LENGTH = 20000;
+
+export async function fetchAdminServiceNote(serviceId: string): Promise<AdminServiceNote | null> {
+  await ensureSession();
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from('admin_service_notes')
+    .select('service_id, body, updated_at')
+    .eq('service_id', serviceId)
+    .maybeSingle();
+  if (error) {
+    throw mapRegistryError(error, 'לא ניתן לטעון את ההערה.');
+  }
+  return (data as AdminServiceNote | null) ?? null;
+}
+
+/** Ids of the services that have a note (one ids-only query per catalog load). */
+export async function fetchAdminNoteServiceIds(): Promise<string[]> {
+  await ensureSession();
+  const supabase = requireSupabase();
+  const { data, error } = await supabase.from('admin_service_notes').select('service_id');
+  if (error) {
+    throw mapRegistryError(error, 'לא ניתן לטעון את סימוני ההערות.');
+  }
+  return ((data ?? []) as Array<{ service_id: string }>).map((row) => row.service_id);
+}
+
+/** Saves the note; an empty (whitespace-only) body removes it. Returns the saved note or null. */
+export async function saveAdminServiceNote(serviceId: string, body: string): Promise<AdminServiceNote | null> {
+  if (body.length > ADMIN_NOTE_MAX_LENGTH) {
+    throw new Error(`ההערה ארוכה מדי (עד ${ADMIN_NOTE_MAX_LENGTH} תווים).`);
+  }
+  const writerUserId = await requireAuthenticatedUserId();
+  const supabase = requireSupabase();
+  if (!body.trim()) {
+    const { error } = await supabase.from('admin_service_notes').delete().eq('service_id', serviceId);
+    if (error) {
+      throw mapRegistryError(error, 'לא ניתן לשמור את ההערה.');
+    }
+    return null;
+  }
+  const { data, error } = await supabase
+    .from('admin_service_notes')
+    .upsert(
+      { service_id: serviceId, body, updated_at: new Date().toISOString(), updated_by: writerUserId },
+      { onConflict: 'service_id' },
+    )
+    .select('service_id, body, updated_at')
+    .single();
+  if (error || !data) {
+    throw mapRegistryError(error, 'לא ניתן לשמור את ההערה.');
+  }
+  return data as AdminServiceNote;
+}
+
 export async function fetchRegistryRowForAdmin(serviceId: string): Promise<AdminRegistryRow | null> {
   await ensureSession();
   const supabase = requireSupabase();
@@ -450,12 +545,31 @@ export async function createGlobalRegistryRowWithDiscovery(
   return { serviceId, ...discovery };
 }
 
+/**
+ * D-121-55 — what the database reported for a global-row update. An update that RLS
+ * filters to zero rows returns no error, so callers that must prove a write read these.
+ */
+export interface GlobalRegistryWriteResult {
+  /** Rows the update matched (null when the response carried no rows array). */
+  updatedRows: number | null;
+  /** Session user the write ran as. */
+  writerUserId: string;
+  /** SPECIAL version the sent metadata activates (null when it does not resolve to SPECIAL). */
+  writtenSpecialVersion: number | null;
+}
+
+function contractModeLabel(metadata: unknown): string {
+  const resolved = resolveActiveLoginContract(metadata ?? {});
+  return resolved.mode === 'SPECIAL' ? `SPECIAL v${resolved.activePlanVersion}` : resolved.mode;
+}
+
 export async function updateGlobalRegistryRow(
   serviceId: string,
   patch: Partial<GlobalRegistryInput>,
-): Promise<void> {
-  await ensureSession();
+): Promise<GlobalRegistryWriteResult> {
+  const writerUserId = await requireAuthenticatedUserId();
   const supabase = requireSupabase();
+  let contractBefore: Record<string, unknown> | null = null;
 
   const payload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
@@ -511,6 +625,7 @@ export async function updateGlobalRegistryRow(
   }
   if (patch.login_url !== undefined || patch.metadata !== undefined) {
     const existing = await fetchRegistryRowForAdmin(serviceId);
+    contractBefore = existing?.metadata ?? null;
     const entryType: ExplicitLoginEntryType =
       patch.metadata?.loginEntryType === 'direct_url' ||
       patch.metadata?.loginEntryType === 'primary_page'
@@ -531,6 +646,7 @@ export async function updateGlobalRegistryRow(
         : merged;
   } else if (publishedCredentialMode) {
     const existing = await fetchRegistryRowForAdmin(serviceId);
+    contractBefore = existing?.metadata ?? null;
     payload.metadata = {
       ...(existing?.metadata ?? {}),
       credentialMode: publishedCredentialMode,
@@ -567,17 +683,83 @@ export async function updateGlobalRegistryRow(
     });
   }
 
-  const { error } = await supabase
+  // Phase 121.0 — atomic loginContractActivation / loginFlowPlan (siblings of autofillProfile).
+  if (
+    patch.metadata !== undefined &&
+    (Object.prototype.hasOwnProperty.call(patch.metadata, LOGIN_CONTRACT_ACTIVATE_INTENT_KEY) ||
+      Object.prototype.hasOwnProperty.call(patch.metadata, LOGIN_CONTRACT_ACTIVATION_META_KEY) ||
+      Object.prototype.hasOwnProperty.call(patch.metadata, LOGIN_FLOW_PLAN_META_KEY))
+  ) {
+    const existingForContract = await fetchRegistryRowForAdmin(serviceId);
+    const dbMeta = { ...(existingForContract?.metadata ?? {}) };
+    const afterAutofill = {
+      ...dbMeta,
+      ...((payload.metadata as Record<string, unknown> | undefined) ?? {}),
+    };
+    // Planner must see previous ACTIVE — strip this-request contract keys from "existing".
+    delete afterAutofill[LOGIN_CONTRACT_ACTIVATE_INTENT_KEY];
+    if (Object.prototype.hasOwnProperty.call(patch.metadata, LOGIN_CONTRACT_ACTIVATION_META_KEY)) {
+      if (Object.prototype.hasOwnProperty.call(dbMeta, LOGIN_CONTRACT_ACTIVATION_META_KEY)) {
+        afterAutofill[LOGIN_CONTRACT_ACTIVATION_META_KEY] =
+          dbMeta[LOGIN_CONTRACT_ACTIVATION_META_KEY];
+      } else {
+        delete afterAutofill[LOGIN_CONTRACT_ACTIVATION_META_KEY];
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(patch.metadata, LOGIN_FLOW_PLAN_META_KEY)) {
+      if (Object.prototype.hasOwnProperty.call(dbMeta, LOGIN_FLOW_PLAN_META_KEY)) {
+        afterAutofill[LOGIN_FLOW_PLAN_META_KEY] = dbMeta[LOGIN_FLOW_PLAN_META_KEY];
+      } else {
+        delete afterAutofill[LOGIN_FLOW_PLAN_META_KEY];
+      }
+    }
+    const mergedContract = mergeLoginContractMetadata({
+      existingMetadata: afterAutofill,
+      patchMetadata: patch.metadata,
+    });
+    if (!mergedContract.ok) {
+      throw new Error(mergedContract.message);
+    }
+    payload.metadata = stripLoginContractControlKeys(
+      stripAutofillControlKeys({
+        ...afterAutofill,
+        ...mergedContract.metadata,
+      }),
+    );
+  }
+
+  const { data, error } = await supabase
     .from('service_registry')
     .update(payload)
     .eq('id', serviceId)
-    .is('owner_user_id', null);
+    .is('owner_user_id', null)
+    .select('id');
 
   if (error) {
     throw mapRegistryError(error, 'לא ניתן לעדכן אתר גלובלי.');
   }
+  const updatedRows = Array.isArray(data) ? data.length : null;
+  let writtenSpecialVersion: number | null = null;
+
+  if (payload.metadata !== undefined) {
+    const written = resolveActiveLoginContract(payload.metadata);
+    if (written.mode === 'SPECIAL') writtenSpecialVersion = written.activePlanVersion;
+    const before = contractModeLabel(contractBefore);
+    const after = contractModeLabel(payload.metadata);
+    if (before !== 'STANDARD' || after !== 'STANDARD') {
+      // D-121-55 evidence: every write that carries or changes the login contract (no values).
+      console.info('[D-121-55 registry contract write]', {
+        serviceId,
+        before,
+        after,
+        updatedRows,
+        writer: writerUserId.slice(0, 8),
+      });
+    }
+  }
 
   invalidateCatalogCache();
+  return { updatedRows, writerUserId, writtenSpecialVersion };
 }
 
 /**
@@ -616,10 +798,11 @@ export async function updateUserOwnedRegistryRow(
       login_url_status: 'valid',
       category_id: patch.category_id,
       service_status: patch.service_status,
+      // User-owned rows have no contract merge: stored contract keys stay as stored.
       metadata: stampExplicitLoginMetadata(
         {
           ...(existing.metadata ?? {}),
-          ...(patch.metadata ?? {}),
+          ...withoutLoginContractKeys(patch.metadata),
         },
         'user',
         entryType,
@@ -639,6 +822,89 @@ export async function updateUserOwnedRegistryRow(
 
 export async function disableGlobalRegistryRow(serviceId: string): Promise<void> {
   await updateGlobalRegistryRow(serviceId, { service_status: 'disabled' });
+}
+
+export interface ServiceDeleteImpact {
+  usersCount: number;
+  profilesCount: number;
+  isBuiltin: boolean;
+}
+
+export interface ServiceDeleteResult extends ServiceDeleteImpact {
+  credentialsCount: number;
+  assetsCount: number;
+  storageRemoved: number;
+  /** Storage cleanup failure (best-effort); the DB delete is not undone. */
+  storageFailure: string | null;
+}
+
+/**
+ * D-121-51 C1: the delete RPCs keep the raw PostgREST text (code included, e.g. PGRST202);
+ * DeleteServiceDialog maps it to plain Hebrew and shows the raw text only under «פרטים טכניים».
+ */
+function serviceDeleteRpcError(error: unknown): Error {
+  const raw = error ? formatUnknownError(error) : 'unexpected empty RPC response';
+  return new Error(raw === 'unknown error' ? 'unexpected RPC error' : raw);
+}
+
+function countField(data: Record<string, unknown>, key: string): number {
+  const value = Number(data[key]);
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+/** D-121-51 preflight: users / profiles that the delete would remove, and the built-in flag. */
+export async function fetchServiceDeleteImpact(serviceId: string): Promise<ServiceDeleteImpact> {
+  await ensureSession();
+  const supabase = requireSupabase();
+  const { data, error } = await supabase.rpc('admin_service_delete_impact', {
+    p_service_id: serviceId,
+  });
+  if (error || !data || typeof data !== 'object') {
+    throw serviceDeleteRpcError(error);
+  }
+  const row = data as Record<string, unknown>;
+  return {
+    usersCount: countField(row, 'users_count'),
+    profilesCount: countField(row, 'profiles_count'),
+    isBuiltin: row.is_builtin === true,
+  };
+}
+
+/**
+ * D-121-51 «מחיקת אתר»: one server transaction removes the site for all users, then the site's
+ * Storage objects are removed best-effort (a Storage failure is reported, never rolled back).
+ */
+export async function adminDeleteService(
+  serviceId: string,
+  confirmDisplayName: string,
+): Promise<ServiceDeleteResult> {
+  await ensureSession();
+  const supabase = requireSupabase();
+  const { data, error } = await supabase.rpc('admin_delete_service', {
+    p_service_id: serviceId,
+    p_confirm_display_name: confirmDisplayName,
+  });
+  if (error || !data || typeof data !== 'object') {
+    throw serviceDeleteRpcError(error);
+  }
+  invalidateCatalogCache();
+  const row = data as Record<string, unknown>;
+  const assetPaths = Array.isArray(row.asset_paths)
+    ? row.asset_paths.filter((path): path is string => typeof path === 'string')
+    : [];
+  const { removeServiceAssetObjects } = await import('../serviceAssets/removeServiceAssetObjects');
+  const storage = await removeServiceAssetObjects(supabase, serviceId, assetPaths);
+  const { invalidateServiceLogoCache } = await import('../logoCache');
+  invalidateServiceLogoCache(serviceId);
+  return {
+    usersCount: countField(row, 'users_count'),
+    profilesCount: countField(row, 'profiles_count'),
+    isBuiltin: row.is_builtin === true,
+    credentialsCount: countField(row, 'credentials_count'),
+    assetsCount: countField(row, 'assets_count'),
+    storageRemoved: storage.removed,
+    storageFailure: storage.failure,
+  };
 }
 
 export async function promoteUserSubmission(
@@ -820,7 +1086,7 @@ export async function updateIconMetadata(
   }
 
   const metadata = {
-    ...(row.metadata ?? {}),
+    ...withoutLoginContractKeys(row.metadata),
   };
 
   if (patch.faviconSiteUrl !== undefined) {
@@ -874,20 +1140,6 @@ export async function adminRefreshServiceIcon(
   );
   const item = report.items[0];
   return { message: item?.message || 'רענון הסתיים.' };
-}
-
-export async function updateAdminNotes(serviceId: string, adminNotes: string): Promise<void> {
-  const row = await fetchRegistryRowForAdmin(serviceId);
-  if (!row || row.owner_user_id !== null) {
-    throw new Error('ניתן לערוך הערות רק לאתר גלובלי.');
-  }
-
-  await updateGlobalRegistryRow(serviceId, {
-    metadata: {
-      ...(row.metadata ?? {}),
-      adminNotes: adminNotes.trim(),
-    },
-  });
 }
 
 export interface AdminRediscoveryResult {
@@ -1012,7 +1264,7 @@ export async function adminRefreshLoginIntelligence(
   });
 
   const metadata = {
-    ...(row.metadata ?? {}),
+    ...withoutLoginContractKeys(row.metadata),
     ...result.metadataPatch,
   };
 
@@ -1049,7 +1301,7 @@ export async function adminOverrideLoginIntelligence(
   const liPatch = buildManualLoginIntelligenceOverride(row.metadata, patch);
   await updateGlobalRegistryRow(serviceId, {
     metadata: {
-      ...(row.metadata ?? {}),
+      ...withoutLoginContractKeys(row.metadata),
       ...liPatch,
     },
   });

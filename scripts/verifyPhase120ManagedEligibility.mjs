@@ -234,11 +234,11 @@ async function mainContract(mod) {
   });
   assert(assessA.ready === true, 'A parity ready (120.6 flip)');
 
-  const fillA = winA.runManagedAutofill({
+  const fillA = await Promise.resolve(winA.runManagedAutofill({
     allowedOrigin: origin,
     fieldMappings: [{ fieldId: 'username', locatorType: 'css', locator: '#UserName' }],
     credentials: { username: 'u' },
-  });
+  }));
   assert(fillA.ok === true, 'A runtime fill ok (120.6 flip)');
 
   assert(winA.__visualTargetPickHelpers.isIdentifiableControl(elA) === true, 'A identifiable');

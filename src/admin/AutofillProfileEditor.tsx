@@ -1,17 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AdminRegistryRow } from './adminRegistryApi';
 import { updateGlobalRegistryRow } from './adminRegistryApi';
+import { useAdminConfirm } from './AdminConfirmDialog';
 import {
-  AUTOFILL_LIVE_VALIDATION_APPROVED_KEY,
-  AUTOFILL_MANAGED_READINESS_PROBE_PASSED_KEY,
-  AUTOFILL_PROFILE_ACTION_KEY,
-  AUTOFILL_SUPPORT_STATE_LABEL_HE,
   originFromHttpsLoginEntry,
   readAutofillProfileFromMetadata,
   validateAutofillProfileStructural,
   type AutofillFieldMapping,
   type AutofillProfileAction,
-  type AutofillSupportState,
 } from '../autofill/validatedProfile';
 import { runManagedReadinessProbe } from '../autofill/managedReadinessProbe';
 import { classifyStoredLoginFields } from '../service/credentialSchema';
@@ -21,6 +17,7 @@ import {
   ANALYZING_LOGIN_PAGE_LABEL_HE,
   NOT_CONFIDENTLY_MAPPED_LABEL_HE,
   startVisualMappingForField,
+  cancelVisualMappingForField,
   VISUAL_MAPPING_IN_PROGRESS_LABEL_HE,
   VISUAL_MAPPING_LABEL_HE,
   IDENTIFIED_BUT_MANAGED_INELIGIBLE_LABEL_HE,
@@ -29,7 +26,6 @@ import {
   visualTargetsEquivalent,
   applyVisualMappingAuthoring,
   markManualEdit,
-  stampAdminTestPassed,
   adminTestSuccessVisible,
   upsertFieldAuthoring,
   CONFIDENCE_HIGH_LABEL_HE,
@@ -40,21 +36,27 @@ import {
   ADMIN_TEST_PASSED_LABEL_HE,
 } from '../assistedMapping';
 import {
-  executeAdminManagedAutofillTest,
-  formatAdminManagedTestResultSummary,
-  type ManagedAutofillStructuredOutcome,
-} from '../execution/managedAutofill';
+  GRID_SPECIAL_TO_STANDARD_HE,
+  buildGridProfileMetadataPatch,
+  liveContractIsNotStandard,
+} from './specialActionBar';
+import type { ManagedGridSharedState } from './fillTestContext';
+import { ADMIN_VISUAL_PICK_COPY_HE } from './visualPickCopy';
+import { AdminVisualPickSession } from './visualPickSession';
+import { ADMIN_GRID_COPY_HE, ADMIN_MAPPING_COPY_HE, approveConfirmTitleHe } from './mappingCopy';
 
 interface AutofillProfileEditorProps {
   row: AdminRegistryRow;
   onSaved: () => Promise<void>;
-}
-
-function supportLabel(state: AutofillSupportState | null): string {
-  if (!state) {
-    return AUTOFILL_SUPPORT_STATE_LABEL_HE.not_configured;
-  }
-  return AUTOFILL_SUPPORT_STATE_LABEL_HE[state];
+  /**
+   * Live «אופי הכניסה» selection is SPECIAL: this grid is not rendered (D-121-45), and
+   * Login-Entry Analyze / Visual stay disabled so no SPECIAL mapping reaches autofillProfile.
+   */
+  specialPatternSelected?: boolean;
+  /** D-121-38 — «בדיקת מילוי» observes dirty / busy / in-memory authoring facts. */
+  onSharedStateChange?: (state: ManagedGridSharedState) => void;
+  /** D-121-38 — a «בדיקת מילוי» run is in progress (locks this grid, as before the move). */
+  fillTestRunning?: boolean;
 }
 
 function serializeMappings(mappings: AutofillFieldMapping[]): string {
@@ -68,7 +70,13 @@ function serializeMappings(mappings: AutofillFieldMapping[]): string {
     .join(';');
 }
 
-export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileEditorProps) {
+export default function AutofillProfileEditor({
+  row,
+  onSaved,
+  specialPatternSelected = false,
+  onSharedStateChange,
+  fillTestRunning = false,
+}: AutofillProfileEditorProps) {
   const stored = classifyStoredLoginFields(row.login_fields);
   const fields = stored.status === 'valid' ? stored.fields : [];
   const existing = readAutofillProfileFromMetadata(row.metadata);
@@ -91,14 +99,27 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
   const [probing, setProbing] = useState(false);
   const [visualMappingFieldId, setVisualMappingFieldId] = useState<string | null>(null);
   const [approveConfirmOpen, setApproveConfirmOpen] = useState(false);
-  /** Phase 120.5 — temp Admin test values; component memory only (retention B). */
-  const [tempTestValues, setTempTestValues] = useState<Record<string, string>>({});
-  const [testing, setTesting] = useState(false);
-  const [testOutcome, setTestOutcome] = useState<ManagedAutofillStructuredOutcome | null>(null);
+  /** D-121-30 — live contract SPECIAL: grid activation replaces it (confirmed first). */
+  const [switchConfirmOpen, setSwitchConfirmOpen] = useState(false);
+  const { ask: askConfirm, dialog: confirmDialog } = useAdminConfirm();
+  const [switchConfirmed, setSwitchConfirmed] = useState(false);
+  const testing = fillTestRunning;
   /** Phase 120.8 — draft authoring facts; persist on Save (and Admin Test success stamp). */
   const [fieldAuthoring, setFieldAuthoring] = useState<FieldAuthoringEntry[]>(
     () => existing?.fieldAuthoring ?? [],
   );
+
+  // D-121-42: same bounded pick / cancel / late-response guard as the SPECIAL editor.
+  const pickSessionRef = useRef<AdminVisualPickSession | null>(null);
+  if (pickSessionRef.current === null) {
+    pickSessionRef.current = new AdminVisualPickSession();
+  }
+  useEffect(() => {
+    const session = pickSessionRef.current;
+    return () => {
+      session?.cancel();
+    };
+  }, []);
 
   useEffect(() => {
     const next: Record<string, string> = {};
@@ -110,9 +131,6 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
     setUnmappedFieldIds([]);
     setIdentifiedIneligibleFieldIds([]);
     setFieldAuthoring(profile?.fieldAuthoring ?? []);
-    // Remount / row change clears temp test values (retention B).
-    setTempTestValues({});
-    setTestOutcome(null);
   }, [row.id, row.updated_at]);
 
   useEffect(() => {
@@ -147,11 +165,32 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
   const formHasAnyLocator = fieldMappings.some((mapping) => mapping.locator.trim());
   const formIsEmpty = !formHasAnyLocator;
 
-  if (fields.length === 0) {
+  useEffect(() => {
+    onSharedStateChange?.({
+      rowId: row.id,
+      hasUnsavedChanges,
+      busy: saving || analyzing || probing || Boolean(visualMappingFieldId),
+      inputsLocked: analyzing || probing,
+      fieldAuthoring,
+    });
+  }, [
+    onSharedStateChange,
+    row.id,
+    hasUnsavedChanges,
+    saving,
+    analyzing,
+    probing,
+    visualMappingFieldId,
+    fieldAuthoring,
+  ]);
+
+  // D-121-45: rendered only while STANDARD is selected (stays mounted → edits kept).
+  if (fields.length === 0 || specialPatternSelected) {
     return null;
   }
 
   const allowedOrigin = originFromHttpsLoginEntry(loginEntryUrl) ?? '';
+  const liveNotStandard = liveContractIsNotStandard(row.metadata);
   const structural = validateAutofillProfileStructural(
     { fieldMappings, loginEntryUrl, allowedOrigin },
     { loginFields: row.login_fields, loginUrl: row.login_url },
@@ -167,14 +206,16 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
     !testing &&
     !visualMappingFieldId &&
     fields.length > 0 &&
-    Boolean(originFromHttpsLoginEntry(loginEntryUrl));
+    Boolean(originFromHttpsLoginEntry(loginEntryUrl)) &&
+    !specialPatternSelected;
   const canVisualMap =
     !saving &&
     !analyzing &&
     !probing &&
     !testing &&
     !visualMappingFieldId &&
-    Boolean(originFromHttpsLoginEntry(loginEntryUrl));
+    Boolean(originFromHttpsLoginEntry(loginEntryUrl)) &&
+    !specialPatternSelected;
   const canSave =
     !saving &&
     !analyzing &&
@@ -182,6 +223,15 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
     !testing &&
     !visualMappingFieldId &&
     hasUnsavedChanges &&
+    (structural.ok || (formIsEmpty && Boolean(existing)));
+  /** D-121-53: every canSave condition holds except "has unsaved changes". */
+  const saveBlockedOnlyByNoChanges =
+    !saving &&
+    !analyzing &&
+    !probing &&
+    !testing &&
+    !visualMappingFieldId &&
+    !hasUnsavedChanges &&
     (structural.ok || (formIsEmpty && Boolean(existing)));
   const canApprove =
     !saving &&
@@ -193,7 +243,8 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
     Boolean(existing) &&
     structural.ok &&
     !hasUnsavedChanges &&
-    existing!.supportState !== 'validated';
+    // Live SPECIAL: an already-validated regular mapping must still be activatable (return path).
+    (existing!.supportState !== 'validated' || liveNotStandard);
   /** Clears form locators only (S0→S1). Persist requires Save → clear_managed_mappings. */
   const canClear =
     !saving && !analyzing && !probing && !testing && !visualMappingFieldId && formHasAnyLocator;
@@ -205,77 +256,6 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
     !visualMappingFieldId &&
     Boolean(existing) &&
     (existing!.supportState === 'validated' || existing!.supportState === 'unsupported');
-
-  const savedProfileReady =
-    Boolean(existing) &&
-    existing!.fieldMappings.some((m) => m.fieldId.trim() && m.locator.trim()) &&
-    Boolean(existing!.loginEntryUrl.trim()) &&
-    Boolean(existing!.allowedOrigin.trim());
-
-  const allTempValuesFilled =
-    fields.length > 0 &&
-    fields.every((field) => Boolean((tempTestValues[field.id] ?? '').trim()));
-
-  /** AC-120.5-1/3: saved mapping (not necessarily validated); all temps filled; not dirty. */
-  const canRunManagedTest =
-    !saving &&
-    !analyzing &&
-    !probing &&
-    !testing &&
-    !visualMappingFieldId &&
-    savedProfileReady &&
-    !hasUnsavedChanges &&
-    allTempValuesFilled;
-
-  async function requestManagedTest(): Promise<void> {
-    if (!canRunManagedTest || !existing) {
-      return;
-    }
-    setError(null);
-    setSuccess(null);
-    setTestOutcome(null);
-    setTesting(true);
-    try {
-      const outcome = await executeAdminManagedAutofillTest({
-        serviceId: row.id,
-        savedProfile: existing,
-        loginFields: fields,
-        tempCredentials: tempTestValues,
-      });
-      setTestOutcome(outcome);
-      if (outcome.ok) {
-        setSuccess(outcome.userMessage);
-        // Phase 120.8 — persist Admin Test success fact only (no MEDIUM→HIGH, no validate).
-        const configVersion = existing.configVersion;
-        const mappedIds = existing.fieldMappings
-          .filter((m) => m.fieldId.trim() && m.locator.trim())
-          .map((m) => m.fieldId);
-        const stamped = stampAdminTestPassed(fieldAuthoring, mappedIds, configVersion);
-        setFieldAuthoring(stamped);
-        await updateGlobalRegistryRow(row.id, {
-          metadata: {
-            ...(row.metadata ?? {}),
-            autofillProfile: {
-              fieldMappings: existing.fieldMappings,
-              loginEntryUrl: existing.loginEntryUrl,
-              allowedOrigin: existing.allowedOrigin,
-              fieldAuthoring: stamped,
-            },
-            [AUTOFILL_PROFILE_ACTION_KEY]: 'save',
-            [AUTOFILL_LIVE_VALIDATION_APPROVED_KEY]: false,
-            [AUTOFILL_MANAGED_READINESS_PROBE_PASSED_KEY]: false,
-          },
-        });
-        await onSaved();
-      } else {
-        setError(formatAdminManagedTestResultSummary(outcome));
-      }
-    } catch {
-      setError('בדיקת המילוי המנוהל נכשלה. נסו שוב.');
-    } finally {
-      setTesting(false);
-    }
-  }
 
   async function requestAnalyzeLoginPage(): Promise<void> {
     if (!canAnalyze) {
@@ -374,64 +354,98 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
     setError(null);
     setSuccess(null);
     setVisualMappingFieldId(fieldId);
-    try {
-      const result = await startVisualMappingForField({
-        fieldId,
-        loginEntryUrl,
-      });
-      if (!result.ok) {
-        setError(result.message);
-        if (result.state === 'IDENTIFIED_BUT_MANAGED_INELIGIBLE') {
-          setIdentifiedIneligibleFieldIds((current) =>
-            current.includes(fieldId) ? current : [...current, fieldId],
-          );
-        }
+    const session = pickSessionRef.current!;
+    const pickLoginEntryUrl = loginEntryUrl;
+    const outcome = await session.run({
+      start: () =>
+        startVisualMappingForField({ fieldId, loginEntryUrl: pickLoginEntryUrl }).catch(() => null),
+      disarm: () => cancelVisualMappingForField({ loginEntryUrl: pickLoginEntryUrl }),
+      onHubTimeout: () => {
+        setVisualMappingFieldId(null);
+        setError(ADMIN_VISUAL_PICK_COPY_HE.timeoutField);
+      },
+    });
+    // Timed out / cancelled / superseded: the editor was already released; write nothing.
+    if (outcome.stale) {
+      return;
+    }
+    setVisualMappingFieldId(null);
+    const result = outcome.result;
+    if (!result) {
+      setError('לא ניתן להשלים מיפוי חזותי כרגע. נסו שוב.');
+      return;
+    }
+    if (!result.ok) {
+      if (result.reason === 'visual_pick_timeout') {
+        setError(ADMIN_VISUAL_PICK_COPY_HE.timeoutField);
         return;
       }
-      const previousAuth = fieldAuthoring.find((row) => row.fieldId === fieldId);
-      const currentLocator = (locators[fieldId] ?? '').trim();
-      const sameTarget = visualTargetsEquivalent({
-        currentLocator,
-        currentObservedInputId: previousAuth?.observedInputId,
-        visualLocator: result.locator,
-        visualObservedInputId: result.observedInputId,
-        visualLocatorCandidates: result.locatorCandidates,
-      });
-      // 120.9: ALWAYS persist Visual's verified unique locator (never preserve Analyze via E2).
-      setLocators((current) => ({
-        ...current,
-        [result.fieldId]: result.locator,
-      }));
-      setFieldAuthoring((current) =>
-        applyVisualMappingAuthoring({
-          current,
-          fieldId: result.fieldId,
-          sameTarget,
-          previous: previousAuth,
-          visualObservedInputId: result.observedInputId,
-        }),
-      );
-      setUnmappedFieldIds((current) => current.filter((id) => id !== result.fieldId));
-      setIdentifiedIneligibleFieldIds((current) =>
-        current.filter((id) => id !== result.fieldId),
-      );
-      setSuccess(result.message);
-    } catch {
-      setError('לא ניתן להשלים מיפוי חזותי כרגע. נסו שוב.');
-    } finally {
-      setVisualMappingFieldId(null);
+      if (result.reason === 'visual_pick_cancelled') {
+        setSuccess(ADMIN_VISUAL_PICK_COPY_HE.cancelled);
+        return;
+      }
+      setError(result.message);
+      if (result.state === 'IDENTIFIED_BUT_MANAGED_INELIGIBLE') {
+        setIdentifiedIneligibleFieldIds((current) =>
+          current.includes(fieldId) ? current : [...current, fieldId],
+        );
+      }
+      return;
     }
+    const previousAuth = fieldAuthoring.find((row) => row.fieldId === fieldId);
+    const currentLocator = (locators[fieldId] ?? '').trim();
+    const sameTarget = visualTargetsEquivalent({
+      currentLocator,
+      currentObservedInputId: previousAuth?.observedInputId,
+      visualLocator: result.locator,
+      visualObservedInputId: result.observedInputId,
+      visualLocatorCandidates: result.locatorCandidates,
+    });
+    // 120.9: ALWAYS persist Visual's verified unique locator (never preserve Analyze via E2).
+    setLocators((current) => ({
+      ...current,
+      [result.fieldId]: result.locator,
+    }));
+    setFieldAuthoring((current) =>
+      applyVisualMappingAuthoring({
+        current,
+        fieldId: result.fieldId,
+        sameTarget,
+        previous: previousAuth,
+        visualObservedInputId: result.observedInputId,
+      }),
+    );
+    setUnmappedFieldIds((current) => current.filter((id) => id !== result.fieldId));
+    setIdentifiedIneligibleFieldIds((current) =>
+      current.filter((id) => id !== result.fieldId),
+    );
+    setSuccess(result.message);
   }
 
-  function requestClearMapping(): void {
+  function cancelVisualMapping(): void {
+    if (!pickSessionRef.current?.cancel()) {
+      return;
+    }
+    setVisualMappingFieldId(null);
+    setError(null);
+    setSuccess(ADMIN_VISUAL_PICK_COPY_HE.cancelled);
+  }
+
+  async function requestClearMapping(): Promise<void> {
     if (!canClear) {
       return;
     }
     const isValidated = existing?.supportState === 'validated';
-    const confirmMessage = isValidated
-      ? 'לנקות את מיפוי המילוי האוטומטי המאומת?\n\nרק בוררי המיפוי יוסרו מהגדרת השירות — סיסמאות ופרטי כניסה לא יימחקו.\nמילוי מנוהל בבית הדיגיטלי יופסק עד מיפוי ואישור מחדש.\n\nלאחר הניקוי יש ללחוץ «שמור מיפוי» כדי להסיר מהשרת.'
-      : 'לנקות את שדות המיפוי במסך?\n\nרק בוררי המיפוי יוסרו — סיסמאות ופרטי כניסה לא יימחקו.\nיש ללחוץ «שמור מיפוי» כדי להסיר את המיפוי מהשרת.';
-    if (!window.confirm(confirmMessage)) {
+    const confirmed = await askConfirm({
+      name: 'clear-mapping',
+      title: isValidated ? 'לנקות את מיפוי המילוי האוטומטי המאומת?' : 'לנקות את שדות המיפוי במסך?',
+      body: isValidated
+        ? 'רק בוררי המיפוי יוסרו מהגדרת השירות — סיסמאות ופרטי כניסה לא יימחקו.\nמילוי מנוהל בבית הדיגיטלי יופסק עד מיפוי ואישור מחדש.\n\nלאחר הניקוי יש ללחוץ «שמור מיפוי» כדי להסיר מהשרת.'
+        : 'רק בוררי המיפוי יוסרו — סיסמאות ופרטי כניסה לא יימחקו.\nיש ללחוץ «שמור מיפוי» כדי להסיר את המיפוי מהשרת.',
+      confirmLabel: 'ניקוי',
+      tone: 'danger',
+    });
+    if (!confirmed) {
       return;
     }
     const cleared: Record<string, string> = {};
@@ -450,15 +464,37 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
     if (!canApprove) {
       return;
     }
+    setSwitchConfirmed(false);
+    if (liveNotStandard) {
+      setSwitchConfirmOpen(true);
+      return;
+    }
+    setApproveConfirmOpen(true);
+  }
+
+  function cancelSwitchToStandard(): void {
+    setSwitchConfirmOpen(false);
+    setSwitchConfirmed(false);
+  }
+
+  function confirmSwitchToStandard(): void {
+    setSwitchConfirmOpen(false);
+    setSwitchConfirmed(true);
     setApproveConfirmOpen(true);
   }
 
   function cancelApproveMapping(): void {
     setApproveConfirmOpen(false);
+    setSwitchConfirmed(false);
   }
 
   function confirmApproveMapping(): void {
     setApproveConfirmOpen(false);
+    if (liveNotStandard && !switchConfirmed) {
+      return;
+    }
+    const specialToStandard = liveNotStandard && switchConfirmed;
+    setSwitchConfirmed(false);
     void (async () => {
       setError(null);
       setSuccess(null);
@@ -475,6 +511,7 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
         await persist('activate_validated', {
           liveValidationApproved: true,
           managedReadinessProbePassed: true,
+          specialToStandard,
         });
       } catch {
         setError('בדיקת מוכנות מנוהלת נכשלה. נסו שוב.');
@@ -501,7 +538,11 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
 
   async function persist(
     action: AutofillProfileAction,
-    options?: { liveValidationApproved?: boolean; managedReadinessProbePassed?: boolean },
+    options?: {
+      liveValidationApproved?: boolean;
+      managedReadinessProbePassed?: boolean;
+      specialToStandard?: boolean;
+    },
   ) {
     setError(null);
     setSuccess(null);
@@ -525,13 +566,17 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
               fieldAuthoring,
             };
       await updateGlobalRegistryRow(row.id, {
-        metadata: {
-          ...(row.metadata ?? {}),
-          autofillProfile: profilePayload,
-          [AUTOFILL_PROFILE_ACTION_KEY]: action,
-          [AUTOFILL_LIVE_VALIDATION_APPROVED_KEY]: liveValidationApproved,
-          [AUTOFILL_MANAGED_READINESS_PROBE_PASSED_KEY]: managedReadinessProbePassed,
-        },
+        metadata: buildGridProfileMetadataPatch({
+          metadata: row.metadata,
+          action,
+          profilePayload,
+          liveValidationApproved,
+          managedReadinessProbePassed,
+          specialToStandard:
+            action === 'activate_validated' && options?.specialToStandard === true
+              ? { previous: existing, loginFields: fields, loginUrl: loginEntryUrl }
+              : null,
+        }),
       });
       await onSaved();
       setUnmappedFieldIds([]);
@@ -546,12 +591,12 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
             : action === 'disable_unsupported'
               ? 'המילוי האוטומטי המנוהל הוגדר כלא נתמך.'
               : action === 'activate_validated'
-                ? 'המיפוי אושר'
-                : 'המיפוי נשמר בהצלחה',
+                ? ADMIN_MAPPING_COPY_HE.approved
+                : ADMIN_MAPPING_COPY_HE.saved,
       );
     } catch (err) {
       // C4: never claim clear success when persist fails.
-      setError(err instanceof Error ? err.message : 'שמירת המיפוי נכשלה.');
+      setError(err instanceof Error ? err.message : ADMIN_MAPPING_COPY_HE.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -559,33 +604,50 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
 
   return (
     <section className="admin-panel admin-autofill-profile">
-      <h3 className="admin-panel-title">מילוי אוטומטי מנוהל</h3>
+      <h3 className="admin-panel-title">{ADMIN_GRID_COPY_HE.standardTitle}</h3>
       <p className="admin-panel-hint">
         מיפוי חזותי: בחרו שדה ולחצו על הבקרה בדף הכניסה האמיתי (ללא הקלדת CSS). ניתוח דף
         כניסה מציע מיפויים בביטחון גבוה או בינוני (הצעה בלבד — לא אישור). שמירה מבצעת בדיקה
         מבנית בלבד ואינה מסמנת את האתר כמאומת — ללא שמירה אוטומטית.
       </p>
-      <p className="admin-autofill-state">
-        מצב תמיכה: <strong>{supportLabel(existing?.supportState ?? null)}</strong>
-        {analyzing ? (
-          <>
-            {' '}
-            · <span role="status">{ANALYZING_LOGIN_PAGE_LABEL_HE}</span>
-          </>
-        ) : null}
-        {probing ? (
-          <>
-            {' '}
-            · <span role="status">בודק מוכנות מנוהלת…</span>
-          </>
-        ) : null}
-        {visualMappingFieldId ? (
-          <>
-            {' '}
-            · <span role="status">{VISUAL_MAPPING_IN_PROGRESS_LABEL_HE}</span>
-          </>
-        ) : null}
-      </p>
+      {analyzing || probing || visualMappingFieldId ? (
+        <p className="admin-autofill-state" data-status="standard-in-progress">
+          {[
+            analyzing ? ANALYZING_LOGIN_PAGE_LABEL_HE : null,
+            probing ? 'בודק מוכנות מנוהלת…' : null,
+            visualMappingFieldId ? VISUAL_MAPPING_IN_PROGRESS_LABEL_HE : null,
+          ]
+            .filter((label): label is string => label !== null)
+            .map((label, index) => (
+              <span key={label}>
+                {index > 0 ? ' · ' : null}
+                <span role="status">{label}</span>
+              </span>
+            ))}
+        </p>
+      ) : null}
+      {visualMappingFieldId ? (
+        <div className="admin-special-visual-armed" data-panel="standard-visual-armed">
+          <p role="status" data-status="standard-visual-armed">
+            {ADMIN_VISUAL_PICK_COPY_HE.waitingField}{' '}
+            <strong>
+              {fields.find((field) => field.id === visualMappingFieldId)?.label ?? visualMappingFieldId}
+            </strong>
+            . {ADMIN_VISUAL_PICK_COPY_HE.cancelHint}
+          </p>
+          <p className="admin-muted" data-status="standard-site-tab">
+            {ADMIN_VISUAL_PICK_COPY_HE.siteTabActive}
+          </p>
+          <button
+            type="button"
+            className="admin-btn admin-btn-secondary"
+            data-action="standard-visual-cancel"
+            onClick={cancelVisualMapping}
+          >
+            ביטול
+          </button>
+        </div>
+      ) : null}
       <div className="admin-autofill-fields">
         {fields.map((field) => {
           const emptyAndUnmapped =
@@ -680,69 +742,7 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
           {structural.issues[0]?.message}
         </p>
       ) : (
-        <p className="admin-muted">הבדיקה המבנית תקינה.</p>
-      )}
-
-      {savedProfileReady ? (
-        <div className="admin-autofill-test" data-section="managed-test-harness">
-          <h4 className="admin-panel-subtitle">בדיקת מילוי מנוהל</h4>
-          <p className="admin-panel-hint">
-            ערכים זמניים לבדיקה בלבד (בזיכרון המסך). הבדיקה רצה מול המיפוי{' '}
-            <strong>השמור</strong> בלבד — ללא שינוי מצב תמיכה או אימות. אין צורך ב«מאומת».
-          </p>
-          {hasUnsavedChanges ? (
-            <p className="admin-muted" role="status">
-              יש שינויים שלא נשמרו — שמרו את המיפוי לפני בדיקה.
-            </p>
-          ) : null}
-          <div className="admin-autofill-test-fields">
-            {fields.map((field) => (
-              <label key={`test-${field.id}`} className="admin-field">
-                <span>
-                  {field.label} <code>{field.id}</code>
-                </span>
-                <input
-                  type={field.type === 'password' ? 'password' : 'text'}
-                  value={tempTestValues[field.id] ?? ''}
-                  onChange={(event) =>
-                    setTempTestValues((current) => ({
-                      ...current,
-                      [field.id]: event.target.value,
-                    }))
-                  }
-                  autoComplete="off"
-                  data-temp-test-field={field.id}
-                  disabled={testing || analyzing || probing}
-                  aria-label={`ערך בדיקה זמני ל-${field.label}`}
-                />
-              </label>
-            ))}
-          </div>
-          <button
-            type="button"
-            className="admin-btn admin-btn-secondary"
-            disabled={!canRunManagedTest}
-            data-action="managed-test"
-            data-enabled={canRunManagedTest ? 'true' : 'false'}
-            aria-disabled={!canRunManagedTest}
-            onClick={() => {
-              void requestManagedTest();
-            }}
-          >
-            {testing ? 'ממלא…' : 'כניסה לאתר ומילוי שדות'}
-          </button>
-          {testOutcome && !testOutcome.ok ? (
-            <p className="admin-muted" data-testid="managed-test-structure" role="status">
-              {[testOutcome.reason, testOutcome.fieldId, testOutcome.detail, testOutcome.locator]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
-          ) : null}
-        </div>
-      ) : (
-        <p className="admin-muted" data-section="managed-test-unavailable">
-          בדיקת מילוי מנוהל זמינה לאחר שמירת מיפוי עם כתובת כניסה.
-        </p>
+        <p className="admin-muted">{ADMIN_MAPPING_COPY_HE.structuralOk}</p>
       )}
 
       {error ? (
@@ -786,7 +786,7 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
           aria-disabled={!canSave}
           onClick={requestSaveMapping}
         >
-          שמור מיפוי
+          {ADMIN_MAPPING_COPY_HE.save}
         </button>
         <button
           type="button"
@@ -797,7 +797,7 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
           aria-disabled={!canApprove}
           onClick={requestApproveMapping}
         >
-          אשר מיפוי
+          {ADMIN_MAPPING_COPY_HE.approve}
         </button>
         <button
           type="button"
@@ -806,7 +806,7 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
           data-action="clear"
           data-enabled={canClear ? 'true' : 'false'}
           aria-disabled={!canClear}
-          onClick={requestClearMapping}
+          onClick={() => void requestClearMapping()}
         >
           נקה מיפוי
         </button>
@@ -825,6 +825,52 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
           הגדר כלא נתמך
         </button>
       </div>
+      {saveBlockedOnlyByNoChanges ? (
+        <p className="admin-muted" data-status="no-changes-to-save">
+          {ADMIN_MAPPING_COPY_HE.noChangesToSave}
+        </p>
+      ) : null}
+
+      {switchConfirmOpen ? (
+        <div
+          className="admin-modal-overlay"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              cancelSwitchToStandard();
+            }
+          }}
+        >
+          <div
+            className="admin-modal admin-autofill-confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-describedby="admin-autofill-switch-body"
+            dir="rtl"
+            data-panel="special-to-standard-confirm"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p id="admin-autofill-switch-body">{GRID_SPECIAL_TO_STANDARD_HE.confirm}</p>
+            <div className="admin-actions-row admin-autofill-confirm-actions">
+              <button
+                type="button"
+                className="admin-btn admin-btn-secondary"
+                data-action="cancel-special-to-standard"
+                onClick={cancelSwitchToStandard}
+              >
+                {GRID_SPECIAL_TO_STANDARD_HE.cancel}
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn-primary"
+                data-action="confirm-special-to-standard"
+                onClick={confirmSwitchToStandard}
+              >
+                {GRID_SPECIAL_TO_STANDARD_HE.confirmYes}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {approveConfirmOpen ? (
         <div
@@ -844,7 +890,7 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
             dir="rtl"
             onClick={(event) => event.stopPropagation()}
           >
-            <h3 id="admin-autofill-approve-title">{`לאשר את המיפוי ל${serviceDisplayName}?`}</h3>
+            <h3 id="admin-autofill-approve-title">{approveConfirmTitleHe(serviceDisplayName)}</h3>
             <p id="admin-autofill-approve-body">
               {`לאחר האישור תבוצע בדיקת מוכנות מנוהלת בדף הכניסה. רק אם כל המיפויים מזהים יעד יחיד ובטוח, המערכת תוכל להשתמש במיפוי למילוי פרטי הכניסה ל${serviceDisplayName}.`}
             </p>
@@ -855,7 +901,7 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
                 disabled={saving || probing}
                 onClick={cancelApproveMapping}
               >
-                ביטול
+                {ADMIN_MAPPING_COPY_HE.cancel}
               </button>
               <button
                 type="button"
@@ -863,12 +909,13 @@ export default function AutofillProfileEditor({ row, onSaved }: AutofillProfileE
                 disabled={saving || probing}
                 onClick={confirmApproveMapping}
               >
-                אשר מיפוי
+                {ADMIN_MAPPING_COPY_HE.approve}
               </button>
             </div>
           </div>
         </div>
       ) : null}
+      {confirmDialog}
     </section>
   );
 }

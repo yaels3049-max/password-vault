@@ -28,6 +28,20 @@ export function assertLocatorDeterministic(
   return candidate.matchCount === 1;
 }
 
+/**
+ * D-121-54 — Hub twin of the Extension `preferExactOneLocator` (Visual choose):
+ * walk the observed input's candidates in order, return the first CSS locator
+ * whose inspect matchCount is exactly one. Candidates of other inputs are never read.
+ */
+export function preferExactOneCandidate(observedInput: SafePageInput): string | null {
+  for (const candidate of observedInput.locatorCandidates) {
+    const locator = candidate.locator.trim();
+    if (!locator) continue;
+    if (locatorCandidateIsDeterministic(candidate)) return locator;
+  }
+  return null;
+}
+
 /** True when a LocatorCandidate carries proven exact-one matchCount. */
 export function locatorCandidateIsDeterministic(candidate: LocatorCandidate): boolean {
   return candidate.strategy === 'css' && candidate.matchCount === 1;

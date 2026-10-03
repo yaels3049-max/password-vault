@@ -1,0 +1,1538 @@
+/**
+ * Phase 121.1 — SPECIAL authoring grid (progressive approval + thin ACTIVATE).
+ * Stored as loginFlowPlan.draft / active; Admin UI says «מיפוי» / «אשר מיפוי» (D-121-43).
+ * D-121-45: the pattern selector + status line live in the «אופי הכניסה» grid; this grid
+ * renders only while a SPECIAL pattern is selected (it stays mounted, so state is kept).
+ */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { AdminRegistryRow } from './adminRegistryApi';
+import { fetchRegistryRowForAdmin, updateGlobalRegistryRow } from './adminRegistryApi';
+import { verifySpecialApproveReadback } from './specialApproveReadback';
+import {
+  LOGIN_CONTRACT_ACTIVATE_INTENT_KEY,
+  LOGIN_FLOW_PLAN_META_KEY,
+  ensureSpecialDraft,
+  isSpecialLoginPattern,
+  canPerformAuthoringClick,
+  upsertPreambleAction,
+  setStepExitTransition,
+  placeTransitionAsStepExit,
+  revealedStepIdFor,
+  upsertStepFieldMappings,
+  assertSpecialWriteKeepsAutofillProfile,
+  createActionCandidate,
+  selectPendingForManualAnalyze,
+  removeDraftAction,
+  listDraftActions,
+  actionIdentity,
+  normalizeLegacyDraftReadiness,
+  rederiveRevealReadiness,
+  readinessTargetFor,
+  frameKey,
+  sameFrame,
+  listApprovedFrameOrigins,
+  isFrameOriginApproved,
+  frameLocationLabelHe,
+  readLoginFlowPlanFromMetadata,
+  resolveActiveLoginContract,
+  resolveSpecialAuthoringEntry,
+  type AuthoringLoginPattern,
+  type FlowAction,
+  type FrameDescriptor,
+  type LoginFlowPlanDocument,
+  type SpecialFieldMapping,
+  type SpecialLoginPattern,
+} from '../loginContract';
+import {
+  analyzeSpecialCurrentSurface,
+  startCurrentTabVisualMapping,
+  cancelCurrentTabVisualMapping,
+  performApprovedAuthoringClick,
+  revealedSurfaceKeys,
+  selectFollowUpAfterContinue,
+  ADMIN_VISUAL_PICK_TIMEOUT_MS,
+  ADMIN_VISUAL_PICK_HUB_GRACE_MS,
+  FRAME_APPROVAL_PROMPT_HE,
+  FRAME_APPROVE_LABEL_HE,
+  FRAME_REJECT_LABEL_HE,
+  FRAME_NOT_ADDRESSABLE_HE,
+  VISUAL_TIMEOUT_MAYBE_UNSUPPORTED_FRAME_HE,
+  AUTHORING_TEST_NOT_PROVEN_REASON,
+  type FramedFieldProposal,
+} from '../assistedMapping';
+import { classifyStoredLoginFields } from '../service/credentialSchema';
+import type { LoginField } from '../service/serviceModel';
+import {
+  SPECIAL_ACTION_BAR_HE,
+  SPECIAL_ACTIVATE_LABEL_HE,
+  SPECIAL_ANALYZE_HE,
+  SPECIAL_BUTTON_PANEL_HE,
+  SPECIAL_FIELD_ROW_HE,
+  SPECIAL_STEP_BUTTON_HE,
+  actionAfterTestFailure,
+  actionAfterTestSuccess,
+  actionForTestPress,
+  actionSelected,
+  actionStatusHe,
+  checkSpecialDraft,
+  clearStepExit,
+  type ActionTestOutcome,
+  manualAnalyzeMayWriteFields,
+  manualPickRelevant,
+  proposalShownOnStep,
+  remapFloatingOpener,
+  remapStepExit,
+  removeStepFieldMapping,
+  requirePasswordSurfaceFor,
+  specialApproveGate,
+  specialTopBarEnablement,
+  stepButtonView,
+  stepLabelHe,
+  stepSelectorVisible,
+  testFailureOutcome,
+} from './specialActionBar';
+import { withoutAutofillProfile, withoutLoginContractKeys } from './contractSafeMetadata';
+import {
+  savedAuthoringPattern,
+  savedSpecialDraftStateKey,
+  specialDraftStateKey,
+  type SpecialDraftDirtyState,
+} from './fillTestContext';
+import { ADMIN_VISUAL_PICK_COPY_HE } from './visualPickCopy';
+import { ADMIN_MAPPING_COPY_HE, SPECIAL_GRID_TITLE_HE, approveConfirmTitleHe } from './mappingCopy';
+
+interface Props {
+  row: AdminRegistryRow;
+  onSaved: () => void | Promise<void>;
+  /**
+   * D-121-45 — «אופי הכניסה» selection owned by the parent grid. Absent → the saved
+   * pattern (the editor then behaves as if the selector was never touched).
+   */
+  selectedPattern?: AuthoringLoginPattern | null;
+  /** The selector must stay locked while this grid is busy (outside an action pick). */
+  onSelectorLockChange?: (state: { rowId: string; locked: boolean }) => void;
+  /** Unsaved pattern / draft vs the saved row (the fill-test grid blocks the DRAFT test). */
+  onDraftDirtyChange?: (state: SpecialDraftDirtyState) => void;
+}
+
+/** Admin-facing copy — plain Hebrew only (no internal phase / engine terms). */
+export const SPECIAL_EDITOR_COPY_HE = {
+  fieldsSection: 'מיפוי שדות',
+  currentStep: 'שלב נוכחי',
+  draftSaved: ADMIN_MAPPING_COPY_HE.saved,
+  specialActivated: ADMIN_MAPPING_COPY_HE.approved,
+  saveFailed: ADMIN_MAPPING_COPY_HE.saveFailed,
+  approveFailed: 'אישור המיפוי נכשל.',
+  fieldsIdentified: 'שדות הכניסה זוהו. בדקו ושמרו מיפוי.',
+  fieldsIdentifiedWithAction:
+    'שדות הכניסה זוהו, ונמצא גם כפתור באתר. אם זה הכפתור שממשיך את הכניסה, לחצו «בדוק את הכפתור וזהה את השדות». לשמירה לחצו «שמור מיפוי».',
+  fieldsPartial: 'לא כל השדות זוהו. ניתן להשתמש במיפוי חזותי.',
+  actionFound:
+    'נמצא כפתור שפותח את מסך הכניסה. כדי לבדוק ולבחור אותו לחצו «בדוק את הכפתור וזהה את השדות».',
+  actionAlreadyApproved:
+    'הכפתור שנמצא כבר נבחר. כדי לבדוק אותו שוב לחצו «בדוק את הכפתור וזהה את השדות».',
+  noSuggestions: 'הניתוח לא החזיר הצעות.',
+  continueNeedsApproval:
+    'אי אפשר להריץ «בדוק את הכפתור וזהה את השדות» על הכפתור הזה. אם הוא בתוך מסגרת, לחצו קודם «אשר מסגרת».',
+  autoAnalyzeStarted: 'המסך נפתח. מנתח את שדות הכניסה…',
+  autoAnalyzeSuccess: 'שדות הכניסה זוהו. בדקו ושמרו מיפוי.',
+  autoAnalyzeSuccessWithAction:
+    'שדות הכניסה זוהו, ונמצא כפתור נוסף בחלק שנפתח. אם הוא ממשיך את הכניסה, לחצו אצלו «בדוק את הכפתור וזהה את השדות». לשמירה לחצו «שמור מיפוי».',
+  autoAnalyzePartial: 'המסך נפתח, אך לא כל השדות זוהו. ניתן להשתמש במיפוי חזותי.',
+  choiceScreenWithAction:
+    'נפתח מסך ביניים בלי שדות כניסה (למשל בחירה של אופן הכניסה). נמצא בו כפתור שממשיך — אם הוא מוביל לשדות הכניסה, לחצו אצלו «בדוק את הכפתור וזהה את השדות».',
+  choiceScreenNoAction:
+    'נפתח מסך ביניים בלי שדות כניסה. סמנו את הכפתור שממשיך לשדות הכניסה בעזרת «סמנו בעצמכם את כפתור המעבר בין השלבים».',
+  visualActionFound:
+    'הכפתור זוהה במיפוי החזותי. כדי לבדוק ולבחור אותו לחצו «בדוק את הכפתור וזהה את השדות».',
+  visualFieldUpdated: 'מיפוי השדה עודכן. לשמירה לחצו «שמור מיפוי».',
+  visualPickWaitingField: ADMIN_VISUAL_PICK_COPY_HE.waitingField,
+  visualPickWaitingAction: 'ממתין ללחיצה על הכפתור בלשונית האתר:',
+  visualPickCancelHint: ADMIN_VISUAL_PICK_COPY_HE.cancelHint,
+  siteTabActive: ADMIN_VISUAL_PICK_COPY_HE.siteTabActive,
+  visualPickCancelled: ADMIN_VISUAL_PICK_COPY_HE.cancelled,
+  visualPickTimeoutField: ADMIN_VISUAL_PICK_COPY_HE.timeoutField,
+  visualPickTimeoutOpener:
+    'לא נקלטה לחיצה בזמן, והמיפוי החזותי בוטל. כדי לנסות שוב לחצו «סמנו בעצמכם את כפתור פתיחת המסך הצף».',
+  visualPickTimeoutTransition:
+    'לא נקלטה לחיצה בזמן, והמיפוי החזותי בוטל. כדי לנסות שוב לחצו «סמנו בעצמכם את כפתור המעבר בין השלבים».',
+  frameFieldsHeld:
+    'נמצאו שדות כניסה בתוך מסגרת. לחצו «אשר מסגרת» ואז «קבל מיפוי» ליד כל שדה.',
+  frameFieldAccepted: 'מיפוי השדה נוסף. לשמירה לחצו «שמור מיפוי».',
+} as const;
+
+/** 121.1-IF — field accept control for framed proposals (literal for exact-label copy). */
+export const SPECIAL_FRAME_BUTTON_HE = {
+  acceptField: 'קבל מיפוי',
+} as const;
+
+interface HeldFieldProposal {
+  stepId: string;
+  fieldId: string;
+  locator: string;
+  frame: FrameDescriptor;
+}
+
+/** Visual Mapping control labels (literal so messages can quote them exactly). */
+export const SPECIAL_VISUAL_BUTTON_HE = {
+  field: 'מיפוי חזותי',
+  opener: 'סמנו בעצמכם את כפתור פתיחת המסך הצף',
+  transition: 'סמנו בעצמכם את כפתור המעבר בין השלבים',
+  waitingField: 'ממתין ללחיצה על השדה…',
+  waitingAction: 'ממתין ללחיצה על הכפתור…',
+} as const;
+
+type AnalyzeMode = 'manual' | 'after_continue';
+
+/** «נמצא כפתור באתר» (primary) or «נמצא כפתור נוסף» (follow-up from the revealed surface). */
+type PanelSlot = 'primary' | 'followUp';
+
+interface AfterTestContext {
+  base: LoginFlowPlanDocument;
+  tested: FlowAction;
+  /** 'step' — tested from the per-step button panel (D-121-67 A). */
+  slot: PanelSlot | 'step';
+  /** D-121-63 D: the test revealed a choice screen (no fields); frame of its fresh action. */
+  actionsOnly?: { frame: FrameDescriptor | null };
+}
+
+/** D-121-58: multi-step patterns — the step a tested transition reveals (else null). */
+function transitionRevealedStepId(draft: LoginFlowPlanDocument, action: FlowAction): string | null {
+  if (action.kind !== 'intermediate_transition' || !stepSelectorVisible(draft.pattern)) return null;
+  return revealedStepIdFor(draft, action);
+}
+
+type ArmedVisualPick =
+  | { target: 'field'; fieldId: string; label: string }
+  | {
+      target: 'action';
+      kind: 'floating_opener' | 'intermediate_transition';
+      label: string;
+      /** D-121-67 E — re-map of a stored button (step exit / opener) instead of a proposal. */
+      remap?: 'step' | 'opener';
+    };
+
+export default function SpecialLoginDraftEditor({
+  row,
+  onSaved,
+  selectedPattern = null,
+  onSelectorLockChange,
+  onDraftDirtyChange,
+}: Props) {
+  // §4.7 — resolve HOME→primary_url / DEDICATED→login_url (not login_url alone).
+  const entryResolution = useMemo(
+    () =>
+      resolveSpecialAuthoringEntry({
+        primaryUrl: row.primary_url,
+        loginUrl: row.login_url,
+        metadata: row.metadata,
+      }),
+    [row.primary_url, row.login_url, row.metadata],
+  );
+  const authoringUrl = entryResolution.ok ? entryResolution.authoringUrl : '';
+  const allowedOrigin = entryResolution.ok ? entryResolution.allowedOrigin : '';
+  const canUseCurrentSurface = Boolean(authoringUrl && allowedOrigin);
+  const stored = classifyStoredLoginFields(row.login_fields);
+  const loginFields: LoginField[] = stored.status === 'valid' ? stored.fields : [];
+  const serviceDisplayName = row.display_name.trim() || 'האתר';
+  const existingPlan = readLoginFlowPlanFromMetadata(row.metadata ?? {});
+  // Follows `selectedPattern`; applied with the draft in one update (onPatternChange).
+  const [pattern, setPattern] = useState<AuthoringLoginPattern>(
+    () => selectedPattern ?? savedAuthoringPattern(row.metadata),
+  );
+  const [draft, setDraft] = useState<LoginFlowPlanDocument | null>(() => {
+    const initial = selectedPattern ?? savedAuthoringPattern(row.metadata);
+    if (!isSpecialLoginPattern(initial)) return null;
+    // Architect A1: legacy self / pending readiness → derived (draft only).
+    return normalizeLegacyDraftReadiness(ensureSpecialDraft(initial, existingPlan?.draft ?? null));
+  });
+  const savedStateKey = useMemo(() => savedSpecialDraftStateKey(row.metadata), [row.metadata]);
+  const draftDirty = specialDraftStateKey(pattern, draft) !== savedStateKey;
+  useEffect(() => {
+    onDraftDirtyChange?.({ rowId: row.id, dirty: draftDirty });
+  }, [row.id, draftDirty, onDraftDirtyChange]);
+  const [selectedStepId, setSelectedStepId] = useState('step-1');
+  const stepSelector = stepSelectorVisible(pattern);
+  // D-121-43: single-step patterns always author steps[0] (no «שלב נוכחי» shown).
+  const currentStepId = stepSelector ? selectedStepId : (draft?.steps[0]?.stepId ?? 'step-1');
+  const [pendingAction, setPendingAction] = useState<FlowAction | null>(null);
+  const [followUpAction, setFollowUpAction] = useState<FlowAction | null>(null);
+  /** D-121-67 B — actionId → the step a transition proposal was made for. */
+  const [proposalSteps, setProposalSteps] = useState<Record<string, string>>({});
+  const [testOutcomes, setTestOutcomes] = useState<Record<string, ActionTestOutcome>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  /** D-121-55: raw reason behind «אישור המיפוי נכשל.» (shown under «פרטים טכניים»). */
+  const [approveFailure, setApproveFailure] = useState<string | null>(null);
+
+  const activeResolved = useMemo(
+    () => resolveActiveLoginContract(row.metadata ?? {}),
+    [row.metadata],
+  );
+  // D-121-43: automatic completeness line + «אשר מיפוי» gate (A1 normalization + snapshot validator).
+  const draftCheck = useMemo(() => checkSpecialDraft(draft), [draft]);
+  // 121.3 G11: «אשר מיפוי» needs the saved mapping to pass the runtime gate too.
+  const approveGate = useMemo(
+    () => specialApproveGate(readLoginFlowPlanFromMetadata(row.metadata ?? {})?.draft ?? null),
+    [row.metadata],
+  );
+  const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
+
+  // R2: session-approved frame origins (not persisted on their own). A descriptor
+  // written into the draft is the durable approval record.
+  const [sessionFrameOrigins, setSessionFrameOrigins] = useState<Set<string>>(() => new Set());
+  const [heldFields, setHeldFields] = useState<HeldFieldProposal[]>([]);
+  useEffect(() => {
+    setSessionFrameOrigins(new Set());
+    setHeldFields([]);
+    setActivateConfirmOpen(false);
+    setFollowUpAction(null);
+    setProposalSteps({});
+    setTestOutcomes({});
+  }, [row.id]);
+  const approvedFrameOrigins = useMemo(() => {
+    const out = listApprovedFrameOrigins(draft);
+    sessionFrameOrigins.forEach((o) => out.add(o));
+    return out;
+  }, [draft, sessionFrameOrigins]);
+
+  function frameApproved(frame: FrameDescriptor | null | undefined): boolean {
+    return !frame || isFrameOriginApproved(frame.frameOrigin, approvedFrameOrigins, allowedOrigin);
+  }
+
+  function pendingInDraft(action: FlowAction | null): boolean {
+    return Boolean(action && draft && listDraftActions(draft).some((a) => a.actionId === action.actionId));
+  }
+
+  const unapprovedFrameOrigins: string[] = [];
+  for (const frame of [...heldFields.map((h) => h.frame), pendingAction?.frame, followUpAction?.frame]) {
+    if (frame && !frameApproved(frame) && !unapprovedFrameOrigins.includes(frame.frameOrigin)) {
+      unapprovedFrameOrigins.push(frame.frameOrigin);
+    }
+  }
+
+  /** Every mapping write re-derives R3 readiness from the revealed step's first field. */
+  function commitDraft(next: LoginFlowPlanDocument): void {
+    setDraft(rederiveRevealReadiness(next));
+  }
+
+  function approveFrameOrigin(origin: string): void {
+    setSessionFrameOrigins((prev) => new Set(prev).add(origin));
+  }
+
+  function rejectFrameOrigin(origin: string): void {
+    setHeldFields((prev) => prev.filter((h) => h.frame.frameOrigin !== origin));
+    if (pendingAction?.frame?.frameOrigin === origin && !pendingInDraft(pendingAction)) {
+      setPendingAction(null);
+    }
+    if (followUpAction?.frame?.frameOrigin === origin && !pendingInDraft(followUpAction)) {
+      setFollowUpAction(null);
+    }
+  }
+
+  function acceptHeldField(held: HeldFieldProposal): void {
+    if (!draft || !frameApproved(held.frame)) return;
+    const step = draft.steps.find((s) => s.stepId === held.stepId);
+    const existing = (step?.fieldMappings ?? []).filter(
+      (m) => (m as SpecialFieldMapping).fieldId !== held.fieldId,
+    ) as SpecialFieldMapping[];
+    existing.push({
+      fieldId: held.fieldId,
+      locatorType: 'css',
+      locator: held.locator,
+      frame: held.frame,
+    });
+    commitDraft(upsertStepFieldMappings(draft, held.stepId, existing));
+    setHeldFields((prev) => prev.filter((h) => h !== held));
+    setSuccess(SPECIAL_EDITOR_COPY_HE.frameFieldAccepted);
+  }
+
+  const [armedPick, setArmedPick] = useState<ArmedVisualPick | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const topBar = specialTopBarEnablement(pattern);
+  // Bumped on cancel / timeout / new pick so a late Ext response is ignored (no mapping).
+  const pickTokenRef = useRef(0);
+  const pickHubTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armedPickRef = useRef<ArmedVisualPick | null>(null);
+  armedPickRef.current = armedPick;
+  const authoringUrlRef = useRef(authoringUrl);
+  authoringUrlRef.current = authoringUrl;
+
+  // D-121-27: one authoring tab per editor session (per service row). Ext re-validates
+  // origin / existence on every message and falls back when the tab is gone.
+  const sessionTabRef = useRef<{ rowId: string; tabId: number } | null>(null);
+  useEffect(() => {
+    sessionTabRef.current = null;
+  }, [row.id]);
+
+  function sessionTabId(): number | null {
+    const s = sessionTabRef.current;
+    return s && s.rowId === row.id ? s.tabId : null;
+  }
+
+  function rememberSessionTab(result: { authoringTabId?: number } | null | undefined): void {
+    if (typeof result?.authoringTabId === 'number') {
+      sessionTabRef.current = { rowId: row.id, tabId: result.authoringTabId };
+    }
+  }
+
+  function clearPickHubTimer(): void {
+    if (pickHubTimerRef.current !== null) {
+      clearTimeout(pickHubTimerRef.current);
+      pickHubTimerRef.current = null;
+    }
+  }
+
+  useEffect(
+    () => () => {
+      clearPickHubTimer();
+      if (armedPickRef.current) {
+        pickTokenRef.current += 1;
+        void cancelCurrentTabVisualMapping({
+          loginEntryUrl: authoringUrlRef.current,
+          authoringTabId: sessionTabRef.current?.tabId ?? null,
+        });
+      }
+      sessionTabRef.current = null;
+    },
+    [],
+  );
+
+  function pickTimeoutMessage(pick: ArmedVisualPick): string {
+    if (pick.target === 'field') return SPECIAL_EDITOR_COPY_HE.visualPickTimeoutField;
+    return pick.kind === 'floating_opener'
+      ? SPECIAL_EDITOR_COPY_HE.visualPickTimeoutOpener
+      : SPECIAL_EDITOR_COPY_HE.visualPickTimeoutTransition;
+  }
+
+  function releasePick(): void {
+    clearPickHubTimer();
+    setArmedPick(null);
+    setBusy(false);
+  }
+
+  /**
+   * Arm one SPECIAL Visual pick with indicator, bounded wait, and cancel.
+   * Returns the locator on success; null when failed / timed out / cancelled
+   * (caller writes nothing in that case).
+   */
+  async function runArmedVisualPick(
+    pick: ArmedVisualPick,
+  ): Promise<{ locator: string; frame: FrameDescriptor | null } | null> {
+    setError(null);
+    setSuccess(null);
+    setApproveFailure(null);
+    clearPickHubTimer();
+    const token = (pickTokenRef.current += 1);
+    setArmedPick(pick);
+    setBusy(true);
+    pickHubTimerRef.current = setTimeout(() => {
+      if (pickTokenRef.current !== token) return;
+      pickTokenRef.current += 1;
+      void cancelCurrentTabVisualMapping({
+        loginEntryUrl: authoringUrlRef.current,
+        authoringTabId: sessionTabId(),
+      });
+      releasePick();
+      setError(pickTimeoutMessage(pick));
+    }, ADMIN_VISUAL_PICK_TIMEOUT_MS + ADMIN_VISUAL_PICK_HUB_GRACE_MS);
+
+    const result = await startCurrentTabVisualMapping({
+      fieldId: pick.target === 'field' ? pick.fieldId : `action:${pick.kind}`,
+      loginEntryUrl: authoringUrl,
+      authoringTabId: sessionTabId(),
+      ...(pick.target === 'action' ? { pickTarget: 'action' as const } : {}),
+    });
+    rememberSessionTab(result);
+    if (pickTokenRef.current !== token) return null;
+    pickTokenRef.current += 1;
+    releasePick();
+    if (!result.ok) {
+      if (result.reason === 'visual_pick_timeout') {
+        setError(
+          result.maybeUnsupportedFrame
+            ? `${pickTimeoutMessage(pick)} ${VISUAL_TIMEOUT_MAYBE_UNSUPPORTED_FRAME_HE}`
+            : pickTimeoutMessage(pick),
+        );
+      } else if (result.reason === 'visual_pick_cancelled') {
+        setSuccess(SPECIAL_EDITOR_COPY_HE.visualPickCancelled);
+      } else {
+        setError(result.message);
+      }
+      return null;
+    }
+    return { locator: result.locator, frame: result.frame ?? null };
+  }
+
+  function cancelArmedVisualPick(): void {
+    if (!armedPick) return;
+    pickTokenRef.current += 1;
+    void cancelCurrentTabVisualMapping({
+      loginEntryUrl: authoringUrl,
+      authoringTabId: sessionTabId(),
+    });
+    releasePick();
+    setError(null);
+    setSuccess(SPECIAL_EDITOR_COPY_HE.visualPickCancelled);
+  }
+
+  function onPatternChange(next: AuthoringLoginPattern) {
+    setError(null);
+    setSuccess(null);
+    setApproveFailure(null);
+    setPattern(next);
+    if (armedPick?.target === 'action' && !manualPickRelevant(armedPick.kind, next)) {
+      cancelArmedVisualPick();
+    }
+    if (next === 'STANDARD') {
+      setDraft(null);
+      setPendingAction(null);
+      setFollowUpAction(null);
+      return;
+    }
+    setDraft(normalizeLegacyDraftReadiness(ensureSpecialDraft(next, draft)));
+    const keepPanel = (a: FlowAction | null) => (a && manualPickRelevant(a.kind, next) ? a : null);
+    setPendingAction(keepPanel);
+    setFollowUpAction(keepPanel);
+    setSelectedStepId('step-1');
+  }
+  const onPatternChangeRef = useRef(onPatternChange);
+  onPatternChangeRef.current = onPatternChange;
+  useEffect(() => {
+    if (selectedPattern && selectedPattern !== pattern) onPatternChangeRef.current(selectedPattern);
+  }, [selectedPattern, pattern]);
+
+  const selectorLocked = busy && armedPick?.target !== 'action';
+  useEffect(() => {
+    onSelectorLockChange?.({ rowId: row.id, locked: selectorLocked });
+  }, [row.id, selectorLocked, onSelectorLockChange]);
+
+  async function saveDraft(): Promise<void> {
+    if (!draft || pattern === 'STANDARD') return;
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    setApproveFailure(null);
+    try {
+      const patch = {
+        metadata: withoutAutofillProfile({
+          ...withoutLoginContractKeys(row.metadata),
+          [LOGIN_FLOW_PLAN_META_KEY]: {
+            draft: normalizeLegacyDraftReadiness(draft),
+            // omit active key — merge preserves existing active (draft-only path)
+          },
+        }),
+      };
+      const keepsAutofill = assertSpecialWriteKeepsAutofillProfile({
+        rowMetadata: row.metadata,
+        patchMetadata: patch.metadata,
+      });
+      if (!keepsAutofill.ok) {
+        setError(keepsAutofill.message);
+        return;
+      }
+      await updateGlobalRegistryRow(row.id, patch);
+      await onSaved();
+      setSuccess(SPECIAL_EDITOR_COPY_HE.draftSaved);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : SPECIAL_EDITOR_COPY_HE.saveFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function requestActivateSpecial(): void {
+    if (!draft || busy || draftDirty || !draftCheck.complete || !approveGate.allowed) return;
+    setActivateConfirmOpen(true);
+  }
+
+  function cancelActivateSpecial(): void {
+    setActivateConfirmOpen(false);
+  }
+
+  function confirmActivateSpecial(): void {
+    setActivateConfirmOpen(false);
+    void activateSpecial();
+  }
+
+  async function activateSpecial(): Promise<void> {
+    // «אשר מיפוי» approves only the saved mapping (same rule as STANDARD).
+    const saved = readLoginFlowPlanFromMetadata(row.metadata ?? {})?.draft ?? null;
+    if (!saved || !isSpecialLoginPattern(saved.pattern) || draftDirty) return;
+    if (!specialApproveGate(saved).allowed) return;
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    setApproveFailure(null);
+    try {
+      // Architect A1: normalize legacy readiness before ACTIVATE validation.
+      const normalized = normalizeLegacyDraftReadiness(saved);
+      setDraft(normalized);
+      const transition =
+        activeResolved.mode === 'SPECIAL' ? 'SPECIAL_TO_SPECIAL' : 'STANDARD_TO_SPECIAL';
+      const patch = {
+        metadata: withoutAutofillProfile({
+          ...(row.metadata ?? {}),
+          [LOGIN_FLOW_PLAN_META_KEY]: {
+            draft: normalized,
+          },
+          [LOGIN_CONTRACT_ACTIVATE_INTENT_KEY]: {
+            transition,
+            draft: normalized,
+          },
+        }),
+      };
+      const keepsAutofill = assertSpecialWriteKeepsAutofillProfile({
+        rowMetadata: row.metadata,
+        patchMetadata: patch.metadata,
+      });
+      if (!keepsAutofill.ok) {
+        setApproveFailure(keepsAutofill.message);
+        return;
+      }
+      const write = await updateGlobalRegistryRow(row.id, patch);
+      const stored = await fetchRegistryRowForAdmin(row.id);
+      const check = verifySpecialApproveReadback({
+        readBackMetadata: stored?.metadata,
+        rowFound: stored !== null,
+        approvedDraft: normalized,
+        previousSpecialVersion:
+          activeResolved.mode === 'SPECIAL' ? activeResolved.activePlanVersion : null,
+        write,
+      });
+      console.info('[D-121-55 approve]', { serviceId: row.id, transition, ok: check.ok, summary: check.summary });
+      await onSaved();
+      if (check.ok) {
+        setSuccess(SPECIAL_EDITOR_COPY_HE.specialActivated);
+      } else {
+        setApproveFailure(check.reason);
+      }
+    } catch (err) {
+      setApproveFailure(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Shared SPECIAL current-surface Analyze (manual button + after approved continuation).
+   * Performs no click; never approves; never auto-invokes Visual Mapping on Analyze fail.
+   * Results go to the in-memory draft only — Save Draft stays manual.
+   * Caller owns busy state.
+   */
+  async function runSpecialAnalyze(
+    mode: AnalyzeMode,
+    afterTest: AfterTestContext | null = null,
+  ): Promise<void> {
+    // after_continue works on the draft just written by the test press (state may lag a render).
+    const current = afterTest?.base ?? draft;
+    if (!current || pattern === 'STANDARD' || !isSpecialLoginPattern(pattern) || !canUseCurrentSurface) {
+      return;
+    }
+    const targetStepId =
+      (afterTest && transitionRevealedStepId(afterTest.base, afterTest.tested)) ?? currentStepId;
+    const locators: Record<string, string> = {};
+    const step = current.steps.find((s) => s.stepId === targetStepId);
+    for (const m of step?.fieldMappings ?? []) {
+      const rowMap = m as { fieldId: string; locator: string };
+      locators[rowMap.fieldId] = rowMap.locator;
+    }
+    const result = await analyzeSpecialCurrentSurface({
+      serviceId: row.id,
+      pattern,
+      loginFields: loginFields.map((f) => ({
+        id: f.id,
+        label: f.label,
+        type: f.type,
+        description: f.description,
+      })),
+      loginEntryUrl: authoringUrl,
+      currentLocators: locators,
+      authoringTabId: sessionTabId(),
+      approvedFrameOrigins,
+    });
+    rememberSessionTab(result);
+
+    // §5.2: proposals are never written to the draft here; only the test press adds them.
+    // Unaddressable-frame proposals are shown via message, never selectable.
+    let nextDraft = current;
+    const addressable = (result.actionProposals ?? []).filter((p) => !p.frameNotAddressable);
+    const hasUnaddressableAction = addressable.length < (result.actionProposals ?? []).length;
+    const proposedActions = addressable.map((p) => p.action);
+
+    let mappedCount = 0;
+    const framed: FramedFieldProposal[] = result.framedFieldProposals ?? [];
+    const held: HeldFieldProposal[] = [];
+    const fieldsWritable =
+      mode !== 'manual' || manualAnalyzeMayWriteFields(current, pattern, targetStepId);
+    // D-121-58 / D-121-63 E: the same element already mapped on an earlier step (still
+    // visible on a same-page step) is not proposed again; a new element for the field is.
+    const targetIdx = current.steps.findIndex((s) => s.stepId === targetStepId);
+    const earlierMappings = (
+      stepSelector && targetIdx > 0 ? current.steps.slice(0, targetIdx).flatMap((s) => s.fieldMappings) : []
+    ) as SpecialFieldMapping[];
+    // D-121-63 D: a choice screen (actions_only test) stays action-only — no fields written.
+    if (fieldsWritable && !afterTest?.actionsOnly && result.ok && result.fieldAnalyze.ok) {
+      const existing = [...(step?.fieldMappings ?? [])] as SpecialFieldMapping[];
+      let wrote = false;
+      for (const p of framed) {
+        if (existing.some((m) => m.fieldId === p.fieldId)) continue;
+        if (
+          earlierMappings.some(
+            (m) => m.fieldId === p.fieldId && m.locator === p.locator && sameFrame(m.frame, p.frame),
+          )
+        ) {
+          continue;
+        }
+        if (p.state === 'ready') {
+          existing.push({
+            fieldId: p.fieldId,
+            locatorType: 'css',
+            locator: p.locator,
+            ...(p.frame ? { frame: p.frame } : {}),
+          });
+          wrote = true;
+        } else if (p.state === 'needs_frame_approval' && p.frame) {
+          held.push({ stepId: targetStepId, fieldId: p.fieldId, locator: p.locator, frame: p.frame });
+        }
+      }
+      if (wrote) {
+        nextDraft = rederiveRevealReadiness(
+          upsertStepFieldMappings(nextDraft, targetStepId, existing),
+        );
+      }
+      mappedCount = loginFields.filter((f) =>
+        [...earlierMappings, ...existing].some((m) => m.fieldId === f.id && m.locator.trim()),
+      ).length;
+    }
+    setHeldFields(held);
+    if (nextDraft !== current) setDraft(nextDraft);
+
+    let selected: FlowAction | null = null;
+    if (!afterTest) {
+      // D-121-26: top proposal, even when already in the draft (shown with its status).
+      selected = selectPendingForManualAnalyze(current, proposedActions);
+      if (selected) {
+        rememberProposalStep(selected, targetStepId);
+        setPendingAction(selected);
+        if (followUpAction && actionIdentity(followUpAction) === actionIdentity(selected)) {
+          setFollowUpAction(null);
+        }
+      }
+    } else {
+      // D-121-34: the tested action stays shown; a follow-up comes only from the revealed
+      // surface, of a kind the pattern needs, into its own panel.
+      // D-121-63 D: after a choice screen the follow-up slot always takes that screen's exit.
+      const followUpSlotHeld =
+        !afterTest.actionsOnly &&
+        (afterTest.slot === 'followUp' ||
+          Boolean(followUpAction && testOutcomes[followUpAction.actionId] === 'opened'));
+      const revealedStep = nextDraft.steps.find((s) => s.stepId === targetStepId);
+      selected = followUpSlotHeld
+        ? null
+        : selectFollowUpAfterContinue({
+            draft: nextDraft,
+            pattern,
+            candidates: proposedActions,
+            tested: afterTest.tested,
+            revealedSurfaceKeys: afterTest.actionsOnly
+              ? new Set([frameKey(afterTest.actionsOnly.frame)])
+              : revealedSurfaceKeys({
+                  fieldProposals: framed,
+                  stepMappings: (revealedStep?.fieldMappings ?? []) as SpecialFieldMapping[],
+                }),
+            testedGone: Boolean(afterTest.actionsOnly),
+          });
+      if (selected) rememberProposalStep(selected, targetStepId);
+      if (selected) setFollowUpAction(selected);
+    }
+    if (afterTest?.actionsOnly) {
+      setSuccess(
+        selected ? SPECIAL_EDITOR_COPY_HE.choiceScreenWithAction : SPECIAL_EDITOR_COPY_HE.choiceScreenNoAction,
+      );
+      if (!result.ok) setError(result.message);
+      return;
+    }
+    const actionToTest = Boolean(selected && !actionSelected(selected));
+
+    const fieldsOk = result.ok && result.fieldAnalyze.ok;
+    const allMapped = fieldsOk && loginFields.length > 0 && mappedCount === loginFields.length;
+    const unsupportedMessage =
+      result.unsupportedMessage ??
+      (hasUnaddressableAction && !selected ? FRAME_NOT_ADDRESSABLE_HE : undefined);
+
+    if (held.length > 0 && !allMapped) {
+      setSuccess(SPECIAL_EDITOR_COPY_HE.frameFieldsHeld);
+      if (!result.ok) setError(result.message);
+      return;
+    }
+
+    if (mode === 'after_continue') {
+      if (allMapped) {
+        setSuccess(
+          actionToTest
+            ? SPECIAL_EDITOR_COPY_HE.autoAnalyzeSuccessWithAction
+            : SPECIAL_EDITOR_COPY_HE.autoAnalyzeSuccess,
+        );
+        return;
+      }
+      // Partial or failed: show message only — never auto-invoke Visual Mapping.
+      setSuccess(SPECIAL_EDITOR_COPY_HE.autoAnalyzePartial);
+      if (!result.ok) setError(result.message);
+      else if (unsupportedMessage && mappedCount === 0) setError(unsupportedMessage);
+      return;
+    }
+
+    if (fieldsOk && mappedCount > 0) {
+      setSuccess(
+        !allMapped
+          ? SPECIAL_EDITOR_COPY_HE.fieldsPartial
+          : actionToTest
+            ? SPECIAL_EDITOR_COPY_HE.fieldsIdentifiedWithAction
+            : SPECIAL_EDITOR_COPY_HE.fieldsIdentified,
+      );
+      return;
+    }
+    // AC-121.1-5: never auto-invoke Visual Mapping on Analyze fail.
+    if (selected) {
+      setSuccess(
+        actionToTest
+          ? SPECIAL_EDITOR_COPY_HE.actionFound
+          : SPECIAL_EDITOR_COPY_HE.actionAlreadyApproved,
+      );
+      if (!result.ok) setError(result.message);
+      else if (unsupportedMessage && mappedCount === 0) setError(unsupportedMessage);
+      return;
+    }
+    // UNSUPPORTED surfaces are always named in plain Hebrew — never silent.
+    setError(
+      !result.ok
+        ? result.message
+        : (unsupportedMessage ?? SPECIAL_EDITOR_COPY_HE.noSuggestions),
+    );
+  }
+
+  async function analyzeCurrentSurface(): Promise<void> {
+    setBusy(true);
+    setAnalyzing(true);
+    setError(null);
+    setSuccess(null);
+    setApproveFailure(null);
+    try {
+      await runSpecialAnalyze('manual');
+    } finally {
+      setAnalyzing(false);
+      setBusy(false);
+    }
+  }
+
+  async function visualPickAction(
+    kind: 'floating_opener' | 'intermediate_transition',
+  ): Promise<void> {
+    if (!draft || armedPick) return;
+    const picked = await runArmedVisualPick({
+      target: 'action',
+      kind,
+      label: kind === 'floating_opener' ? SPECIAL_VISUAL_BUTTON_HE.opener : SPECIAL_VISUAL_BUTTON_HE.transition,
+    });
+    if (!picked) return;
+    const candidate = createActionCandidate({
+      actionId: `${kind}-${Date.now().toString(36)}`,
+      kind,
+      label: picked.locator,
+      locator: picked.locator,
+      frame: picked.frame,
+    });
+    const selected = selectPendingForManualAnalyze(draft, [candidate]);
+    if (selected) rememberProposalStep(selected, currentStepId);
+    setPendingAction(selected);
+    setSuccess(
+      actionSelected(selected)
+        ? SPECIAL_EDITOR_COPY_HE.actionAlreadyApproved
+        : SPECIAL_EDITOR_COPY_HE.visualActionFound,
+    );
+  }
+
+  async function visualPickField(fieldId: string, fieldLabel: string): Promise<void> {
+    if (!draft || armedPick) return;
+    const picked = await runArmedVisualPick({ target: 'field', fieldId, label: fieldLabel });
+    if (!picked) return;
+    const { locator, frame } = picked;
+    if (frame && !frameApproved(frame)) {
+      // R2: nothing framed is written before «אשר מסגרת».
+      setHeldFields((prev) => [
+        ...prev.filter((h) => h.fieldId !== fieldId || h.stepId !== currentStepId),
+        { stepId: currentStepId, fieldId, locator, frame },
+      ]);
+      setSuccess(SPECIAL_EDITOR_COPY_HE.frameFieldsHeld);
+      return;
+    }
+    setDraft((current) => {
+      if (!current) return current;
+      const step = current.steps.find((s) => s.stepId === currentStepId);
+      const existing = (step?.fieldMappings ?? []).filter(
+        (m) => (m as SpecialFieldMapping).fieldId !== fieldId,
+      ) as SpecialFieldMapping[];
+      existing.push({ fieldId, locatorType: 'css', locator, ...(frame ? { frame } : {}) });
+      return rederiveRevealReadiness(upsertStepFieldMappings(current, currentStepId, existing));
+    });
+    setSuccess(SPECIAL_EDITOR_COPY_HE.visualFieldUpdated);
+  }
+
+  /**
+   * D-121-67 E — «מיפוי חזותי» on a stored button (a step's exit, or the floating opener):
+   * the pick replaces it in the draft as «ממתין לבדיקה» (never chosen). A button inside an
+   * unapproved frame is only proposed (R2: nothing framed is written before «אשר מסגרת»).
+   */
+  async function remapStoredButton(target: { stepId: string } | 'opener'): Promise<void> {
+    if (!draft || armedPick) return;
+    const kind = target === 'opener' ? 'floating_opener' : 'intermediate_transition';
+    const stepIdx = target === 'opener' ? -1 : draft.steps.findIndex((s) => s.stepId === target.stepId);
+    const picked = await runArmedVisualPick({
+      target: 'action',
+      kind,
+      label: target === 'opener' ? SPECIAL_VISUAL_BUTTON_HE.opener : SPECIAL_STEP_BUTTON_HE.title(Math.max(stepIdx, 0)),
+      remap: target === 'opener' ? 'opener' : 'step',
+    });
+    if (!picked) return;
+    const candidate = createActionCandidate({
+      actionId: `${kind}-${Date.now().toString(36)}`,
+      kind,
+      label: picked.locator,
+      locator: picked.locator,
+      frame: picked.frame,
+    });
+    if (picked.frame && !frameApproved(picked.frame)) {
+      if (target !== 'opener') rememberProposalStep(candidate, target.stepId);
+      setPendingAction(candidate);
+      setSuccess(SPECIAL_EDITOR_COPY_HE.visualActionFound);
+      return;
+    }
+    const replaced =
+      target === 'opener'
+        ? (draft.preambleActions ?? []).filter((a) => a.kind === 'floating_opener').map((a) => a.actionId)
+        : [draft.steps[stepIdx]?.exitTransition?.actionId].filter((id): id is string => Boolean(id));
+    setDraft((current) => {
+      if (!current) return current;
+      return target === 'opener'
+        ? remapFloatingOpener(current, candidate)
+        : remapStepExit(current, target.stepId, candidate);
+    });
+    const dropReplaced = (a: FlowAction | null) => (a && replaced.includes(a.actionId) ? null : a);
+    if (target === 'opener') setPendingAction(candidate);
+    else setPendingAction(dropReplaced);
+    setFollowUpAction(dropReplaced);
+    setSuccess(SPECIAL_STEP_BUTTON_HE.remapped);
+  }
+
+  function panelAction(slot: PanelSlot): FlowAction | null {
+    return slot === 'primary' ? pendingAction : followUpAction;
+  }
+
+  function setPanelAction(slot: PanelSlot, action: FlowAction | null): void {
+    if (slot === 'primary') setPendingAction(action);
+    else setFollowUpAction(action);
+  }
+
+  function rememberProposalStep(action: FlowAction, stepId: string): void {
+    setProposalSteps((prev) => (prev[action.actionId] === stepId ? prev : { ...prev, [action.actionId]: stepId }));
+  }
+
+  function proposalShown(action: FlowAction): boolean {
+    return !draft || proposalShownOnStep({ draft, action, proposedForStepId: proposalSteps[action.actionId], currentStepId });
+  }
+
+  /** A per-step test updates a proposal slot only when it shows the same action. */
+  function showTestedAction(slot: PanelSlot | 'step', action: FlowAction): void {
+    if (slot !== 'step') {
+      setPanelAction(slot, action);
+      return;
+    }
+    const same = (a: FlowAction | null) => (a && a.actionId === action.actionId ? action : a);
+    setPendingAction(same);
+    setFollowUpAction(same);
+  }
+
+  function stepExitOf(stepId: string): FlowAction | null {
+    return draft?.steps.find((s) => s.stepId === stepId)?.exitTransition ?? null;
+  }
+
+  function setTestOutcome(actionId: string, outcome: ActionTestOutcome | null): void {
+    setTestOutcomes((prev) => {
+      const next = { ...prev };
+      if (outcome) next[actionId] = outcome;
+      else delete next[actionId];
+      return next;
+    });
+  }
+
+  /**
+   * Write one action's flags into the draft in place (exit transition or preamble).
+   * D-121-58: a new transition in a multi-step pattern becomes the selected step's exit.
+   */
+  function writeDraftAction(base: LoginFlowPlanDocument, action: FlowAction): LoginFlowPlanDocument {
+    const owner = base.steps.find((s) => s.exitTransition?.actionId === action.actionId);
+    if (owner) return rederiveRevealReadiness(setStepExitTransition(base, owner.stepId, action));
+    if (action.kind === 'intermediate_transition' && stepSelectorVisible(base.pattern)) {
+      return rederiveRevealReadiness(placeTransitionAsStepExit(base, currentStepId, action));
+    }
+    return rederiveRevealReadiness(upsertPreambleAction(base, action));
+  }
+
+  function draftCopy(base: LoginFlowPlanDocument, action: FlowAction): FlowAction {
+    return listDraftActions(base).find((a) => a.actionId === action.actionId) ?? action;
+  }
+
+  function rejectAction(slot: PanelSlot): void {
+    const shown = panelAction(slot);
+    if (!shown || !draft) return;
+    // D-121-67 A: a shown multi-step transition proposal is never a stored exit (that one has
+    // its own step panel), so there is nothing to remove — no other step's exit is touched.
+    if (!(stepSelector && shown.kind === 'intermediate_transition')) {
+      setDraft(removeDraftAction(draft, shown));
+    }
+    setPanelAction(slot, null);
+    setTestOutcome(shown.actionId, null);
+  }
+
+  /** D-121-67 A — «זה לא הכפתור» in the step panel: that step's exit only. */
+  function removeFieldRow(fieldId: string): void {
+    if (!draft) return;
+    setDraft(removeStepFieldMapping(draft, currentStepId, fieldId));
+    setSuccess(null);
+  }
+
+  function rejectStepExit(stepId: string): void {
+    const exit = stepExitOf(stepId);
+    if (!exit || !draft) return;
+    commitDraft(clearStepExit(draft, stepId));
+    const drop = (a: FlowAction | null) => (a && a.actionId === exit.actionId ? null : a);
+    setPendingAction(drop);
+    setFollowUpAction(drop);
+    setTestOutcome(exit.actionId, null);
+  }
+
+  /**
+   * D-121-34 test-then-choose: the press is the Admin's consent to click this one
+   * element (continuation flag + draft write), then the unchanged click / R3 /
+   * auto-Analyze. R3 success → chosen (both flags); failure → both cleared, except
+   * D-121-67 C: an action already chosen before the press keeps its choice and the draft.
+   */
+  async function testAndChooseAction(slot: PanelSlot | 'step', stepExit: FlowAction | null = null): Promise<void> {
+    const shown = slot === 'step' ? stepExit : panelAction(slot);
+    if (!shown || !draft || busy) return;
+    const wasChosen = actionSelected(draftCopy(draft, shown));
+    const consented = actionForTestPress(draftCopy(draft, shown));
+    if (!canUseCurrentSurface || !canPerformAuthoringClick(consented, approvedFrameOrigins, allowedOrigin)) {
+      setError(SPECIAL_EDITOR_COPY_HE.continueNeedsApproval);
+      return;
+    }
+    const consentDraft = writeDraftAction(draft, consented);
+    // Draft copy carries the derived R3 readiness.
+    const action = draftCopy(consentDraft, consented);
+    setDraft(consentDraft);
+    showTestedAction(slot, action);
+    setTestOutcome(action.actionId, null);
+    setBusy(true);
+    setError(null);
+    setApproveFailure(null);
+    setSuccess(SPECIAL_EDITOR_COPY_HE.siteTabActive);
+    try {
+      const result = await performApprovedAuthoringClick({
+        action,
+        loginEntryUrl: authoringUrl,
+        authoringTabId: sessionTabId(),
+        approvedFrameOrigins,
+        requirePasswordSurface: requirePasswordSurfaceFor(consentDraft.pattern, loginFields),
+        allowActionsOnly: consentDraft.pattern === 'MULTI_STEP' && action.kind === 'intermediate_transition',
+        readinessTarget: readinessTargetFor(consentDraft, action),
+      });
+      rememberSessionTab(result);
+      if (!result.ok) {
+        // D-121-35 (G4): a user gesture during the test → not proven (no "not opened" claim).
+        const notProven = result.reason === AUTHORING_TEST_NOT_PROVEN_REASON;
+        setSuccess(null);
+        if (!wasChosen) {
+          const clearedDraft = writeDraftAction(consentDraft, actionAfterTestFailure(action));
+          setDraft(clearedDraft);
+          showTestedAction(slot, draftCopy(clearedDraft, action));
+          setTestOutcome(action.actionId, notProven ? null : testFailureOutcome(result.reason));
+          // D-121-22 / R3: failed continuation or surface not ready → no auto-Analyze.
+          setError(result.message);
+          return;
+        }
+        // D-121-67 C: un-choosing happens only via «זה לא הכפתור».
+        setDraft(draft);
+        showTestedAction(slot, draftCopy(draft, action));
+        setTestOutcome(action.actionId, notProven ? null : 'kept_after_failure');
+        setError(`${result.message} ${SPECIAL_BUTTON_PANEL_HE.keptAfterFailure}`);
+        return;
+      }
+      let chosenDraft = writeDraftAction(consentDraft, actionAfterTestSuccess(action));
+      const revealedStepId = transitionRevealedStepId(chosenDraft, draftCopy(chosenDraft, action));
+      // D-121-63 D: a choice screen → the revealed step is action-only (it has no fields).
+      const actionsOnly = result.actionsOnly === true && revealedStepId !== null;
+      if (actionsOnly && revealedStepId) {
+        chosenDraft = rederiveRevealReadiness(upsertStepFieldMappings(chosenDraft, revealedStepId, []));
+      }
+      const chosen = draftCopy(chosenDraft, action);
+      setDraft(chosenDraft);
+      showTestedAction(slot, chosen);
+      setTestOutcome(action.actionId, 'opened');
+      if (revealedStepId) setSelectedStepId(revealedStepId);
+      // D-121-22 / R3: auto-Analyze only after readiness success, on the same
+      // authoring tab (open/reuse; no entry reopen).
+      setSuccess(SPECIAL_EDITOR_COPY_HE.autoAnalyzeStarted);
+      setAnalyzing(true);
+      const choiceScreen = actionsOnly ? { frame: result.revealedFrame ?? null } : undefined;
+      await runSpecialAnalyze('after_continue', { base: chosenDraft, tested: chosen, slot, actionsOnly: choiceScreen });
+    } finally {
+      setAnalyzing(false);
+      setBusy(false);
+    }
+  }
+
+  function renderActionPanel(slot: PanelSlot, action: FlowAction) {
+    return (
+      <div
+        className="admin-special-approval"
+        data-panel={slot === 'primary' ? 'progressive-approval' : 'follow-up-action'}
+      >
+        <h4>{slot === 'primary' ? SPECIAL_BUTTON_PANEL_HE.title : SPECIAL_BUTTON_PANEL_HE.followUpTitle}</h4>
+        <p>
+          {action.kind}: <code dir="ltr">{action.locator}</code>
+          {' · '}
+          <span data-status="action-location">{frameLocationLabelHe(action.frame)}</span>
+        </p>
+        <p className="admin-muted" data-status="action-selection">
+          {actionStatusHe(action, testOutcomes[action.actionId], pendingInDraft(action))}
+        </p>
+        <div className="admin-actions-row">
+          <button
+            type="button"
+            className="admin-btn admin-btn-primary"
+            data-action="authoring-continue-click"
+            data-slot={slot}
+            disabled={
+              busy ||
+              !canUseCurrentSurface ||
+              !canPerformAuthoringClick(actionForTestPress(action), approvedFrameOrigins, allowedOrigin)
+            }
+            onClick={() => void testAndChooseAction(slot)}
+          >
+            {SPECIAL_BUTTON_PANEL_HE.testOpen}
+          </button>
+          <button
+            type="button"
+            className="admin-btn admin-btn-secondary"
+            data-action="reject-action"
+            data-slot={slot}
+            disabled={busy}
+            onClick={() => rejectAction(slot)}
+          >
+            {SPECIAL_BUTTON_PANEL_HE.reject}
+          </button>
+          {action.kind === 'floating_opener' ? renderRemapButton('opener') : null}
+        </div>
+        <p className="admin-muted" data-status="test-open-helper">
+          {SPECIAL_BUTTON_PANEL_HE.testOpenHelper}
+        </p>
+      </div>
+    );
+  }
+
+  function renderRemapButton(target: { stepId: string } | 'opener') {
+    const remap = target === 'opener' ? 'opener' : 'step';
+    const armed = armedPick?.target === 'action' && armedPick.remap === remap;
+    return (
+      <button
+        type="button"
+        className="admin-btn admin-btn-secondary"
+        data-action={target === 'opener' ? 'special-remap-opener' : 'special-remap-step-exit'}
+        disabled={busy || !canUseCurrentSurface}
+        onClick={() => void remapStoredButton(target)}
+        aria-busy={armed}
+      >
+        {armed ? SPECIAL_VISUAL_BUTTON_HE.waitingAction : SPECIAL_BUTTON_PANEL_HE.remap}
+      </button>
+    );
+  }
+
+  /** D-121-67 A — the selected step's saved exit (multi-step patterns). */
+  function renderStepButtonPanel() {
+    if (!draft) return null;
+    const view = stepButtonView(draft, currentStepId);
+    if (!view) return null;
+    const exit = view.kind === 'exit' ? view.exit : null;
+    return (
+      <div className="admin-special-approval" data-panel="step-exit" data-step-index={view.stepIndex}>
+        <h4>{SPECIAL_STEP_BUTTON_HE.title(view.stepIndex)}</h4>
+        {exit ? (
+          <>
+            <p>
+              <code dir="ltr">{exit.locator}</code>
+              {' · '}
+              <span data-status="step-exit-location">{frameLocationLabelHe(exit.frame)}</span>
+            </p>
+            <p className="admin-muted" data-status="step-exit-selection">
+              {actionStatusHe(exit, testOutcomes[exit.actionId], true)}
+            </p>
+            <div className="admin-actions-row">
+              <button
+                type="button"
+                className="admin-btn admin-btn-primary"
+                data-action="authoring-continue-click"
+                data-slot="step"
+                disabled={
+                  busy ||
+                  !canUseCurrentSurface ||
+                  !canPerformAuthoringClick(actionForTestPress(exit), approvedFrameOrigins, allowedOrigin)
+                }
+                onClick={() => void testAndChooseAction('step', exit)}
+              >
+                {SPECIAL_BUTTON_PANEL_HE.testOpen}
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn-secondary"
+                data-action="reject-action"
+                data-slot="step"
+                disabled={busy}
+                onClick={() => rejectStepExit(currentStepId)}
+              >
+                {SPECIAL_BUTTON_PANEL_HE.reject}
+              </button>
+              {renderRemapButton({ stepId: currentStepId })}
+            </div>
+          </>
+        ) : view.kind === 'last' ? (
+          <p className="admin-muted" data-status="step-exit-selection">
+            {SPECIAL_STEP_BUTTON_HE.lastStep}
+          </p>
+        ) : (
+          <>
+            <p className="admin-muted" data-status="step-exit-selection">
+              {SPECIAL_STEP_BUTTON_HE.noExit}
+            </p>
+            <div className="admin-actions-row">{renderRemapButton({ stepId: currentStepId })}</div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // D-121-45: only the grid of the selected «אופי הכניסה» is shown.
+  if (!isSpecialLoginPattern(pattern)) return null;
+
+  return (
+    <section className="admin-panel admin-special-draft" data-phase="121.1" data-grid="special-mapping">
+      <h3 className="admin-panel-title">{SPECIAL_GRID_TITLE_HE[pattern]}</h3>
+
+      {draft ? (
+        <>
+          <div className="admin-actions-row">
+            <button
+              type="button"
+              className="admin-btn admin-btn-secondary"
+              data-action="special-analyze-current-tab"
+              disabled={busy || !canUseCurrentSurface || !topBar.analyze}
+              onClick={() => void analyzeCurrentSurface()}
+              aria-busy={analyzing}
+            >
+              {analyzing ? SPECIAL_ANALYZE_HE.busyLabel : SPECIAL_ANALYZE_HE.label}
+            </button>
+            {/* D-121-45 C1: a manual pick irrelevant to the pattern is not rendered. */}
+            {manualPickRelevant('floating_opener', pattern) ? (
+              <button
+                type="button"
+                className="admin-btn admin-btn-secondary"
+                data-action="special-visual-opener"
+                disabled={busy || !canUseCurrentSurface || !topBar.opener}
+                onClick={() => void visualPickAction('floating_opener')}
+                aria-busy={armedPick?.target === 'action' && armedPick.kind === 'floating_opener'}
+              >
+                {armedPick?.target === 'action' && armedPick.kind === 'floating_opener'
+                  ? SPECIAL_VISUAL_BUTTON_HE.waitingAction
+                  : SPECIAL_VISUAL_BUTTON_HE.opener}
+              </button>
+            ) : null}
+            {manualPickRelevant('intermediate_transition', pattern) ? (
+              <button
+                type="button"
+                className="admin-btn admin-btn-secondary"
+                data-action="special-visual-transition"
+                disabled={busy || !canUseCurrentSurface || !topBar.transition}
+                onClick={() => void visualPickAction('intermediate_transition')}
+                aria-busy={
+                  armedPick?.target === 'action' && armedPick.kind === 'intermediate_transition'
+                }
+              >
+                {armedPick?.target === 'action' && armedPick.kind === 'intermediate_transition'
+                  ? SPECIAL_VISUAL_BUTTON_HE.waitingAction
+                  : SPECIAL_VISUAL_BUTTON_HE.transition}
+              </button>
+            ) : null}
+          </div>
+
+          {analyzing ? (
+            <p role="status" className="admin-muted" data-status="special-analyze-busy">
+              {SPECIAL_ANALYZE_HE.busyStatus}
+            </p>
+          ) : null}
+
+          {armedPick ? (
+            <div className="admin-special-visual-armed" data-panel="special-visual-armed">
+              <p role="status" data-status="special-visual-armed">
+                {armedPick.target === 'field'
+                  ? SPECIAL_EDITOR_COPY_HE.visualPickWaitingField
+                  : SPECIAL_EDITOR_COPY_HE.visualPickWaitingAction}{' '}
+                <strong>{armedPick.label}</strong>. {SPECIAL_EDITOR_COPY_HE.visualPickCancelHint}
+              </p>
+              <p className="admin-muted" data-status="special-site-tab">
+                {SPECIAL_EDITOR_COPY_HE.siteTabActive}
+              </p>
+              <button
+                type="button"
+                className="admin-btn admin-btn-secondary"
+                data-action="special-visual-cancel"
+                onClick={cancelArmedVisualPick}
+              >
+                ביטול
+              </button>
+            </div>
+          ) : null}
+
+          {unapprovedFrameOrigins.map((origin) => (
+            <div
+              key={origin}
+              className="admin-special-approval"
+              data-panel="frame-approval"
+              data-frame-origin={origin}
+            >
+              <p role="status">{FRAME_APPROVAL_PROMPT_HE(origin)}</p>
+              <div className="admin-actions-row">
+                <button
+                  type="button"
+                  className="admin-btn admin-btn-primary"
+                  data-action="approve-frame"
+                  disabled={busy}
+                  onClick={() => approveFrameOrigin(origin)}
+                >
+                  {FRAME_APPROVE_LABEL_HE}
+                </button>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn-secondary"
+                  data-action="reject-frame"
+                  disabled={busy}
+                  onClick={() => rejectFrameOrigin(origin)}
+                >
+                  {FRAME_REJECT_LABEL_HE}
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {pendingAction && proposalShown(pendingAction) ? renderActionPanel('primary', pendingAction) : null}
+          {followUpAction && proposalShown(followUpAction) ? renderActionPanel('followUp', followUpAction) : null}
+
+          <div className="admin-special-steps">
+            <h4>{SPECIAL_EDITOR_COPY_HE.fieldsSection}</h4>
+            {stepSelector ? (
+              <label className="admin-field" data-field="special-current-step">
+                <span>{SPECIAL_EDITOR_COPY_HE.currentStep}</span>
+                <select
+                  value={selectedStepId}
+                  onChange={(e) => setSelectedStepId(e.target.value)}
+                  disabled={busy}
+                >
+                  {draft.steps.map((step, index) => (
+                    <option key={step.stepId} value={step.stepId}>
+                      {stepLabelHe(index)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {stepSelector ? renderStepButtonPanel() : null}
+            <ul className="admin-special-field-list">
+              {loginFields.map((field) => {
+                const step = draft.steps.find((s) => s.stepId === currentStepId);
+                const mapping = (step?.fieldMappings ?? []).find(
+                  (m) => (m as { fieldId: string }).fieldId === field.id,
+                ) as SpecialFieldMapping | undefined;
+                return (
+                  <li key={field.id}>
+                    <span>{field.label}</span>
+                    <code dir="ltr">{mapping?.locator || '—'}</code>
+                    {mapping?.locator ? (
+                      <span className="admin-muted" data-status="field-location">
+                        {frameLocationLabelHe(mapping.frame)}
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn-secondary"
+                      data-action="special-visual-field"
+                      data-field-id={field.id}
+                      disabled={busy || !canUseCurrentSurface}
+                      onClick={() => void visualPickField(field.id, field.label)}
+                      aria-busy={armedPick?.target === 'field' && armedPick.fieldId === field.id}
+                    >
+                      {armedPick?.target === 'field' && armedPick.fieldId === field.id
+                        ? SPECIAL_VISUAL_BUTTON_HE.waitingField
+                        : SPECIAL_VISUAL_BUTTON_HE.field}
+                    </button>
+                    {mapping?.locator ? (
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn-secondary"
+                        data-action="special-remove-field"
+                        data-field-id={field.id}
+                        disabled={busy}
+                        onClick={() => removeFieldRow(field.id)}
+                      >
+                        {SPECIAL_FIELD_ROW_HE.remove}
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+            {heldFields.length > 0 ? (
+              <ul className="admin-special-field-list" data-panel="frame-held-fields">
+                {heldFields.map((held) => {
+                  const label =
+                    loginFields.find((f) => f.id === held.fieldId)?.label ?? held.fieldId;
+                  return (
+                    <li key={`${held.stepId}:${held.fieldId}`}>
+                      <span>{label}</span>
+                      <code dir="ltr">{held.locator}</code>
+                      <span className="admin-muted" data-status="field-location">
+                        {frameLocationLabelHe(held.frame)}
+                      </span>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn-secondary"
+                        data-action="accept-framed-field"
+                        data-field-id={held.fieldId}
+                        disabled={busy || !frameApproved(held.frame)}
+                        onClick={() => acceptHeldField(held)}
+                      >
+                        {SPECIAL_FRAME_BUTTON_HE.acceptField}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </div>
+
+          {draftCheck.complete ? (
+            <p className="admin-muted" data-status="mapping-completeness">
+              {draftCheck.message}
+            </p>
+          ) : (
+            <p className="admin-error" role="status" data-status="mapping-completeness">
+              {draftCheck.message}
+            </p>
+          )}
+
+          <div className="admin-actions-row">
+            <button
+              type="button"
+              className="admin-btn admin-btn-primary"
+              data-action="save-special-draft"
+              disabled={busy}
+              onClick={() => void saveDraft()}
+            >
+              {SPECIAL_ACTION_BAR_HE.saveDraft}
+            </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn-primary"
+              data-action="activate-special"
+              disabled={busy || draftDirty || !draftCheck.complete || !approveGate.allowed}
+              onClick={requestActivateSpecial}
+            >
+              {SPECIAL_ACTIVATE_LABEL_HE[pattern as SpecialLoginPattern]}
+            </button>
+          </div>
+          {!approveGate.allowed && approveGate.message ? (
+            <p className="admin-muted" role="status" data-status="special-approve-blocked">
+              {approveGate.message}
+            </p>
+          ) : null}
+          <p className="admin-muted" data-panel="action-bar-explanation">
+            {SPECIAL_ACTION_BAR_HE.explanation}
+          </p>
+        </>
+      ) : null}
+
+      {activateConfirmOpen ? (
+        <div
+          className="admin-modal-overlay"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) cancelActivateSpecial();
+          }}
+        >
+          <div
+            className="admin-modal admin-autofill-confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="special-activate-confirm-title"
+            aria-describedby="special-activate-confirm-body"
+            dir="rtl"
+            data-panel="special-activate-confirm"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="special-activate-confirm-title">{approveConfirmTitleHe(serviceDisplayName)}</h3>
+            <p id="special-activate-confirm-body">{SPECIAL_ACTION_BAR_HE.activateConfirmBody(serviceDisplayName)}</p>
+            <div className="admin-actions-row admin-autofill-confirm-actions">
+              <button
+                type="button"
+                className="admin-btn admin-btn-secondary"
+                data-action="cancel-activate-special"
+                onClick={cancelActivateSpecial}
+              >
+                {SPECIAL_ACTION_BAR_HE.cancel}
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn-primary"
+                data-action="confirm-activate-special"
+                disabled={busy}
+                onClick={confirmActivateSpecial}
+              >
+                {SPECIAL_ACTION_BAR_HE.activateConfirmYes}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="admin-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {approveFailure ? (
+        <div data-status="special-approve-failed">
+          <p className="admin-error" role="alert" data-part="message">
+            {SPECIAL_EDITOR_COPY_HE.approveFailed}
+          </p>
+          <details className="admin-special-test-details" data-part="technical">
+            <summary>{ADMIN_MAPPING_COPY_HE.technicalDetails}</summary>
+            <code dir="ltr">{approveFailure}</code>
+          </details>
+        </div>
+      ) : null}
+      {success ? (
+        <p className="admin-success" role="status">
+          {success}
+        </p>
+      ) : null}
+    </section>
+  );
+}

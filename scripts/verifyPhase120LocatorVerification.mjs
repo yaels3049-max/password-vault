@@ -259,14 +259,44 @@ const r2 = assisted.applySafetyAndConfidence({
     },
   ],
 });
+// D-121-54: the non-unique #id yields to the same input's first exact-one candidate (Visual's choice).
 const r2row = r2.proposals.find((p) => p.fieldId === 'password');
 assert(r2row?.confidence === 'high', 'R2 HIGH semantic preserved (not collapsed)');
-assert(r2row?.locatorDeterministic === false, 'R2 locator not deterministic');
-assert(r2.warnings?.includes('locator_not_deterministic'), 'R2 warning');
+assert(r2row?.locator === 'input[name="j_password"]' && r2row.locatorDeterministic === true, 'R2 (D-121-54) non-unique #id replaced by the unique name of the same input');
 const r2prefill = assisted.applyConfidentPrefill({}, r2);
-assert(!r2prefill.appliedFieldIds.includes('password'), 'R2 no unsafe prefill');
-assert(!(r2prefill.next.password ?? '').trim(), 'R2 mapping left empty');
-console.log('  ✓ R2 semantic HIGH + non-unique → no approvable prefill; ID preserved');
+assert(r2prefill.next.password === 'input[name="j_password"]', 'R2 (D-121-54) prefilled with the exact-one locator, never #j_password');
+// Same input without any exact-one candidate → no approvable prefill; ID preserved (120.9).
+const noExactPage = {
+  ...page,
+  inputs: page.inputs.map((i) =>
+    i.inputId === pwdInput.inputId
+      ? { ...i, locatorCandidates: i.locatorCandidates.map((c) => ({ ...c, matchCount: 2 })) }
+      : i,
+  ),
+};
+const r2b = assisted.applySafetyAndConfidence({
+  requestId: 'r2b',
+  serviceId: 'svc',
+  schema,
+  page: noExactPage,
+  rawProposals: [
+    {
+      fieldId: 'password',
+      observedInputId: pwdInput.inputId,
+      locator: '#j_password',
+      modelConfidence: 'high',
+      evidence: [{ category: 'type_affinity' }],
+    },
+  ],
+});
+const r2brow = r2b.proposals.find((p) => p.fieldId === 'password');
+assert(r2brow?.confidence === 'high', 'R2b HIGH semantic preserved (not collapsed)');
+assert(r2brow?.locatorDeterministic === false, 'R2b locator not deterministic');
+assert(r2b.warnings?.includes('locator_not_deterministic'), 'R2b warning');
+const r2bprefill = assisted.applyConfidentPrefill({}, r2b);
+assert(!r2bprefill.appliedFieldIds.includes('password'), 'R2b no unsafe prefill');
+assert(!(r2bprefill.next.password ?? '').trim(), 'R2b mapping left empty');
+console.log('  ✓ R2 non-unique → same-input exact-one (D-121-54); none exact-one → no approvable prefill; ID preserved');
 
 // R4 — SAME via E1; E2 cannot preserve Analyze; Hub always writes Visual unique
 const sameE1 = authoring.visualTargetsEquivalent({
@@ -352,11 +382,11 @@ assert(afterManual[0].source === 'manual', 'R7 manual source');
 console.log('  ✓ R7 visualMappingVerified cleared when locator edited');
 
 // R8 — multi_match fail-closed in Managed runtime (unchanged)
-const fillMulti = win.runManagedAutofill({
+const fillMulti = await Promise.resolve(win.runManagedAutofill({
   allowedOrigin: 'https://fixture.example.test',
   fieldMappings: [{ fieldId: 'password', locatorType: 'css', locator: '#j_password' }],
   credentials: { password: 'secret' },
-});
+}));
 assert(fillMulti.ok === false, 'R8 multi_match fails');
 assert(
   /multi_match/i.test(String(fillMulti.detail ?? fillMulti.reason ?? '')),
@@ -369,7 +399,7 @@ const r12 = assisted.applySafetyAndConfidence({
   requestId: 'r12',
   serviceId: 'svc',
   schema,
-  page,
+  page: noExactPage,
   rawProposals: [
     {
       fieldId: 'password',
@@ -381,7 +411,7 @@ const r12 = assisted.applySafetyAndConfidence({
   ],
 });
 assert(r12.proposals[0]?.confidence === 'medium', 'R12 MEDIUM semantic retained');
-assert(r12.proposals[0]?.locatorDeterministic === false, 'R12 MEDIUM non-det no locator approve');
+assert(r12.proposals[0]?.locatorDeterministic === false, `R12 MEDIUM non-det no locator approve (got ${JSON.stringify(r12.proposals[0])})`);
 assert(assisted.applyConfidentPrefill({}, r12).appliedFieldIds.length === 0, 'R12 no MEDIUM unsafe prefill');
 console.log('  ✓ R12 HIGH/MEDIUM semantic provenance; locator only if deterministic');
 

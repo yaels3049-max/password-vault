@@ -1,0 +1,104 @@
+/**
+ * D-121-45 — cross-cutting «אופי הכניסה» grid: pattern selector + explanation + the
+ * shared status line (D-121-43) of the selected pattern + «פרטים טכניים».
+ * No authoring controls; the mapping grids below hold those.
+ */
+import { useMemo } from 'react';
+import type { AdminRegistryRow } from './adminRegistryApi';
+import {
+  AUTOFILL_SUPPORT_STATE_LABEL_HE,
+  readAutofillProfileFromMetadata,
+} from '../autofill/validatedProfile';
+import {
+  LOGIN_PATTERN_LABEL_HE,
+  isSpecialLoginPattern,
+  resolveActiveLoginContract,
+  resolveSpecialAuthoringEntry,
+  type AuthoringLoginPattern,
+} from '../loginContract';
+import { ADMIN_GRID_COPY_HE } from './mappingCopy';
+import { specialMappingStatus, standardMappingStatus } from './mappingStatus';
+import MappingStatusLine from './MappingStatusLine';
+
+interface Props {
+  row: AdminRegistryRow;
+  pattern: AuthoringLoginPattern;
+  onPatternChange: (pattern: AuthoringLoginPattern) => void;
+  /** The visible mapping grid is busy (same lock the selector had inside the SPECIAL editor). */
+  disabled?: boolean;
+}
+
+function SpecialTechnical({ row }: { row: AdminRegistryRow }) {
+  const entry = resolveSpecialAuthoringEntry({
+    primaryUrl: row.primary_url,
+    loginUrl: row.login_url,
+    metadata: row.metadata,
+  });
+  const active = resolveActiveLoginContract(row.metadata ?? {});
+  return (
+    <p className="admin-muted" data-status="special-technical">
+      משטח כניסה:{' '}
+      <strong>
+        {entry.ok ? (entry.entryType === 'primary_page' ? 'דף הבית' : 'כתובת כניסה ייעודית') : 'לא זמין'}
+      </strong>
+      {entry.ok ? (
+        <>
+          {' · '}
+          <code dir="ltr">{entry.authoringUrl}</code>
+        </>
+      ) : null}
+      {' · '}
+      פעיל כעת:{' '}
+      <strong>
+        {active.mode === 'SPECIAL'
+          ? `SPECIAL v${active.activePlanVersion}`
+          : active.mode === 'SPECIAL_INVALID'
+            ? 'SPECIAL לא תקין'
+            : 'STANDARD'}
+      </strong>
+    </p>
+  );
+}
+
+function StandardTechnical({ row }: { row: AdminRegistryRow }) {
+  const state = readAutofillProfileFromMetadata(row.metadata)?.supportState ?? null;
+  return (
+    <p className="admin-muted" data-status="standard-technical">
+      מצב תמיכה: <strong>{AUTOFILL_SUPPORT_STATE_LABEL_HE[state ?? 'not_configured']}</strong>
+    </p>
+  );
+}
+
+export default function LoginPatternGrid({ row, pattern, onPatternChange, disabled = false }: Props) {
+  const special = isSpecialLoginPattern(pattern);
+  const status = useMemo(
+    () => (special ? specialMappingStatus(row.metadata) : standardMappingStatus(row.metadata)),
+    [special, row.metadata],
+  );
+  return (
+    <section className="admin-panel admin-login-pattern" data-grid="login-pattern">
+      <h3 className="admin-panel-title">{ADMIN_GRID_COPY_HE.loginPatternTitle}</h3>
+      <p className="admin-panel-hint">{ADMIN_GRID_COPY_HE.loginPatternHint}</p>
+      <label className="admin-field">
+        <span>{ADMIN_GRID_COPY_HE.loginPatternTitle}</span>
+        <select
+          value={pattern}
+          onChange={(e) => onPatternChange(e.target.value as AuthoringLoginPattern)}
+          disabled={disabled}
+          aria-label={ADMIN_GRID_COPY_HE.loginPatternTitle}
+          data-action="login-pattern"
+        >
+          {(Object.keys(LOGIN_PATTERN_LABEL_HE) as AuthoringLoginPattern[]).map((key) => (
+            <option key={key} value={key}>
+              {LOGIN_PATTERN_LABEL_HE[key]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <MappingStatusLine
+        status={status}
+        technical={special ? <SpecialTechnical row={row} /> : <StandardTechnical row={row} />}
+      />
+    </section>
+  );
+}

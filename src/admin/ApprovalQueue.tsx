@@ -7,10 +7,19 @@ import {
   updateGlobalRegistryRow,
   type AdminCategory,
   type AdminRegistryRow,
+  type SubmitterProfile,
 } from './adminRegistryApi';
-import { formatAdminDate, statusLabelHe } from './adminPresentation';
+import {
+  dedicatedLoginUrlOrNull,
+  formatAdminDateTime,
+  httpUrlOrNull,
+  submitterLabel,
+  UNKNOWN_SUBMITTER_HE,
+} from './adminPresentation';
+import { loadSubmitterProfiles, type SubmitterProfileMap } from './submitterProfiles';
 import { adminRowToLogoService } from './adminLogoService';
 import IntegrationStatusPanel from './IntegrationStatusPanel';
+import AdminChipRow from './AdminChipRow';
 import { useServiceLogos } from '../useServiceLogos';
 import {
   ADMIN_DIRECT_URL_LABEL,
@@ -47,8 +56,45 @@ function PreviewIcon({
   );
 }
 
+/** URL as a new-tab link (valid http(s) only), plain text otherwise, «—» when empty. */
+function UrlValue({ value, part }: { value: string | null | undefined; part: string }) {
+  const text = value?.trim() ?? '';
+  const href = httpUrlOrNull(text);
+  if (href) {
+    return (
+      <a className="admin-pending-url" data-part={part} href={href} target="_blank" rel="noopener noreferrer" dir="ltr">
+        {text}
+      </a>
+    );
+  }
+  return text ? (
+    <bdi className="admin-pending-url" data-part={part} dir="ltr">
+      {text}
+    </bdi>
+  ) : (
+    <span data-part={part}>—</span>
+  );
+}
+
+function Submitter({ profile }: { profile: SubmitterProfile | undefined }) {
+  const { name, email } = submitterLabel(profile);
+  if (!name && !email) return <span data-part="submitter-name">{UNKNOWN_SUBMITTER_HE}</span>;
+  return (
+    <>
+      {name ? <span data-part="submitter-name">{name}</span> : null}
+      {name && email ? ' · ' : null}
+      {email ? (
+        <a data-part="submitter-email" href={`mailto:${email}`} dir="ltr">
+          {email}
+        </a>
+      ) : null}
+    </>
+  );
+}
+
 export default function ApprovalQueue() {
   const [rows, setRows] = useState<AdminRegistryRow[]>([]);
+  const [profiles, setProfiles] = useState<SubmitterProfileMap>({});
   const [categories, setCategories] = useState<AdminCategory[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,6 +121,7 @@ export default function ApprovalQueue() {
       ]);
       setRows(pending);
       setCategories(cats);
+      setProfiles(await loadSubmitterProfiles(pending));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'טעינת תור ההגשות נכשלה.');
     } finally {
@@ -91,11 +138,6 @@ export default function ApprovalQueue() {
   function categoryLabel(categoryId: string | null | undefined): string {
     if (!categoryId) return 'ללא קטגוריה';
     return categories.find((c) => c.id === categoryId)?.display_name ?? categoryId;
-  }
-
-  function submittedByLabel(row: AdminRegistryRow): string {
-    if (row.owner_user_id) return `משתמש ${row.owner_user_id.slice(0, 8)}…`;
-    return 'משתמש';
   }
 
   function selectSubmission(row: AdminRegistryRow) {
@@ -207,7 +249,7 @@ export default function ApprovalQueue() {
         className="admin-scroll-panel admin-approvals-scroll"
         aria-label="הגשות ממתינות"
       >
-      <ul className="admin-pending-grid">
+      <ul className={`admin-pending-grid${selectedId && rows.some((r) => r.id === selectedId) ? ' has-selection' : ''}`}>
         {rows.length === 0 && !loading && (
           <li className="admin-muted">אין הגשות ממתינות כרגע.</li>
         )}
@@ -217,6 +259,7 @@ export default function ApprovalQueue() {
             <li
               key={row.id}
               className={`admin-pending-card${isSelected ? ' is-active' : ''}`}
+              data-submission={row.id}
             >
               <button
                 type="button"
@@ -233,29 +276,38 @@ export default function ApprovalQueue() {
                 onClick={() => selectSubmission(row)}
               >
                 <PreviewIcon row={row} logoSrc={logos[row.id]} />
-                <div>
-                  <div className="admin-site-card-name">{row.display_name}</div>
-                  <div className="admin-site-card-meta">
-                    <span className="admin-badge">{categoryLabel(row.category_id)}</span>
-                    <span className="admin-badge admin-badge--warn">
-                      {statusLabelHe(row.service_status)}
-                    </span>
-                  </div>
+                <div className="admin-site-card-name" title={row.display_name}>
+                  {row.display_name}
                 </div>
               </button>
+              <div className="admin-site-card-meta">
+                <AdminChipRow chips={[{ key: 'category', label: categoryLabel(row.category_id) }]} />
+              </div>
 
-              <p className="admin-site-card-line">
-                <strong>תאריך הגשה:</strong>{' '}
-                {formatAdminDate(row.created_at ?? row.updated_at)}
-              </p>
-              <p className="admin-site-card-line">
-                <strong>הוגש על ידי:</strong> {submittedByLabel(row)}
-              </p>
-              {row.primary_url ? (
-                <p className="admin-site-card-line">
-                  <strong>כתובת הבית:</strong> {row.primary_url}
-                </p>
-              ) : null}
+              <dl className="admin-pending-facts" data-part="card-footer">
+                <div data-fact="submitted-by">
+                  <dt>הוגש ע&quot;י:</dt>
+                  <dd>
+                    <Submitter profile={row.owner_user_id ? profiles[row.owner_user_id] : undefined} />
+                  </dd>
+                </div>
+                <div data-fact="submitted-at">
+                  <dt>תאריך הגשה:</dt>
+                  <dd>{formatAdminDateTime(row.created_at ?? row.updated_at)}</dd>
+                </div>
+                <div data-fact="home-url">
+                  <dt>כתובת הבית:</dt>
+                  <dd>
+                    <UrlValue value={row.primary_url} part="home-url" />
+                  </dd>
+                </div>
+                <div data-fact="login-url">
+                  <dt>כתובת כניסה:</dt>
+                  <dd>
+                    <UrlValue value={dedicatedLoginUrlOrNull(row.metadata?.loginEntryType, row.login_url)} part="login-url" />
+                  </dd>
+                </div>
+              </dl>
 
               {isSelected && (
                 <>
@@ -368,6 +420,15 @@ export default function ApprovalQueue() {
               <div>
                 <dt>owner_user_id</dt>
                 <dd>{selected.owner_user_id ?? '—'}</dd>
+              </div>
+              <div data-fact="modal-login-url">
+                <dt>כתובת כניסה</dt>
+                <dd>
+                  <UrlValue
+                    value={dedicatedLoginUrlOrNull(selected.metadata?.loginEntryType, selected.login_url)}
+                    part="modal-login-url"
+                  />
+                </dd>
               </div>
             </dl>
             <details className="admin-details" style={{ marginTop: '0.75rem' }}>

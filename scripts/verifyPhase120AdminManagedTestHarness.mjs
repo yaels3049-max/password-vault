@@ -175,7 +175,18 @@ function loadManagedDom(html, origin) {
 console.log('Phase 120.5 — Admin Managed Autofill Test Harness verification\n');
 
 const hubSrc = read('src/execution/managedAutofill.ts');
-const editorSrc = read('src/admin/AutofillProfileEditor.tsx');
+// D-121-38 Part A: the harness lives in the «בדיקת מילוי» grid, not the managed grid.
+const editorSrc = read('src/admin/AdminFillTestGrid.tsx');
+const managedGridSrc = read('src/admin/AutofillProfileEditor.tsx');
+for (const needle of [
+  'executeAdminManagedAutofillTest',
+  'tempTestValues',
+  'data-section="managed-test-harness"',
+  'data-action="managed-test"',
+  'כניסה לאתר ומילוי שדות',
+]) {
+  assertNotIncludes(managedGridSrc, needle, `D-121-38: harness absent from managed grid (${needle})`);
+}
 const dhExecSrc = read('src/execution/serviceExecution.ts');
 const validatedSrc = read('src/autofill/validatedProfile.ts');
 const bgSrc = read('extension/background.js');
@@ -220,7 +231,8 @@ assertIncludes(validatedSrc, "supportState !== 'validated'", 'DH eligibility req
 assertNotIncludes(adminFn, 'supportState', 'Admin test does not check supportState');
 assertIncludes(editorSrc, 'savedProfileReady', 'Editor: saved-profile gate');
 assertIncludes(editorSrc, '!hasUnsavedChanges', 'Editor: dirty disables test');
-assertIncludes(editorSrc, 'כניסה לאתר ומילוי שדות', 'AC-120.5-3: button label');
+assertIncludes(read('src/admin/fillTestContext.ts'), "run: 'כניסה לאתר ומילוי שדות'", 'AC-120.5-3: button label');
+assertIncludes(editorSrc, 'FILL_TEST_GRID_HE.run', 'AC-120.5-3: button label rendered');
 assertIncludes(editorSrc, 'allTempValuesFilled', 'AC-120.5-3: all-fields gate');
 assertIncludes(editorSrc, "field.type === 'password' ? 'password'", 'AC-120.5-8: masked password');
 assertIncludes(editorSrc, 'fields.map((field)', 'AC-120.5-2: schema-dynamic inputs');
@@ -232,7 +244,7 @@ assertNotIncludes(editorSrc, 'sessionStorage', 'AC-120.5-7: no sessionStorage fo
 
 // requestManagedTest must not approve / flip supportState (120.8 may persist authoring fact only)
 const requestStart = editorSrc.indexOf('async function requestManagedTest');
-const requestEnd = editorSrc.indexOf('async function requestAnalyzeLoginPage', requestStart);
+const requestEnd = editorSrc.indexOf('const showTempInputs', requestStart);
 assert(requestStart >= 0 && requestEnd > requestStart, 'requestManagedTest function found');
 const requestFn = editorSrc.slice(requestStart, requestEnd);
 assertIncludes(requestFn, 'stampAdminTestPassed', '120.8: Admin Test success fact helper');

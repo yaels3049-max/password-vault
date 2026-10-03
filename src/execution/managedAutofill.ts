@@ -19,6 +19,14 @@ import {
   openUrlInNewTab,
   sendExtensionMessageAsync,
 } from './extensionBridge';
+import {
+  acquireFillRun,
+  fillRunCount,
+  fillRunEndMessage,
+  FILL_RUN_TIMEOUT_REASON,
+  isFillRunActive,
+  stopFillRun,
+} from './fillRunControl';
 
 export const HUB_MANAGED_AUTOFILL_MESSAGE = 'HUB_MANAGED_AUTOFILL';
 
@@ -70,6 +78,32 @@ export interface ManagedAutofillStructuredOutcome {
   tabOpened: boolean;
   extensionUsed: boolean;
   userMessage: string;
+  /** A2 — structural fill stamps only; never secrets. */
+  fillDiagnostics?: ManagedFillDiagnostics;
+}
+
+/** Post-120 Corrective A / A2 — safe structural stamps (no values). */
+export interface ManagedFillDiagStamp {
+  runId?: string;
+  path?: string;
+  fieldId?: string;
+  locator?: string;
+  stage?: string;
+  stageOrderIndex?: number;
+  exactOne?: string | null;
+  matchCount?: number | null;
+  managedEligible?: boolean;
+  heldConnected?: boolean | null;
+  heldEqualsCurrent?: boolean | null;
+  targetReplaced?: boolean | null;
+  expectedValueMatchHeld?: boolean | null;
+  expectedValueMatchCurrent?: boolean | null;
+}
+
+export interface ManagedFillDiagnostics {
+  runId: string;
+  path: string;
+  stamps: ManagedFillDiagStamp[];
 }
 
 export interface ManagedAutofillOptions {
@@ -80,8 +114,8 @@ export interface ManagedAutofillOptions {
 /**
  * D-117-20 / AC-117-36 — in-flight keys are `(serviceId, accessProfileId)` only.
  * Admin Test uses a distinct key prefix (D-120-12 / §15.8) — no secrets.
+ * D-121-72: the lock is a run token (`fillRunControl`, lane `managed`) — bounded, stoppable.
  */
-const managedAutofillInFlightKeys = new Set<string>();
 
 /** Stable execution key — serviceId + accessProfileId only (no secrets). */
 export function managedAutofillExecutionKey(
@@ -103,14 +137,23 @@ export function isManagedAutofillInFlightFor(
   if (!serviceId.trim() || !accessProfileId.trim()) {
     return false;
   }
-  return managedAutofillInFlightKeys.has(
-    managedAutofillExecutionKey(serviceId, accessProfileId),
-  );
+  return isFillRunActive('managed', managedAutofillExecutionKey(serviceId, accessProfileId));
 }
 
 /** Test/diagnostics: how many Managed executions are currently in flight. */
 export function managedAutofillInFlightCount(): number {
-  return managedAutofillInFlightKeys.size;
+  return fillRunCount('managed');
+}
+
+/**
+ * D-121-72 «עצור» (Admin «בדיקת מילוי» only) — stops the Admin Test run of this service
+ * in either lane (STANDARD Managed / SPECIAL). True when a run was stopped.
+ */
+export function stopAdminFillTest(serviceId: string): boolean {
+  const key = adminManagedTestExecutionKey(serviceId);
+  const managed = stopFillRun('managed', key);
+  const special = stopFillRun('special', key);
+  return managed || special;
 }
 
 /** Reasons that mean the extension never created / loaded the Login Entry tab. */
@@ -135,7 +178,14 @@ function logManagedDev(message: string, detail?: Record<string, unknown>): void 
   console.log(message);
 }
 
-function userMessageForManagedFailure(reason: string): string {
+function userMessageForManagedFailure(
+  reason: string,
+  path: 'admin_test' | 'digital_home',
+): string {
+  const ended = fillRunEndMessage(reason, path);
+  if (ended) {
+    return ended;
+  }
   if (TAB_NOT_OPENED_REASONS.has(reason)) {
     return MSG_MANAGED_OPEN_FAILED;
   }
@@ -157,6 +207,8 @@ export function buildManagedAutofillPayload(input: {
   allowedOrigin: string;
   fieldMappings: AutofillProfile['fieldMappings'];
   credentials: Credential;
+  /** A2 — path label only; does not alter fill. */
+  diagnosticPath?: 'admin_test' | 'digital_home';
 }): Record<string, unknown> {
   const credentials: Credential = {};
   for (const mapping of input.fieldMappings) {
@@ -166,7 +218,7 @@ export function buildManagedAutofillPayload(input: {
     }
   }
 
-  return {
+  const payload: Record<string, unknown> = {
     type: HUB_MANAGED_AUTOFILL_MESSAGE,
     url: input.url,
     allowedOrigin: input.allowedOrigin,
@@ -176,6 +228,37 @@ export function buildManagedAutofillPayload(input: {
       locator: mapping.locator,
     })),
     credentials,
+  };
+  if (input.diagnosticPath === 'admin_test' || input.diagnosticPath === 'digital_home') {
+    payload.diagnosticPath = input.diagnosticPath;
+  }
+  return payload;
+}
+
+function diagnosticPathFromExecutionKey(
+  executionKey: string,
+): 'admin_test' | 'digital_home' {
+  return /::admin_test$/.test(executionKey.trim()) ? 'admin_test' : 'digital_home';
+}
+
+function readFillDiagnostics(
+  response: { fillDiagnostics?: unknown } | null | undefined,
+): ManagedFillDiagnostics | undefined {
+  const raw = response?.fillDiagnostics;
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.runId !== 'string' || typeof obj.path !== 'string') {
+    return undefined;
+  }
+  if (!Array.isArray(obj.stamps)) {
+    return undefined;
+  }
+  return {
+    runId: obj.runId,
+    path: obj.path,
+    stamps: obj.stamps as ManagedFillDiagStamp[],
   };
 }
 
@@ -202,7 +285,8 @@ export async function sendManagedAutofillPayloadAndAwait(input: {
     };
   }
 
-  if (managedAutofillInFlightKeys.has(executionKey)) {
+  const fillRun = acquireFillRun('managed', executionKey);
+  if (!fillRun) {
     return {
       ok: false,
       reason: 'busy',
@@ -212,14 +296,16 @@ export async function sendManagedAutofillPayloadAndAwait(input: {
     };
   }
 
-  managedAutofillInFlightKeys.add(executionKey);
   try {
+    const diagnosticPath = diagnosticPathFromExecutionKey(executionKey);
     const payload = buildManagedAutofillPayload({
       url: input.url,
       allowedOrigin: input.allowedOrigin,
       fieldMappings: input.fieldMappings,
       credentials: input.credentials,
+      diagnosticPath,
     });
+    payload.runId = fillRun.token;
 
     logManagedDev('[Managed Autofill] Hub: sending explicit mappings', {
       type: HUB_MANAGED_AUTOFILL_MESSAGE,
@@ -228,6 +314,7 @@ export async function sendManagedAutofillPayloadAndAwait(input: {
       fieldIds: input.fieldMappings.map((mapping) => mapping.fieldId),
       extensionAvailable: isExtensionAvailable(),
       executionKeyPresent: true,
+      diagnosticPath,
     });
 
     if (!isExtensionAvailable()) {
@@ -241,14 +328,30 @@ export async function sendManagedAutofillPayloadAndAwait(input: {
       };
     }
 
-    const response = await sendExtensionMessageAsync<{
-      ok?: boolean;
-      reason?: string;
-      filled?: number;
-      fieldId?: string;
-      locator?: string;
-      detail?: string;
-    }>(payload);
+    const raced = await fillRun.race(
+      sendExtensionMessageAsync<{
+        ok?: boolean;
+        reason?: string;
+        filled?: number;
+        fieldId?: string;
+        locator?: string;
+        detail?: string;
+        fillDiagnostics?: ManagedFillDiagnostics;
+      }>(payload),
+    );
+
+    if (raced.kind !== 'answer') {
+      const reason = raced.kind === 'cancelled' ? 'cancelled' : FILL_RUN_TIMEOUT_REASON;
+      logManagedDev('[Managed Autofill] Hub: run ended without an answer', { reason });
+      return {
+        ok: false,
+        reason,
+        tabOpened: true,
+        extensionUsed: true,
+        userMessage: userMessageForManagedFailure(reason, diagnosticPath),
+      };
+    }
+    const response = raced.value;
 
     if (!response) {
       logManagedDev('[Managed Autofill] Hub: no extension response — opening Login Entry');
@@ -262,6 +365,15 @@ export async function sendManagedAutofillPayloadAndAwait(input: {
       };
     }
 
+    const fillDiagnostics = readFillDiagnostics(response);
+    if (fillDiagnostics) {
+      logManagedDev('[Managed Autofill] Hub: A2 fillDiagnostics', {
+        runId: fillDiagnostics.runId,
+        path: fillDiagnostics.path,
+        stampCount: fillDiagnostics.stamps.length,
+      });
+    }
+
     if (response.ok === true) {
       return {
         ok: true,
@@ -269,6 +381,7 @@ export async function sendManagedAutofillPayloadAndAwait(input: {
         tabOpened: true,
         extensionUsed: true,
         userMessage: MSG_MANAGED_FILL_OK,
+        fillDiagnostics,
       };
     }
 
@@ -286,6 +399,7 @@ export async function sendManagedAutofillPayloadAndAwait(input: {
         tabOpened: true,
         extensionUsed: true,
         userMessage: MSG_MANAGED_OPEN_FAILED,
+        fillDiagnostics,
       };
     }
 
@@ -302,10 +416,11 @@ export async function sendManagedAutofillPayloadAndAwait(input: {
       detail: typeof response.detail === 'string' ? response.detail : undefined,
       tabOpened: true,
       extensionUsed: true,
-      userMessage: userMessageForManagedFailure(reason),
+      userMessage: userMessageForManagedFailure(reason, diagnosticPath),
+      fillDiagnostics,
     };
   } finally {
-    managedAutofillInFlightKeys.delete(executionKey);
+    fillRun.release();
   }
 }
 
@@ -488,7 +603,7 @@ export async function executeAdminManagedAutofillTest(input: {
 export function formatAdminManagedTestResultSummary(
   outcome: ManagedAutofillStructuredOutcome,
 ): string {
-  if (outcome.ok) {
+  if (outcome.ok || fillRunEndMessage(outcome.reason, 'admin_test')) {
     return outcome.userMessage;
   }
   const parts: string[] = [outcome.userMessage];
@@ -505,4 +620,21 @@ export function formatAdminManagedTestResultSummary(
     parts.push(outcome.locator);
   }
   return parts.join(' · ');
+}
+
+/**
+ * A2 — format structural fillDiagnostics for Operator copy (no credential values).
+ * Returns empty string when absent.
+ */
+export function formatManagedFillDiagnosticsForOperator(
+  outcome: ManagedAutofillStructuredOutcome,
+): string {
+  if (!outcome.fillDiagnostics) {
+    return '';
+  }
+  try {
+    return JSON.stringify(outcome.fillDiagnostics, null, 2);
+  } catch {
+    return '';
+  }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   createAdminCategory,
   deleteAdminCategory,
@@ -8,6 +8,8 @@ import {
   type AdminCategory,
 } from './adminRegistryApi';
 import { generateCategoryId } from './adminPresentation';
+import { useAdminConfirm } from './AdminConfirmDialog';
+import { AdminEmptyState, IconFolder, IconPlus, IconTrash } from './adminIcons';
 
 export default function CategoriesAdmin() {
   const [categories, setCategories] = useState<AdminCategory[]>([]);
@@ -17,6 +19,7 @@ export default function CategoriesAdmin() {
   const [success, setSuccess] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [dragId, setDragId] = useState<string | null>(null);
+  const { ask, dialog } = useAdminConfirm();
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -140,7 +143,15 @@ export default function CategoriesAdmin() {
   }
 
   async function handleDelete(categoryId: string) {
-    if (!window.confirm('למחוק את הקטגוריה?')) {
+    const name = categories.find((c) => c.id === categoryId)?.display_name;
+    const confirmed = await ask({
+      name: 'delete-category',
+      title: 'למחוק את הקטגוריה?',
+      body: name ? `«${name}» תוסר מרשימת הקטגוריות.` : undefined,
+      confirmLabel: 'מחיקה',
+      tone: 'danger',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -175,94 +186,95 @@ export default function CategoriesAdmin() {
         </p>
       )}
 
-      <div className="admin-categories-layout">
-        {/* First in DOM = right in RTL (editor). Second = left (reorder panel). */}
-        <div className="admin-category-editor">
-          <form
-            className="admin-edit-shell admin-category-create"
-            onSubmit={(event) => void handleCreate(event)}
-          >
-            <h3>קטגוריה חדשה</h3>
-            <div className="admin-category-row">
-              <label className="admin-field admin-category-name">
-                <span>שם</span>
-                <input
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  required
-                  placeholder="לדוגמה: בנקים"
-                />
-              </label>
-              <button type="submit" className="admin-btn admin-btn-primary">
-                הוסף קטגוריה
-              </button>
-            </div>
-          </form>
-
-          <div className="admin-scroll-panel admin-category-scroll" aria-label="עריכת קטגוריות">
-            <ul className="admin-list admin-category-list">
-              {categories.map((category) => (
-                <li key={category.id} className="admin-list-item admin-category-item">
-                  <CategoryRow
-                    category={category}
-                    onSave={handleUpdate}
-                    onDelete={() => void handleDelete(category.id)}
-                  />
-                </li>
-              ))}
-            </ul>
+      {/* Phase 122.4 — one table: name | edit | delete | order, «קטגוריה חדשה» inline at the top. */}
+      <div className="admin-card admin-category-table" role="table" aria-label="קטגוריות" data-part="category-table">
+        <form
+          className="admin-category-create"
+          data-part="category-create"
+          onSubmit={(event) => void handleCreate(event)}
+        >
+          <h3 className="admin-card-title">קטגוריה חדשה</h3>
+          <div className="admin-category-create-row">
+            <label className="admin-field admin-category-name">
+              <span>שם</span>
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                required
+                placeholder="לדוגמה: בנקים"
+              />
+            </label>
+            <button type="submit" className="admin-btn admin-btn-primary">
+              <IconPlus />
+              הוסף קטגוריה
+            </button>
           </div>
-        </div>
+        </form>
 
-        <aside className="admin-category-reorder" aria-label="סידור קטגוריות">
-          <h3>סידור תצוגה</h3>
-          <p className="admin-field-hint">
-            גררו קטגוריה, או השתמשו בחצים, כדי לשנות את סדר התצוגה בקטלוג.
-          </p>
-          {categories.length === 0 ? (
-            <p className="admin-muted">אין עדיין קטגוריות לסידור.</p>
-          ) : (
-            <ul className="admin-reorder-list">
-              {categories.map((category, index) => (
-                <li
-                  key={category.id}
-                  className={`admin-reorder-item${dragId === category.id ? ' is-dragging' : ''}`}
-                  draggable={!reordering}
-                  onDragStart={() => onDragStart(category.id)}
-                  onDragOver={(event) => onDragOver(event, category.id)}
-                  onDrop={() => onDrop(category.id)}
-                  onDragEnd={() => setDragId(null)}
-                >
-                  <span className="admin-reorder-handle" aria-hidden="true">
-                    ⋮⋮
-                  </span>
-                  <span className="admin-reorder-name">{category.display_name}</span>
-                  <div className="admin-reorder-actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn-secondary admin-btn--compact"
-                      disabled={reordering || index === 0}
-                      aria-label={`העבר את ${category.display_name} למעלה`}
-                      onClick={() => moveCategory(category.id, -1)}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn-secondary admin-btn--compact"
-                      disabled={reordering || index === categories.length - 1}
-                      aria-label={`העבר את ${category.display_name} למטה`}
-                      onClick={() => moveCategory(category.id, 1)}
-                    >
-                      ↓
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
+        <p className="admin-field-hint admin-category-order-hint">
+          גררו קטגוריה, או השתמשו בחצים, כדי לשנות את סדר התצוגה בקטלוג.
+        </p>
+        <div className="admin-category-grid admin-category-head" role="row">
+          <div role="columnheader">שם</div>
+          <div role="columnheader">עריכה</div>
+          <div role="columnheader">מחיקה</div>
+          <div role="columnheader">סידור</div>
+        </div>
+        {categories.length === 0 ? (
+          <AdminEmptyState icon={<IconFolder size={28} />}>אין עדיין קטגוריות לסידור.</AdminEmptyState>
+        ) : (
+          <ol className="admin-category-rows" role="rowgroup">
+            {categories.map((category, index) => (
+              <li
+                key={category.id}
+                role="row"
+                className={`admin-category-grid admin-category-item${dragId === category.id ? ' is-dragging' : ''}`}
+                data-part="category-row"
+                onDragOver={(event) => onDragOver(event, category.id)}
+                onDrop={() => onDrop(category.id)}
+              >
+                <CategoryRow
+                  category={category}
+                  onSave={handleUpdate}
+                  onDelete={() => void handleDelete(category.id)}
+                  order={
+                    <div className="admin-category-reorder" role="cell">
+                      <span
+                        className="admin-reorder-handle"
+                        aria-hidden="true"
+                        draggable={!reordering}
+                        onDragStart={() => onDragStart(category.id)}
+                        onDragEnd={() => setDragId(null)}
+                      >
+                        ⋮⋮
+                      </span>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn-secondary admin-btn--compact"
+                        disabled={reordering || index === 0}
+                        aria-label={`העבר את ${category.display_name} למעלה`}
+                        onClick={() => moveCategory(category.id, -1)}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn-secondary admin-btn--compact"
+                        disabled={reordering || index === categories.length - 1}
+                        aria-label={`העבר את ${category.display_name} למטה`}
+                        onClick={() => moveCategory(category.id, 1)}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  }
+                />
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
+      {dialog}
     </section>
   );
 }
@@ -271,10 +283,12 @@ function CategoryRow({
   category,
   onSave,
   onDelete,
+  order,
 }: {
   category: AdminCategory;
   onSave: (category: AdminCategory, displayName: string) => Promise<void>;
   onDelete: () => void;
+  order: ReactNode;
 }) {
   const [displayName, setDisplayName] = useState(category.display_name);
 
@@ -290,24 +304,30 @@ function CategoryRow({
         void onSave(category, displayName);
       }}
     >
-      <label className="admin-field admin-category-name">
-        <span>שם תצוגה</span>
-        <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-      </label>
-      <div className="admin-category-actions">
+      <div className="admin-category-name-cell" role="cell">
+        <label className="admin-field admin-category-name">
+          <span className="admin-sr-only">שם תצוגה</span>
+          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+        </label>
+        <details className="admin-details admin-category-details">
+          <summary>פרטים נוספים</summary>
+          <p className="admin-muted">
+            קוד מערכת: <span className="admin-chip">{category.id}</span>
+          </p>
+        </details>
+      </div>
+      <div role="cell">
         <button type="submit" className="admin-btn admin-btn-secondary admin-btn--compact">
           שמור
         </button>
+      </div>
+      <div role="cell">
         <button type="button" className="admin-btn admin-btn-danger admin-btn--compact" onClick={onDelete}>
+          <IconTrash />
           מחק
         </button>
       </div>
-      <details className="admin-details admin-category-details">
-        <summary>פרטים נוספים</summary>
-        <p className="admin-muted">
-          קוד מערכת: <span className="admin-chip">{category.id}</span>
-        </p>
-      </details>
+      {order}
     </form>
   );
 }

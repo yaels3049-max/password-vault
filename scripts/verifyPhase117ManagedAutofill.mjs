@@ -50,7 +50,9 @@ function mainStatic() {
   const api = read('src/admin/adminRegistryApi.ts');
   assert(api.includes('mergeAutofillProfileMetadata'), 'M2 admin merge');
 
-  const editor = read('src/admin/AutofillProfileEditor.tsx');
+  // D-121-43: action labels / success copy live in the shared mapping copy module.
+  const editor = read('src/admin/AutofillProfileEditor.tsx') + '\n' + read('src/admin/mappingCopy.ts');
+  assert(editor.includes("from './mappingCopy'"), 'D-121-43: editor uses the shared mapping copy');
   assert(editor.includes('field.id'), 'M3 locators from login_fields');
   assert(!editor.includes('free-typed') && editor.includes('fields.map'), 'M3 no free-typed fieldId');
   assert(editor.includes('reset_not_configured'), 'T25 explicit reset control');
@@ -128,7 +130,8 @@ function mainStatic() {
   assert(bg.includes("frameIds: [0]"), 'AC-117-8 top-frame inject');
   assert(bg.includes('validated-autofill.js'), 'M4 injects managed runner');
   const managedStart = bg.indexOf('function runManagedAutofillOnTab');
-  const managedEnd = bg.indexOf('function openPageAndManagedAutofill');
+  // Body of the Managed runner only (SPECIAL authoring handlers live further down; §IF-0).
+  const managedEnd = bg.indexOf('\nfunction ', managedStart + 10);
   const managedFn = bg.slice(managedStart, managedEnd > managedStart ? managedEnd : managedStart + 4000);
   assert(
     !managedFn.includes('pickBestGenericFrameResult') && !managedFn.includes('allFrames: true'),
@@ -154,7 +157,8 @@ function mainStatic() {
     'AC-117-34: Hub in-progress copy',
   );
   assert(
-    hub.includes('managedAutofillInFlightKeys') &&
+    // D-121-72: the keyed lock is now a run token per executionKey (fillRunControl, lane managed).
+    hub.includes("acquireFillRun('managed', executionKey)") &&
       hub.includes('managedAutofillExecutionKey') &&
       !/let managedAutofillInFlight\s*=\s*false/.test(hub) &&
       !/function isManagedAutofillInFlight\(\)/.test(hub),
@@ -663,7 +667,7 @@ function loadManagedDom(html, origin) {
   return { window, document };
 }
 
-function mainDom() {
+async function mainDom() {
   const rivhitOrigin = RIVHIT_GATE.allowedOrigin;
   const rivhitHtml = read('scripts/fixtures/phase117-rivhit-login.html');
   const { window, document } = loadManagedDom(rivhitHtml, rivhitOrigin);
@@ -676,18 +680,18 @@ function mainDom() {
   ];
   const rivhitCreds = { username: 'u1', password: 'p1', business_id: '123' };
 
-  const wrongOrigin = window.runManagedAutofill({
+  const wrongOrigin = await Promise.resolve(window.runManagedAutofill({
     allowedOrigin: 'https://evil.example',
     fieldMappings: rivhitMappings,
     credentials: rivhitCreds,
-  });
+  }));
   assert(wrongOrigin.ok === false && wrongOrigin.reason === 'wrong_origin', 'T4 wrong origin fails');
 
-  const zero = window.runManagedAutofill({
+  const zero = await Promise.resolve(window.runManagedAutofill({
     allowedOrigin: rivhitOrigin,
     fieldMappings: [{ fieldId: 'username', locatorType: 'css', locator: '#missing' }],
     credentials: rivhitCreds,
-  });
+  }));
   assert(
     zero.ok === false && zero.reason === 'targets_not_ready' && zero.detail === 'zero_match',
     'T6 / AC-117-31 zero-match → targets_not_ready',
@@ -698,11 +702,11 @@ function mainDom() {
   const clone = document.getElementById('username').cloneNode(true);
   clone.id = 'username';
   document.getElementById('login-form').appendChild(clone);
-  const multi = window.runManagedAutofill({
+  const multi = await Promise.resolve(window.runManagedAutofill({
     allowedOrigin: rivhitOrigin,
     fieldMappings: [{ fieldId: 'username', locatorType: 'css', locator: '#username' }],
     credentials: rivhitCreds,
-  });
+  }));
   assert(
     multi.ok === false && multi.reason === 'targets_not_ready' && multi.detail === 'multi_match',
     'T7 / AC-117-31 multi-match → targets_not_ready',
@@ -713,11 +717,11 @@ function mainDom() {
   hidden.id = 'hidden-user';
   hidden.type = 'hidden';
   document.body.appendChild(hidden);
-  const hiddenResult = window.runManagedAutofill({
+  const hiddenResult = await Promise.resolve(window.runManagedAutofill({
     allowedOrigin: rivhitOrigin,
     fieldMappings: [{ fieldId: 'username', locatorType: 'css', locator: '#hidden-user' }],
     credentials: rivhitCreds,
-  });
+  }));
   assert(
     hiddenResult.ok === false && hiddenResult.reason === 'targets_not_ready',
     'T8 hidden target → targets_not_ready (not filled)',
@@ -728,11 +732,11 @@ function mainDom() {
   disabled.id = 'disabled-user';
   disabled.disabled = true;
   document.body.appendChild(disabled);
-  const disabledResult = window.runManagedAutofill({
+  const disabledResult = await Promise.resolve(window.runManagedAutofill({
     allowedOrigin: rivhitOrigin,
     fieldMappings: [{ fieldId: 'username', locatorType: 'css', locator: '#disabled-user' }],
     credentials: rivhitCreds,
-  });
+  }));
   assert(
     disabledResult.ok === false && disabledResult.reason === 'targets_not_ready',
     'T9 non-editable → targets_not_ready (not filled)',
@@ -762,11 +766,11 @@ function mainDom() {
     submitted = true;
   });
 
-  const filled = window.runManagedAutofill({
+  const filled = await Promise.resolve(window.runManagedAutofill({
     allowedOrigin: rivhitOrigin,
     fieldMappings: rivhitMappings,
     credentials: rivhitCreds,
-  });
+  }));
   assert(filled.ok === true, `T11–T13 Rivhit-config fill expected ok, got ${JSON.stringify(filled)}`);
   assert(document.getElementById('username').value === 'u1', 'T11 username filled');
   assert(document.getElementById('password').value === 'p1', 'T12 password filled');
@@ -787,25 +791,25 @@ function mainDom() {
     );
   }
 
-  const partial = window.runManagedAutofill({
+  const partial = await Promise.resolve(window.runManagedAutofill({
     allowedOrigin: rivhitOrigin,
     fieldMappings: rivhitMappings,
     credentials: { username: 'u1', password: 'p1' },
-  });
+  }));
   assert(partial.ok === false, 'T10 partial fill is not success');
 
   const { window: pinWindow, document: pinDocument } = loadManagedDom(
     read('scripts/fixtures/phase117-synthetic-pin.html'),
     'https://pin.example.test',
   );
-  const synthetic = pinWindow.runManagedAutofill({
+  const synthetic = await Promise.resolve(pinWindow.runManagedAutofill({
     allowedOrigin: 'https://pin.example.test',
     fieldMappings: [
       { fieldId: 'customer_number', locatorType: 'css', locator: '#customer-number' },
       { fieldId: 'pin', locatorType: 'css', locator: '#pin' },
     ],
     credentials: { customer_number: '991', pin: '4321' },
-  });
+  }));
   assert(synthetic.ok === true, `T28 synthetic fill ok, got ${JSON.stringify(synthetic)}`);
   assert(pinDocument.getElementById('customer-number').value === '991', 'T28 customer_number filled');
   assert(pinDocument.getElementById('pin').value === '4321', 'T28 pin filled');
@@ -1018,7 +1022,7 @@ async function main() {
   t0RivhitFieldIdGate();
   mainStatic();
   await mainContract();
-  mainDom();
+  await mainDom();
   await m8HubAwaitRegression();
   console.log(
     'verifyPhase117ManagedAutofill: PASS (T0–T28 + M8 + AC-117-30…37 tab/concurrency; T29 = this script + tsc/build)',

@@ -4,6 +4,9 @@
  *
  * Usage: node scripts/verifyPhase101Supabase.mjs
  *
+ * LIVE-ONLY: talks to the live Supabase project from `.env.local` (anonymous sign-ins, writes).
+ * Excluded from the offline regression (`scripts/runOfflineRegression.mjs`); run only on purpose.
+ *
  * TLS: respects NODE_EXTRA_CA_CERTS or npm `cafile` (Netspark / corporate CA).
  */
 import { createClient } from '@supabase/supabase-js';

@@ -1,6 +1,7 @@
 import {
   AuthRequiredError,
   isAnonymousAuthUser,
+  loadAppUserProfile,
   requireAuthenticatedUserId,
 } from '../auth';
 import { getSupabaseClient } from '../supabase/client';
@@ -20,6 +21,28 @@ export interface AdminAccessResult {
   userId: string | null;
   isAdmin: boolean;
   error: string | null;
+}
+
+export interface SignedInAdmin {
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+}
+
+/** Signed-in admin for the top app bar: session email + own `public.users` name; null when unavailable. */
+export async function readSignedInAdmin(): Promise<SignedInAdmin | null> {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase) return null;
+    const { data } = await supabase.auth.getUser();
+    const email = data.user?.email?.trim();
+    if (!email || !data.user?.id) return null;
+    const profile = await loadAppUserProfile(data.user.id);
+    return { firstName: profile?.firstName ?? null, lastName: profile?.lastName ?? null, email };
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -28,7 +28,7 @@ const productPaths = [
   'src/ManageServices.tsx',
   'src/admin/RegistryAdmin.tsx',
   'src/admin/ApprovalQueue.tsx',
-  'src/admin/LoginUrlRefresh.tsx',
+  'src/admin/UrlFieldWithCopy.tsx',
   'src/admin/IntegrationStatusPanel.tsx',
   'src/catalog/customService.ts',
 ];

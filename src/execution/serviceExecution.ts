@@ -29,6 +29,13 @@ import {
   resolveLoginIntelligenceForExecution,
 } from '../loginIntelligence';
 import { AC112_26_HEBREW } from '../loginIntelligence/mediumStatus';
+import {
+  resolveActiveLoginContract,
+  resolveSpecialAuthoringEntry,
+  type ResolvedActiveLoginContract,
+} from '../loginContract';
+import { buildSpecialCredentialSubset, executeDigitalHomeSpecialLoginFlow } from './specialLoginFlow';
+import { specialEndUserMessage } from './specialLoginFlowMessages';
 
 const MISSING_CREDENTIALS_MESSAGE =
   'הגדירו פרטי כניסה במסך «ניהול האתרים» — לחצו «הוסף אתרים נוספים».';
@@ -57,6 +64,68 @@ export interface ServiceExecutionResult {
   mediumSuccess?: boolean;
 }
 
+/** Phase 121.2 RT-3.3 — §4.7 entry for SPECIAL services (fallback: the tile open URL). */
+function specialEntryOpenUrl(service: Service): string {
+  const entry = resolveSpecialAuthoringEntry({
+    primaryUrl: service.url,
+    loginUrl: service.loginUrl,
+    metadata: service.metadata ?? null,
+  });
+  return entry.ok ? entry.authoringUrl : getServiceOpenUrl(service);
+}
+
+/** SPECIAL_INVALID — open the entry only; no fill of any kind, no STANDARD fallback. */
+function failClosedSpecialInvalid(service: Service): ServiceExecutionResult {
+  openUrlInNewTab(specialEntryOpenUrl(service));
+  return {
+    status: 'open_only',
+    extensionUsed: false,
+    autofillAttempted: false,
+    userMessage: specialEndUserMessage({ ok: false, reason: 'special_contract_invalid' }),
+    metadataHealth: 'fill_failed',
+  };
+}
+
+async function runSpecialFromTile(
+  service: Service,
+  credential: Credential | undefined,
+  options: ServiceExecutionOptions,
+  contract: Extract<ResolvedActiveLoginContract, { mode: 'SPECIAL' }>,
+): Promise<ServiceExecutionResult> {
+  if (!credential || !buildSpecialCredentialSubset(contract.plan, credential).ok) {
+    openUrlInNewTab(specialEntryOpenUrl(service));
+    return {
+      status: 'credentials_missing',
+      extensionUsed: false,
+      autofillAttempted: false,
+      userMessage: MISSING_CREDENTIALS_MESSAGE,
+    };
+  }
+  const outcome = await executeDigitalHomeSpecialLoginFlow(
+    service,
+    credential,
+    options.activeProfileId ?? '',
+  );
+  if (outcome.ok) {
+    return {
+      status: 'ok',
+      extensionUsed: true,
+      autofillAttempted: true,
+      userMessage: specialEndUserMessage(outcome),
+    };
+  }
+  if (!outcome.tabOpened) {
+    openUrlInNewTab(specialEntryOpenUrl(service));
+  }
+  return {
+    status: 'open_only',
+    extensionUsed: outcome.extensionUsed,
+    autofillAttempted: true,
+    userMessage: specialEndUserMessage(outcome),
+    metadataHealth: 'fill_failed',
+  };
+}
+
 /**
  * Phase 103 unified tile execution (async) — orchestration shell unchanged:
  * 1. openUrl = loginUrl ?? primaryUrl
@@ -71,6 +140,10 @@ export async function executeServiceFromTile(
   loginFields: LoginField[] = getLoginFields(service),
   options: ServiceExecutionOptions = {},
 ): Promise<ServiceExecutionResult> {
+  const contract = resolveActiveLoginContract(service.metadata ?? {});
+  if (contract.mode === 'SPECIAL') return runSpecialFromTile(service, credential, options, contract);
+  if (contract.mode === 'SPECIAL_INVALID') return failClosedSpecialInvalid(service);
+
   const openUrl = getServiceOpenUrl(service);
   const adapterId = service.adapterId?.trim();
 

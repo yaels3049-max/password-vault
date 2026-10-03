@@ -55,6 +55,13 @@ function mainStatic() {
     'background must inject identity-first script',
   );
 
+  const bgList = /identityFirst:\s*\[([^\]]*)\]/.exec(bg);
+  const bgFiles = bgList ? [...bgList[1].matchAll(/'([^']+)'/g)].map((m) => `extension/${m[1]}`) : [];
+  assert(
+    JSON.stringify(bgFiles) === JSON.stringify(IDENTITY_FIRST_SCRIPTS),
+    `fixture loads the extension's identity-first files in order (background: ${bgFiles.join(', ')})`,
+  );
+
   // Phase 110 path must remain intact
   const generic = read('extension/generic/generic-autofill.js');
   assert(generic.includes('assessStandardLogin'), 'Phase 110 standard gate preserved');
@@ -68,14 +75,16 @@ function mainStatic() {
   console.log('verifyPhase112IdentityFirst: static PASS');
 }
 
-async function loadScriptsIntoWindow(window) {
-  const scripts = [
-    'extension/generic/form-detector.js',
-    'extension/generic/field-mapper.js',
-    'extension/generic/fill-executor.js',
-    'extension/generic/identity-first-autofill.js',
-  ];
+/** Same order as `GENERIC_REAL_SITE_SCRIPT_FILES.identityFirst` in background.js (eligibility first). */
+const IDENTITY_FIRST_SCRIPTS = [
+  'extension/generic/managed-target-eligibility.js',
+  'extension/generic/form-detector.js',
+  'extension/generic/field-mapper.js',
+  'extension/generic/fill-executor.js',
+  'extension/generic/identity-first-autofill.js',
+];
 
+async function loadScriptsIntoWindow(window, scripts) {
   // linkedom: stub visibility geometry so isVisible passes for fixture inputs
   const Proto = window.HTMLElement.prototype;
   Proto.getClientRects = function getClientRects() {
@@ -92,7 +101,17 @@ async function loadScriptsIntoWindow(window) {
   }
 }
 
-async function mainFixture() {
+/** linkedom windows write through to the Node global, so a previous load would leak into the next fixture. */
+const EXTENSION_GLOBALS = [
+  'ManagedTargetEligibility',
+  'GenericFormDetector',
+  'GenericFieldMapper',
+  'GenericFillExecutor',
+  'runIdentityFirstAutofill',
+];
+
+async function setupFixture(scripts) {
+  for (const name of EXTENSION_GLOBALS) delete globalThis[name];
   const html = read('scripts/fixtures/phase112-email-first-step1.html');
   const { window, document } = parseHTML(html);
   // Ensure CSSOM helpers exist
@@ -100,9 +119,45 @@ async function mainFixture() {
     display: 'block',
     visibility: 'visible',
     opacity: '1',
+    pointerEvents: 'auto',
   });
+  // ManagedTargetEligibility hit test: viewport + every sampled point hits the target input.
+  window.innerWidth = 1280;
+  window.innerHeight = 800;
+  document.documentElement.clientWidth = 1280;
+  document.documentElement.clientHeight = 800;
+  document.elementFromPoint = () => document.getElementById('email');
+  document.elementsFromPoint = () => [document.getElementById('email')];
 
-  await loadScriptsIntoWindow(window);
+  await loadScriptsIntoWindow(window, scripts);
+  return { window, document };
+}
+
+const FIXTURE_LOGIN_FIELDS = [
+  { id: 'username', label: 'אימייל', type: 'text' },
+  { id: 'password', label: 'סיסמה', type: 'password' },
+];
+
+/** Mutation: without the eligibility script, form-detector's isVisible fails closed. */
+async function mutationNoEligibility() {
+  const { window } = await setupFixture(IDENTITY_FIRST_SCRIPTS.filter((rel) => !rel.endsWith('managed-target-eligibility.js')));
+  window.GenericFillExecutor.fillField = (element, value) => {
+    element.value = String(value);
+    return { ok: true, verified: true, actual: String(value) };
+  };
+  const result = window.runIdentityFirstAutofill({
+    loginFields: FIXTURE_LOGIN_FIELDS,
+    credentials: { username: 'user@example.com', password: 'secret-not-used-on-step1' },
+  });
+  assert(
+    result.ok === false && result.reason === 'identity_step_not_found',
+    `mutation not caught (eligibility script dropped): ${JSON.stringify(result)}`,
+  );
+  console.log('verifyPhase112IdentityFirst: mutation caught — eligibility script dropped → identity_step_not_found');
+}
+
+async function mainFixture() {
+  const { window, document } = await setupFixture(IDENTITY_FIRST_SCRIPTS);
 
   assert(typeof window.runIdentityFirstAutofill === 'function', 'runner on window');
   assert(typeof window.GenericFormDetector.detectVisibleIdentityStep === 'function');
@@ -117,10 +172,7 @@ async function mainFixture() {
   };
 
   const result = window.runIdentityFirstAutofill({
-    loginFields: [
-      { id: 'username', label: 'אימייל', type: 'text' },
-      { id: 'password', label: 'סיסמה', type: 'password' },
-    ],
+    loginFields: FIXTURE_LOGIN_FIELDS,
     credentials: {
       username: 'user@example.com',
       password: 'secret-not-used-on-step1',
@@ -162,6 +214,7 @@ async function mainFixture() {
 try {
   mainStatic();
   await mainFixture();
+  await mutationNoEligibility();
   console.log('verifyPhase112IdentityFirst: PASS');
   console.log('Live UAT (operator): ≥1 email-first site step-1 fill — PENDING_OPERATOR');
 } catch (error) {

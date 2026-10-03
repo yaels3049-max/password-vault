@@ -16,6 +16,12 @@ import {
   type ServiceRegistryRow,
 } from '../registry/registryMapper';
 import { CLOUD_REMOVE_UNAVAILABLE_MESSAGE } from '../serviceManagement/serviceSelection';
+import {
+  dropServicesMissingFromRegistry,
+  fetchRegistryPresence,
+  registryPresenceCandidates,
+  upsertableSelectedIds,
+} from './registryPresence';
 
 export interface CloudSyncOptions {
   /** Test hook: simulate Supabase write failure without disabling local persist. */
@@ -407,7 +413,10 @@ export async function syncVaultStateToSupabase(
   await ensureUserRow(userId);
 
   // Cloud membership = Digital Home selection only (not orphaned local profiles).
-  const selectedIds = [...new Set(state.selectedIds.map((id) => id.trim()).filter(Boolean))];
+  const localSelectedIds = [...new Set(state.selectedIds.map((id) => id.trim()).filter(Boolean))];
+  // D-121-51: never re-upsert a service deleted from the registry (unknown presence → unchanged).
+  const presence = await fetchRegistryPresence(supabase, registryPresenceCandidates(state));
+  const selectedIds = upsertableSelectedIds(localSelectedIds, state, presence);
   const userServiceIdByServiceId = new Map<string, string>();
 
   for (let index = 0; index < selectedIds.length; index += 1) {
@@ -644,13 +653,20 @@ export async function hydrateWorkspaceFromCloud(
       }
     }
 
+    // D-121-51: a service deleted from the registry is dropped locally (selection, profiles,
+    // credentials) so neither this branch nor the next dual-write can resurrect it.
+    const reconcileWithRegistry = async (merged: VaultState): Promise<VaultState> => {
+      const presence = await fetchRegistryPresence(supabase, registryPresenceCandidates(merged));
+      return presence ? dropServicesMissingFromRegistry(merged, presence).state : merged;
+    };
+
     if (keepLocalMembership) {
-      return {
+      return await reconcileWithRegistry({
         selectedIds: [...local.selectedIds],
         accessProfiles: normalizeExactlyOneDefaultPerService(local.accessProfiles),
         credentials,
         customServices: [...customById.values()],
-      };
+      });
     }
 
     // Cloud membership non-empty → authoritative for tiles (AC-109-38).
@@ -700,12 +716,12 @@ export async function hydrateWorkspaceFromCloud(
       }
     }
 
-    return {
+    return await reconcileWithRegistry({
       selectedIds,
       accessProfiles: healedProfiles,
       credentials: scopedCredentials,
       customServices: [...customById.values()],
-    };
+    });
   } catch (error) {
     if (isDevBuild()) {
       console.warn('[vault] hydrateWorkspaceFromCloud failed (using local):', error);

@@ -4,6 +4,9 @@
  * Usage:
  *   set NODE_EXTRA_CA_CERTS=<netspark-ca-bundle.pem>
  *   node scripts/verifyPhase102Registry.mjs
+ *
+ * LIVE-ONLY: talks to the live Supabase project from `.env.local` (anonymous sign-ins, writes).
+ * Excluded from the offline regression (`scripts/runOfflineRegression.mjs`); run only on purpose.
  */
 import { createClient } from '@supabase/supabase-js';
 import { execSync } from 'node:child_process';

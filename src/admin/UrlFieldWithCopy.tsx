@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { IconCopy } from '../loginAssistance/icons';
 import { copyCredentialField } from '../loginAssistance/copyField';
+import { httpUrlOrNull } from './adminPresentation';
 
 interface UrlFieldWithCopyProps {
   label: string;
@@ -11,6 +12,10 @@ interface UrlFieldWithCopyProps {
   hint?: string;
   autoFocus?: boolean;
   readOnly?: boolean;
+  /** Text of a new-tab link to the current value (shown only for a valid http(s) URL). */
+  openLabel?: string;
+  /** Link target computed by the caller (null hides the link); defaults to the value when it is http(s). */
+  openUrl?: string | null;
 }
 
 export default function UrlFieldWithCopy({
@@ -22,8 +27,11 @@ export default function UrlFieldWithCopy({
   hint,
   autoFocus = false,
   readOnly = false,
+  openLabel,
+  openUrl,
 }: UrlFieldWithCopyProps) {
   const [copied, setCopied] = useState(false);
+  const openHref = !openLabel ? null : openUrl !== undefined ? openUrl : httpUrlOrNull(value);
 
   async function handleCopy() {
     const trimmed = value.trim();
@@ -58,6 +66,17 @@ export default function UrlFieldWithCopy({
         >
           <IconCopy copied={copied} />
         </button>
+        {openHref ? (
+          <a
+            className="admin-open-link"
+            data-action="open-url"
+            href={openHref}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {openLabel}
+          </a>
+        ) : null}
       </div>
       {hint ? <p className="admin-field-hint">{hint}</p> : null}
     </label>

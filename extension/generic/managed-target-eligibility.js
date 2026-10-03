@@ -31,7 +31,38 @@
     return false;
   }
 
-  /** Normative PASS triad: target | descendant of target | associated label. */
+  var LABELABLE_SELECTOR = 'button, input:not([type="hidden"]), meter, output, progress, select, textarea';
+
+  /**
+   * D-121-49 — the label's labeled control: native HTMLLabelElement.control; DOMs
+   * without it resolve per the HTML rule (for= id, else first labelable descendant).
+   */
+  function labelControlOf(label) {
+    if (!label || String(label.tagName || '').toUpperCase() !== 'LABEL') {
+      return null;
+    }
+    if (typeof label.control !== 'undefined') {
+      return label.control || null;
+    }
+    var forId = typeof label.getAttribute === 'function' ? label.getAttribute('for') : null;
+    if (forId !== null) {
+      var doc = label.ownerDocument;
+      var byId = doc && typeof doc.getElementById === 'function' ? doc.getElementById(forId) : null;
+      return byId && typeof byId.matches === 'function' && byId.matches(LABELABLE_SELECTOR) ? byId : null;
+    }
+    return typeof label.querySelector === 'function' ? label.querySelector(LABELABLE_SELECTOR) : null;
+  }
+
+  /** D-121-49 — hit inside the target's own associated label (for= or nested). */
+  function isInsideOwnLabel(hit, target) {
+    if (!hit || typeof hit.closest !== 'function') {
+      return false;
+    }
+    var label = hit.closest('label');
+    return Boolean(label) && labelControlOf(label) === target;
+  }
+
+  /** Normative PASS: target | descendant of target | associated label | inside the target's own label. */
   function hitRelationshipOk(hit, target) {
     if (!hit) {
       return false;
@@ -43,6 +74,9 @@
       return true;
     }
     if (isAssociatedLabel(hit, target)) {
+      return true;
+    }
+    if (isInsideOwnLabel(hit, target)) {
       return true;
     }
     return false;
@@ -117,28 +151,39 @@
         return { ok: false, reason: 'not_interactable' };
       }
 
-      // Early fail if center is in-viewport and already fails.
+      // D-121-71: the center must be in view and hit the target, and at least 3 in-view
+      // points must hit it (an overlay over an edge of the field does not block it).
       var center = points[0];
-      if (pointInViewport(center.x, center.y)) {
-        var centerHit = doc.elementFromPoint(center.x, center.y);
-        if (!hitRelationshipOk(centerHit, element)) {
-          return {
-            ok: false,
-            reason: centerHit == null ? 'not_interactable' : 'occluded',
-          };
-        }
+      if (!pointInViewport(center.x, center.y)) {
+        return { ok: false, reason: 'not_interactable' };
+      }
+      var centerHit = doc.elementFromPoint(center.x, center.y);
+      if (!hitRelationshipOk(centerHit, element)) {
+        return {
+          ok: false,
+          reason: centerHit == null ? 'not_interactable' : 'occluded',
+        };
       }
 
+      var passed = 0;
+      var missed = false;
+      var missHit = null;
       for (var j = 0; j < inView.length; j += 1) {
         var hit = doc.elementFromPoint(inView[j].x, inView[j].y);
-        if (!hitRelationshipOk(hit, element)) {
-          return {
-            ok: false,
-            reason: hit == null ? 'not_interactable' : 'occluded',
-          };
+        if (hitRelationshipOk(hit, element)) {
+          passed += 1;
+        } else if (!missed) {
+          missed = true;
+          missHit = hit;
         }
       }
-      return { ok: true };
+      if (passed >= 3) {
+        return { ok: true };
+      }
+      return {
+        ok: false,
+        reason: missHit == null ? 'not_interactable' : 'occluded',
+      };
     }
 
     var first = evaluate();
@@ -259,5 +304,6 @@
     // Test/diagnostics hooks (same algorithm; no alternate policy).
     passesHitTest: passesHitTest,
     classifyHitTest: classifyHitTest,
+    labelControlOf: labelControlOf,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

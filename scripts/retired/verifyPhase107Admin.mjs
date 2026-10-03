@@ -57,7 +57,7 @@ function main() {
       adminFiles.some((f) => f.endsWith('CategoriesAdmin.tsx')) &&
       adminFiles.some((f) => f.endsWith('RegistryAdmin.tsx')) &&
       adminFiles.some((f) => f.endsWith('ApprovalQueue.tsx')) &&
-      adminFiles.some((f) => f.endsWith('LoginUrlRefresh.tsx')) &&
+      adminFiles.some((f) => f.endsWith('UrlFieldWithCopy.tsx')) &&
       (adminFiles.some((f) => f.endsWith('IconAssetEditor.tsx')) ||
         adminFiles.some((f) => f.endsWith('IconMetadataEditor.tsx'))) &&
       adminFiles.some((f) => f.endsWith('IntegrationStatusPanel.tsx')) &&
@@ -147,8 +147,9 @@ function main() {
     'Approval queue must run Login Discovery on promote',
   );
   assert(
+    // Phase 122.7: the login URL is edited and saved in the main form (the «שמור ידנית» side card was removed).
     read('src/admin/RegistryAdmin.tsx').includes('UrlFieldWithCopy') &&
-      read('src/admin/LoginUrlRefresh.tsx').includes('שמור ידנית'),
+      /<UrlFieldWithCopy\s+label="כתובת כניסה"/.test(read('src/admin/RegistryAdmin.tsx')),
     'Global catalog must expose URL fields with copy + manual login URL edit',
   );
   assert(
@@ -168,11 +169,12 @@ function main() {
   // M9 — Admin Console UI/UX Modernization (AC-107-8…18)
   const adminApp = read('src/admin/AdminApp.tsx');
   assert(
-    adminApp.includes('כל האתרים') &&
+    adminApp.includes('ADMIN_WORKSPACE_HE.registryNav') &&
+      read('src/admin/adminWorkspace.ts').includes("registryNav: 'הגדרת אתרים'") &&
       adminApp.includes('אתרים בהוספה ע"י משתמשים') &&
       !adminApp.includes('קטלוג גלובלי') &&
       !adminApp.includes('תור אישורים'),
-    'AC-107-11: nav labels — כל האתרים / אתרים בהוספה ע"י משתמשים',
+    'AC-107-11 (Phase 122 rename): nav labels — הגדרת אתרים / אתרים בהוספה ע"י משתמשים',
   );
   assert(
     read('src/admin/adminRegistryApi.ts').includes('fetchAllRegistryRowsForAdmin') &&
@@ -199,7 +201,7 @@ function main() {
   assert(
     approvals.includes('admin-pending-card') &&
       approvals.includes('תאריך הגשה') &&
-      approvals.includes('הוגש על ידי') &&
+      approvals.includes('הוגש ע&quot;י') &&
       approvals.includes('promoteUserSubmissionWithDiscovery'),
     'AC-107-12: pending queue cards; promote semantics preserved',
   );

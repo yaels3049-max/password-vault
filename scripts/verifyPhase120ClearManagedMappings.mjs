@@ -211,9 +211,10 @@ assert(merged.profile.supportState === 'not_configured', 'merge supportState');
 assert(merged.metadata.credentialMode === 'credential_fields', 'C3/C7 credentialMode retained');
 console.log('  ✓ C3/C7 schema/credentialMode untouched; merge persists []');
 
-// --- C8: savedProfileReady gate in editor ---
-assertIncludes(editorSrc, 'savedProfileReady', 'C8 Admin Test gate');
-assertIncludes(editorSrc, 'existing!.fieldMappings.some', 'C8 requires non-empty saved mappings');
+// --- C8: savedProfileReady gate (D-121-38: Admin Test lives in «בדיקת מילוי») ---
+const fillTestGridSrc = read('src/admin/AdminFillTestGrid.tsx');
+assertIncludes(fillTestGridSrc, 'savedProfileReady', 'C8 Admin Test gate');
+assertIncludes(fillTestGridSrc, 'existing!.fieldMappings.some', 'C8 requires non-empty saved mappings');
 
 // --- C4 honesty: success toast only after await update ---
 assertIncludes(persistFn, 'await updateGlobalRegistryRow', 'C4 calls registry update');

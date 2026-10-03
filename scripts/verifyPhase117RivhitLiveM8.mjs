@@ -18,6 +18,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseHTML } from 'linkedom';
+import { installManagedDomGeometry } from './lib/linkedomManagedHarness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GATE = JSON.parse(readFileSync(join(root, 'scripts/fixtures/phase117-rivhit-e2e-gate.json'), 'utf8'));
@@ -72,19 +73,10 @@ function loadManagedDom(html, origin, href) {
     configurable: true,
   });
   window.top = window;
-  window.getComputedStyle = () => ({
-    display: 'block',
-    visibility: 'visible',
-    opacity: '1',
-  });
-  const Proto = window.HTMLElement.prototype;
-  Proto.getClientRects = function getClientRects() {
-    return [{ width: 120, height: 24, top: 0, left: 0, bottom: 24, right: 120 }];
-  };
-  Proto.getBoundingClientRect = function getBoundingClientRect() {
-    return { width: 120, height: 24, top: 0, left: 0, bottom: 24, right: 120, x: 0, y: 0 };
-  };
+  // Match offline Phase 117 / 120.6 harness: eligibility + distinct geometry for V8.
+  installManagedDomGeometry(window);
   const scripts = [
+    'extension/generic/managed-target-eligibility.js',
     'extension/generic/form-detector.js',
     'extension/generic/fill-executor.js',
     'extension/generic/validated-autofill.js',
@@ -150,11 +142,11 @@ async function main() {
   }
 
   const placeholders = { username: 'm8u', password: 'm8p', business_id: '1' };
-  const result = window.runManagedAutofill({
+  const result = await Promise.resolve(window.runManagedAutofill({
     allowedOrigin,
     fieldMappings: mappings,
     credentials: placeholders,
-  });
+  }));
   assert(result.ok === true && result.filled === 3, `M8 runner failed: ${result.reason || 'unknown'}`);
 
   const filledFlags = {};

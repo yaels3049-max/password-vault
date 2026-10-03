@@ -66,6 +66,9 @@ function loadInspectIntoWindow(html) {
   globalThis.CSS = {
     escape: (v) => String(v).replace(/([^a-zA-Z0-9_-])/g, '\\$1'),
   };
+  // The extension always injects managed-target-eligibility.js before the inspect script
+  // (D-121-52 readiness keys on managedEligible); these fixtures are plain, uncovered inputs.
+  window.ManagedTargetEligibility = { isSafeFillTarget: () => true };
   const inspectSrc = read('extension/generic/page-structure-inspect.js');
   // eslint-disable-next-line no-new-func
   const run = new Function(
@@ -154,19 +157,34 @@ async function main() {
   );
 
   // --- T-R5 / AC-119-R-5: top-doc + no unauthorized structural paths ---
+  // STANDARD Admin inspect only; SPECIAL frame authoring handlers follow it (121.1-IF §IF-0).
+  const adminInspectStart = bgSrc.indexOf('admin-login-page-inspect');
   const adminInspectSlice = bgSrc.slice(
-    bgSrc.indexOf('admin-login-page-inspect'),
-    bgSrc.indexOf('function openPageAndManagedAutofill'),
+    adminInspectStart,
+    bgSrc.indexOf('\nfunction ', adminInspectStart),
   );
   assert(
     adminInspectSlice.includes('frameIds: [0]'),
     'T-R5 Admin inspect uses frameIds: [0]',
   );
+  // 121.1-IF §IF-2 (DD line 807) supersedes the shadowRoot ban for the bounded
+  // count-only helper; shadow inputs are never added to inputs[] or proposed.
+  const shadowCountStart = inspectSrc.indexOf('function countShadowCredentialCandidates');
+  const shadowCountEnd = inspectSrc.indexOf('\n  function ', shadowCountStart + 10);
+  assert(shadowCountStart > 0 && shadowCountEnd > shadowCountStart, 'IF-2 shadow count helper present');
+  const inspectSrcOutsideShadowCount =
+    inspectSrc.slice(0, shadowCountStart) + inspectSrc.slice(shadowCountEnd);
   assert(
     !/allFrames:\s*true|shadowRoot|openShadow|iframe|modal_activation|multi_step/i.test(
-      inspectSrc,
+      inspectSrcOutsideShadowCount,
     ),
     'T-R5 inspect script has no iframe/shadow/modal/multi-step',
+  );
+  assert(
+    !/allFrames:\s*true|openShadow|iframe|modal_activation|multi_step/i.test(
+      inspectSrc.slice(shadowCountStart, shadowCountEnd),
+    ),
+    'T-R5 shadow count helper stays count-only',
   );
   assert(
     !/\biframe\b|\bshadowRoot\b|modal_activation|multi_step_sequence/.test(

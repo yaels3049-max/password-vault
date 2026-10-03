@@ -3,6 +3,9 @@
  * Authoring-only; never used by Managed Autofill runtime.
  */
 
+import type { FrameDescriptor } from '../loginContract/types';
+import type { SpecialActionCandidateObservation } from './specialAnalyzeRouting';
+
 export const INSPECTION_CAPABILITY_SINGLE_PAGE_TOP = 'single_page_top' as const;
 export const AGENT_TASK_PROPOSE_FIELD_MAPPINGS = 'propose_field_mappings' as const;
 
@@ -189,6 +192,23 @@ export interface MappingLlmProvider {
 export const ADMIN_LOGIN_PAGE_INSPECT_MESSAGE = 'ADMIN_LOGIN_PAGE_INSPECT';
 export const ADMIN_VISUAL_MAPPING_START_MESSAGE = 'ADMIN_VISUAL_MAPPING_START';
 
+/** Phase 121.1 — existing-tab inspect (MUST NOT open Login Entry). */
+export const ADMIN_CURRENT_TAB_INSPECT_MESSAGE = 'ADMIN_CURRENT_TAB_INSPECT';
+/** Phase 121.1 — existing-tab Visual Mapping (MUST NOT open Login Entry). */
+export const ADMIN_CURRENT_TAB_VISUAL_MAPPING_START_MESSAGE =
+  'ADMIN_CURRENT_TAB_VISUAL_MAPPING_START';
+/** Phase 121.1 — authoring click of already-approved action (not orchestrator). */
+export const ADMIN_AUTHORING_CLICK_APPROVED_MESSAGE = 'ADMIN_AUTHORING_CLICK_APPROVED';
+/** D-121-25 — disarm an armed SPECIAL Visual pick in the authoring tab (no mapping). */
+export const ADMIN_CURRENT_TAB_VISUAL_MAPPING_CANCEL_MESSAGE =
+  'ADMIN_CURRENT_TAB_VISUAL_MAPPING_CANCEL';
+/** D-121-42 — STANDARD Visual pick cancel (disarms the fresh Login Entry tab; no mapping). */
+export const ADMIN_VISUAL_MAPPING_CANCEL_MESSAGE = 'ADMIN_VISUAL_MAPPING_CANCEL';
+/** D-121-25 / D-121-42 — page-side bound for an armed Admin Visual pick (SPECIAL and STANDARD). */
+export const ADMIN_VISUAL_PICK_TIMEOUT_MS = 60_000;
+/** Hub releases the editor this long after the page bound if the Ext never answers. */
+export const ADMIN_VISUAL_PICK_HUB_GRACE_MS = 5_000;
+
 export const ANALYZE_LOGIN_PAGE_LABEL_HE = 'נתח דף כניסה';
 export const ANALYZING_LOGIN_PAGE_LABEL_HE = 'מנתח דף כניסה...';
 export const NOT_CONFIDENTLY_MAPPED_LABEL_HE = 'לא מופה בביטחון';
@@ -214,6 +234,68 @@ export const VISUAL_MAPPING_MANAGED_INELIGIBLE_LABEL_HE =
   'השדה זוהה, אך אינו כשיר למילוי אוטומטי מנוהל.';
 export const VISUAL_MAPPING_ORIGIN_MISMATCH_LABEL_HE =
   'המקור בדף הכניסה אינו תואם. המיפוי בוטל.';
+
+/** 121.1-IF — one inspected SPECIAL authoring surface (top document or depth-1 frame). */
+export interface FramedSurface {
+  frameKey: string;
+  frame: FrameDescriptor | null;
+  status: 'top' | 'depth1_https' | 'not_addressable';
+  page: SafePageStructure;
+  actionCandidates: SpecialActionCandidateObservation[];
+  /** Origin of a depth-1 frame with no deterministic locator (display only). */
+  unaddressableOrigin?: string;
+}
+
+/** 121.1-IF — counts only; drives plain-Hebrew UNSUPPORTED messages. */
+export interface FrameUnsupportedSummary {
+  nested: number;
+  nonHttps: number;
+  notInjectable: number;
+  shadowCredential: number;
+  notAddressable: number;
+  correlationUnavailable: number;
+}
+
+const LTR_MARK = '\u200E';
+
+export const FRAME_APPROVAL_PROMPT_HE = (origin: string): string =>
+  `שדות הכניסה או הכפתור נמצאים בתוך מסגרת של האתר ${LTR_MARK}${origin}${LTR_MARK}. לאשר שימוש במסגרת זו בתהליך הכניסה?`;
+export const FRAME_APPROVE_LABEL_HE = 'אשר מסגרת';
+export const FRAME_REJECT_LABEL_HE = 'דחה';
+export const SURFACE_NOT_OPENED_HE = 'המסך לא נפתח';
+/** D-121-59 A1 — reveal mode: a new surface appeared, but without a password input (G8). */
+export const SURFACE_NOT_LOGIN_HE = 'המסך נפתח, אבל לא נמצא בו שדה סיסמה — ייתכן שזה לא מסך הכניסה.';
+/** D-121-59 A1 — declared mode: the mapped field never appeared (the opening itself is unknown). */
+export const MAPPED_FIELD_NOT_APPEARED_HE =
+  'השדה הממופה לא הופיע אחרי הלחיצה — ייתכן שהמסך לא נפתח, או שהשדה הממופה שגוי.';
+/** D-121-61 — reveal mode: only a new visible frame with no exact-one locator appeared. */
+export const SURFACE_FRAME_NOT_ADDRESSABLE_HE = 'המסך נפתח, אבל השדות נמצאים במסגרת שהמערכת לא יכולה לאתר.';
+/** D-121-35 (G4) — Ext reason: a trusted user gesture occurred before readiness. */
+export const AUTHORING_TEST_NOT_PROVEN_REASON = 'user_gesture_during_test';
+export const AUTHORING_TEST_NOT_PROVEN_HE =
+  'נראה שלחצת בעצמך באתר בזמן הבדיקה. סגרו את המסך ולחצו שוב על "בדוק את הכפתור וזהה את השדות" בלי ללחוץ באתר.';
+/** D-121-35 (G2) — action (opener / transition) Visual pick could not identify a button. */
+export const VISUAL_ACTION_UNSUPPORTED_TARGET_HE =
+  'לא ניתן לזהות את הכפתור שנבחר. לחצו על הכפתור עצמו באתר.';
+export const UNSUPPORTED_NESTED_FRAME_HE =
+  'השדה נמצא במסגרת בתוך מסגרת. מצב זה אינו נתמך כרגע.';
+export const UNSUPPORTED_SHADOW_DOM_HE =
+  'השדה נמצא ברכיב מוסתר מסוג Shadow DOM. מצב זה אינו נתמך כרגע.';
+export const UNSUPPORTED_NON_HTTPS_FRAME_HE =
+  'חלק מהדף נמצא במסגרת שאינה מאובטחת (HTTPS) ולא ניתן לבדוק אותה. מצב זה אינו נתמך.';
+export const FRAME_NOT_ADDRESSABLE_HE =
+  'לא ניתן לזהות את המסגרת באופן חד-משמעי. מצב זה אינו נתמך כרגע.';
+/** D-121-36 — live frame origin empty / "null": the frame has not loaded yet or was closed. */
+export const FRAME_NOT_LOADED_HE = 'המסגרת עדיין לא נטענה או נסגרה — נסו שוב.';
+export const FRAME_ORIGIN_CHANGED_HE = (origin: string): string => {
+  const live = String(origin ?? '').trim();
+  if (!live || live === 'null') return FRAME_NOT_LOADED_HE;
+  return `המסגרת שייכת כעת לאתר אחר (${LTR_MARK}${origin}${LTR_MARK}) — הפעולה נחסמה.`;
+};
+export const FRAME_CORRELATION_UNAVAILABLE_HE =
+  'לא ניתן לזהות את המסגרת בדף. נסו לרענן את הדף ולנתח שוב.';
+export const VISUAL_TIMEOUT_MAYBE_UNSUPPORTED_FRAME_HE =
+  'ייתכן שהשדה נמצא במסגרת שאינה נתמכת.';
 
 export const IDENTIFIED_BUT_MANAGED_INELIGIBLE_LABEL_HE =
   'זוהה אך אינו כשיר למילוי אוטומטי מנוהל';

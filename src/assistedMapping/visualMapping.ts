@@ -1,7 +1,9 @@
 import { sendExtensionMessageAsync, probeExtensionAvailable } from '../browserIntegration';
 import { originFromHttpsLoginEntry } from '../autofill/validatedProfile';
 import {
+  ADMIN_VISUAL_MAPPING_CANCEL_MESSAGE,
   ADMIN_VISUAL_MAPPING_START_MESSAGE,
+  ADMIN_VISUAL_PICK_TIMEOUT_MS,
   VISUAL_MAPPING_FAILED_LABEL_HE,
   VISUAL_MAPPING_MANAGED_INELIGIBLE_LABEL_HE,
   VISUAL_MAPPING_NEED_LOGIN_ENTRY_LABEL_HE,
@@ -81,10 +83,15 @@ export async function startVisualMappingForField(input: {
     fieldId,
     loginEntryUrl,
     allowedOrigin,
+    pickTimeoutMs: ADMIN_VISUAL_PICK_TIMEOUT_MS,
   });
 
   if (!response?.ok || typeof response.locator !== 'string' || !response.locator.trim()) {
     const reason = response?.reason;
+    if (reason === 'visual_pick_timeout' || reason === 'visual_pick_cancelled') {
+      // D-121-42: the editor owns the Admin copy for these (shared with SPECIAL).
+      return { ok: false, message: VISUAL_MAPPING_FAILED_LABEL_HE, reason };
+    }
     const identified =
       response?.identified === true ||
       response?.state === 'IDENTIFIED_BUT_MANAGED_INELIGIBLE';
@@ -148,5 +155,33 @@ export async function startVisualMappingForField(input: {
           .map((c) => (typeof c === 'string' ? c : typeof c?.locator === 'string' ? c.locator : ''))
           .filter((c) => c.trim())
       : undefined,
+  };
+}
+
+/**
+ * D-121-42 — disarm the pending STANDARD Visual pick (fresh Login Entry tab).
+ * Before the pick is armed, the Ext skips arming. No mapping is produced.
+ * Best-effort: the editor releases itself regardless of the response.
+ */
+export async function cancelVisualMappingForField(input: {
+  loginEntryUrl: string;
+}): Promise<{ ok: boolean; disarmed: boolean; reason?: string }> {
+  const allowedOrigin = originFromHttpsLoginEntry(input.loginEntryUrl.trim());
+  if (!allowedOrigin || !probeExtensionAvailable()) {
+    return { ok: false, disarmed: false, reason: 'unavailable' };
+  }
+  const response = await sendExtensionMessageAsync<{
+    ok?: boolean;
+    disarmed?: boolean;
+    reason?: string;
+  }>({
+    type: ADMIN_VISUAL_MAPPING_CANCEL_MESSAGE,
+    requestId: crypto.randomUUID(),
+    allowedOrigin,
+  });
+  return {
+    ok: response?.ok === true,
+    disarmed: response?.disarmed === true,
+    reason: response?.reason,
   };
 }

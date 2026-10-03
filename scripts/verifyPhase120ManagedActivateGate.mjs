@@ -184,7 +184,13 @@ function mainStatic() {
 
   // UI wiring
   assert(editor.includes('managedReadinessProbePassed'), 'activate persists probe proof');
-  assert(editor.includes('AUTOFILL_MANAGED_READINESS_PROBE_PASSED_KEY'), 'control key wired');
+  // D-121-38: the editor's only direct key use was the moved Admin-Test stamp; activate persists via specialActionBar.
+  assert(
+    read('src/admin/specialActionBar.ts').includes(
+      '[AUTOFILL_MANAGED_READINESS_PROBE_PASSED_KEY]: input.managedReadinessProbePassed',
+    ),
+    'control key wired',
+  );
   assert(editor.includes('בודק מוכנות מנוהלת'), 'probing status copy');
 }
 
@@ -282,7 +288,7 @@ async function mainProbeFormat(probeMod) {
   assert(!/secret|password-value|credential/i.test(msg), 'AP-7 no secrets in message');
 }
 
-function mainDomParity() {
+async function mainDomParity() {
   const origin = 'https://fixture.example.test';
   const uniqueHtml = `
     <!doctype html><html><body>
@@ -319,11 +325,11 @@ function mainDomParity() {
   });
   assert(ready.ready === true, 'AP-2 ready when exactly-one');
 
-  const fill = win2.runManagedAutofill({
+  const fill = await Promise.resolve(win2.runManagedAutofill({
     allowedOrigin: origin,
     fieldMappings: sampleMappings(),
     credentials: { username: 'u', password: 'p' },
-  });
+  }));
   assert(fill.ok === true, 'AC-120.2-AP-11: Managed fill still works on unique locators');
 }
 
@@ -333,7 +339,7 @@ async function main() {
   await mainContract(mod);
   const probeMod = await loadProbeModule();
   await mainProbeFormat(probeMod);
-  mainDomParity();
+  await mainDomParity();
   console.log('verifyPhase120ManagedActivateGate: PASS (AC-120.2-AP-1…11)');
 }
 

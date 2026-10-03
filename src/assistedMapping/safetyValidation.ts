@@ -11,7 +11,7 @@ import type {
   StructuredMappingProposal,
 } from './types';
 import { MAPPING_PROPOSAL_SCHEMA_VERSION } from './types';
-import { assertLocatorDeterministic } from './locatorDeterminism';
+import { assertLocatorDeterministic, preferExactOneCandidate } from './locatorDeterminism';
 
 /**
  * Approvable Managed mapping target (120.4 I1).
@@ -104,10 +104,23 @@ export function applySafetyAndConfidence(input: {
     }
 
     const finalConfidence = toFinalConfidence(raw.modelConfidence, raw.evidence?.length ?? 0);
+    // D-121-54: a non-exact-one locator yields to the observed input's own first
+    // exact-one candidate (Visual's choice), before the conflict checks and the 120.9 gate.
+    let locator = raw.locator.trim();
+    if (
+      (finalConfidence === 'high' || finalConfidence === 'medium') &&
+      !assertLocatorDeterministic(locator, observed)
+    ) {
+      const exactOne = preferExactOneCandidate(observed);
+      if (exactOne) {
+        locator = exactOne;
+        warnings.push('locator_replaced_with_exact_one');
+      }
+    }
     accepted.push({
       fieldId: raw.fieldId,
       locatorType: 'css',
-      locator: raw.locator.trim(),
+      locator,
       observedInputId: raw.observedInputId,
       confidence: finalConfidence,
       modelConfidence: raw.modelConfidence,
