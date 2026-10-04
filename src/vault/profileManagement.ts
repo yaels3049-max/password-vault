@@ -210,33 +210,58 @@ export function setDefaultAccessProfile(state: VaultState, profileId: string): V
   return { ...state, accessProfiles };
 }
 
-export function deleteAccessProfile(state: VaultState, profileId: string): VaultState {
+/**
+ * AD-123-13 — the last profile of an app may be deleted (the app keeps 0 profiles, no default).
+ * Deleting the default with ≥ 2 remaining requires `replacementDefaultId` (a remaining profile of
+ * the same app); missing / invalid throws and nothing changes. With 1 remaining, it becomes the
+ * default. For a non-default target `replacementDefaultId` is ignored.
+ */
+export function deleteAccessProfile(
+  state: VaultState,
+  profileId: string,
+  replacementDefaultId?: string,
+): VaultState {
   const target = state.accessProfiles.find((profile) => profile.id === profileId);
   if (!target) {
     throw new ProfileManagementError('Profile not found');
   }
 
-  const serviceProfiles = getProfilesForService(state, target.serviceId);
-  if (serviceProfiles.length <= 1) {
-    throw new ProfileManagementError('Cannot delete the last profile for a service');
+  const serviceId = target.serviceId.trim();
+  const remaining = getProfilesForService(state, serviceId).filter(
+    (profile) => profile.id !== profileId,
+  );
+
+  let newDefaultId: string | null = null;
+  if (target.isDefault === true && remaining.length >= 2) {
+    const replacement = remaining.find((profile) => profile.id === replacementDefaultId);
+    if (!replacement) {
+      throw new ProfileManagementError('Choose a new default profile');
+    }
+    newDefaultId = replacement.id;
+  } else if (remaining.length === 1 && remaining[0]!.isDefault !== true) {
+    newDefaultId = remaining[0]!.id;
   }
 
   let accessProfiles = state.accessProfiles.filter((profile) => profile.id !== profileId);
+  if (newDefaultId) {
+    accessProfiles = accessProfiles.map((profile) => {
+      if (profile.serviceId.trim() !== serviceId) {
+        return profile;
+      }
+      if (profile.id === newDefaultId) {
+        return touchProfile({ ...profile, isDefault: true });
+      }
+      if (profile.isDefault === true) {
+        const cleared = touchProfile({ ...profile });
+        delete cleared.isDefault;
+        return cleared;
+      }
+      return profile;
+    });
+  }
+
   const credentials = { ...state.credentials };
   delete credentials[profileId];
-
-  if (target.isDefault) {
-    const replacement = accessProfiles.find(
-      (profile) => profile.serviceId.trim() === target.serviceId.trim(),
-    );
-    if (replacement) {
-      accessProfiles = accessProfiles.map((profile) =>
-        profile.id === replacement.id
-          ? touchProfile({ ...profile, isDefault: true })
-          : profile,
-      );
-    }
-  }
 
   accessProfiles = normalizeExactlyOneDefaultPerService(accessProfiles);
   assertValidProfiles(accessProfiles);

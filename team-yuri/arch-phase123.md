@@ -4,182 +4,260 @@
 PHASE=123
 
 ## Status
-STATUS: DRAFT — technical design complete for review; behaviour that depends on open Product questions (§12) is marked GATED and must not be implemented before Product decides.
+STATUS: APPROVED FOR HANDOFF (Owner, 2026-10-04) — v2, aligned to PRD v1.1. All slices 123.1–123.4 authorized. PQ-123-1 implemented as recommended (page closed during Undo = not removed) pending Tika's confirmation; if Tika chooses the alternative, 123.3 is revised by the Architect before it is closed. AD-123-16 approved (conditional).
 
 ## Phase Goal
-Make the Digital Home the single user workspace: open apps, switch profiles, edit a profile and its credentials, add profiles, add apps from a catalog overlay, and remove apps — all without leaving the Digital Home. The standalone «ניהול אתרים» screen stops being a user destination. The Admin area is unchanged.
+Make the Digital Home the single user workspace: open apps, switch profiles, edit a profile and its credentials, add / delete profiles (including the last), set the default explicitly, add apps and custom sites from a catalog overlay, edit custom sites, and remove apps (confirmation + 5-second Undo) — all without leaving the Digital Home. The standalone «ניהול אתרים» screen stops existing as a user destination. The Admin area is unchanged.
 
 ## Source References
-- Product input (source of truth for behaviour / UX): Tika, "digital-home-unified-PRD" (Owner-provided, 2026-10-03). Referenced by its IDs: §8.1–8.7, FR-01…FR-18, A1–A6, R1–R6, OQ-01…OQ-03. Not rewritten here.
-- Code map (read 2026-10-03): `src/App.tsx`, `src/Dashboard.tsx`, `src/Tile.tsx`, `src/loginAssistance/*` (floating window), `src/ManageServices.tsx`, `src/ServiceProfileManagementModal.tsx`, `src/loginAssistance/DigitalHomeCredentialModal.tsx`, `src/AddSiteModal.tsx`, `src/vault/*`, `src/profile/*`, `src/serviceManagement/*`, `src/supabase/persistence.ts`, `src/supabase/registryPersistence.ts`, migrations phase101 / phase102 / phase109.
-- Prior decisions kept: AC-104-16 (remove-site semantics) — superseded only by the OQ-01 decision; Phase 121 / 122 Admin decisions (untouched).
+- Product input (source of truth for behaviour / UX): Tika, "digital-home-unified-PRD" v1.1 (Owner-provided, 2026-10-03). Referenced by its IDs: §8.1–8.13, FR-01…FR-30, R1–R5, §12. Not rewritten here.
+- Code map (read 2026-10-03): `src/App.tsx` (`changeSelection`, `addCustomService`, `updateCustomService`), `src/Dashboard.tsx`, `src/Tile.tsx`, `src/loginAssistance/*`, `src/ManageServices.tsx`, `src/ServiceProfileManagementModal.tsx`, `src/loginAssistance/DigitalHomeCredentialModal.tsx`, `src/AddSiteModal.tsx`, `src/vault/profileManagement.ts`, `src/vault/vaultMigration.ts`, `src/serviceManagement/serviceSelection.ts`, `src/supabase/persistence.ts`, `src/supabase/registryPersistence.ts`, migrations phase101 / phase102 (`service_registry` RLS) / phase109.
+- Prior decisions: AC-104-16 (remove keeps local profiles) — SUPERSEDED by PRD §8.10 / AD-123-11. Phase 121 / 122 Admin decisions untouched.
 
 ## 1. Current state (facts the design builds on)
 
-| Topic | Today | Gap vs PRD |
+| Topic | Today | Gap vs PRD v1.1 |
 |---|---|---|
-| Navigation | `App.tsx` `Screen = 'manage' \| 'dashboard'`; post-login goes to `manage` when the user has no sites; Dashboard «ניהול אתרים» ↔ ManageServices «לבית הדיגיטלי» | §8.1 / FR-01: one workspace |
-| Tile indicator | Green dot = default profile has ALL login fields filled (`Dashboard.tsx` `hasCompleteCredentials` on `credentialsByServiceId`) | A4 is not true today; FR-15 redefines the dot as "≥ 1 profile" |
-| Floating window | `LoginAssistancePanel`: profile chips (only when > 1 profile and credentials exist), read-only fields, «פתח אתר», «נסה מילוי אוטומטי», «הוסף פרטי כניסה» (only when missing) | No edit, add-profile, remove-app; no empty state (FR-06/08/14/17) |
-| Profile management | `ServiceProfileManagementModal` (tabs, save credentials, rename, set default, delete profile, add profile, in-dialog confirmations); already reachable from Digital Home via `DigitalHomeCredentialModal` | Reusable as the PRD "Profile Management Modal" (FR-07) |
-| Profile auto-creation | `ensureDefaultProfileForService` creates «ראשי» whenever the credential modal opens | Conflicts with FR-13/14 (an app can legitimately have 0 profiles) and with the new dot meaning |
-| Catalog | Only inside ManageServices «הוספת אתרים»: search, category chips, cards, «✓ כבר בבית הדיגיטלי», «הוספה», «+ הוסף אתר» (custom) with duplicate classifier | Must open over the Digital Home (FR-09…FR-12) |
-| Add without profile | Adding a catalog app only adds the id to `selectedIds` — already profile-less | FR-13 satisfied by the data model |
-| Remove app | ManageServices kebab «הסר אתר», NO confirmation; local profiles / credentials kept (AC-104-16) while the cloud cascade deletes them | FR-17/18; inconsistent local vs cloud (OQ-01) |
-| Delete profile | Cloud first, then local; the LAST profile cannot be deleted; deleting the default promotes another | OQ-02; 0-profile state now valid |
-| Dialogs | No `window.confirm` on the user side; per-screen modal markup; Admin has `AdminConfirmDialog` (not shared) | Need a user-side confirm primitive |
-| Telemetry | None (no analytics SDK); dev-only console | PRD metrics (§6) |
+| Navigation | `Screen = 'manage' \| 'dashboard'`; post-login → `manage` when no sites; «ניהול אתרים» ↔ «לבית הדיגיטלי» | §8.1, FR-01, FR-30 |
+| Tile indicator | Green dot = default profile has ALL login fields (`hasCompleteCredentials`) | §8.8, FR-21/22: dot = ≥ 1 profile |
+| Floating window | `LoginAssistancePanel`: chips only when > 1 profile AND credentials exist; read-only; «הוסף פרטי כניסה» when missing | No edit / add / delete / remove / empty state |
+| Profile management | `ServiceProfileManagementModal` (save credentials, rename, set default, delete, add, in-dialog confirmations), reachable via `DigitalHomeCredentialModal` | Reusable as the §8.4 modal |
+| Profile auto-creation | `ensureDefaultProfileForService` (profileManagement) creates «ראשי» when the credential modal opens (App.tsx, ManageServices, DigitalHomeCredentialModal) | Conflicts with §8.7 / FR-18 |
+| Unlock migration | `vaultMigration.migrateVaultPayload` creates a profile only for legacy service-keyed credentials | Does NOT resurrect a deleted last profile (its credential is profile-keyed and deleted with it) |
+| Catalog | Only inside ManageServices: search, categories, cards, «✓ כבר בבית הדיגיטלי», add, custom add (`classifyAddCustomService`) | §8.5/8.6, FR-14…19 |
+| Remove app | `changeSelection('remove')`: no confirmation; cloud `removeUserServiceFromCloud` (cascade profiles + ciphertext) → local `removeFromSelection` (selectedIds ONLY — local profiles, credentials, customServices entry retained) → re-verify | FR-24…29: full deletion, confirmation, Undo, custom row deletion |
+| Delete profile | `deleteAccessProfile` throws on the last profile; deleting the default auto-promotes the first remaining | FR-11/12/13: last allowed; no arbitrary pick when ≥ 2 remain |
+| Custom site edit | `updateCustomService` (registry upsert + vault) exists, reached from ManageServices | FR-20: from the app context |
+| Custom row delete | `deleteCustomServiceRegistryRow` (owner + `source_type='user'`); RLS `service_registry_delete_own` exists; RLS select requires `service_status='active'` | Pending rows may be undeletable by their owner (P-1, see AD-123-16) |
+| Dialogs | No browser dialogs on the user side; Admin `AdminConfirmDialog` not shared | User-side confirm + Undo toast needed |
+| Telemetry | None; dev-only console | PRD §6 / §13 Phase 2 |
 
 ## 2. Architectural Decisions
 
 | ID | Decision | Rationale | Consequence |
 |---|---|---|---|
-| AD-123-1 | One user screen: Digital Home. Remove `'manage'` from user navigation; post-login always lands on Digital Home (0 apps → empty-home state with «+ הוספת אפליקציה») | §8.1, FR-01 | `resolvePostAuthScreen` / `Screen` simplified; ManageServices retired after parity (AD-123-9) |
-| AD-123-2 | Floating window (`LoginAssistancePanel`) becomes the app context: profile switcher, «עריכת פרופיל» (active profile), «הוספת פרופיל», empty state, an app-actions menu with «הסרת אפליקציה» | §8.2/8.3/8.5/8.7, FR-02/05/06/08/14/17; reuse existing component | Panel grows by actions only; R5 — no general management inside the panel |
-| AD-123-3 | The PRD "Profile Management Modal" = the existing `ServiceProfileManagementModal`, opened via one Digital Home host (merge the duplicated wiring of `DigitalHomeCredentialModal` into a single host), focused on the active profile, with an "add profile" entry mode | FR-06/07/08; no new credential UI | No new save path; copy / error mapping unified |
-| AD-123-4 | Credentials and profiles are written ONLY through the existing reducers (`addAccessProfile`, `renameAccessProfile`, `setDefaultAccessProfile`, `saveCredentialForProfile`, `deleteCredentialForProfile`, `deleteAccessProfile`) + `persistVault` + existing cloud functions. No new storage, crypto, key or sync mechanism | Owner constraint; zero-knowledge model unchanged | Crypto / unlock / `persistVault` / RLS untouched |
-| AD-123-5 | A profile is created only by an explicit user "add profile" save. Opening the modal never auto-creates «ראשי» on the user path (`ensureDefaultProfileForService` no longer called from Digital Home flows) | FR-13/14; green dot must mean what it says | Legacy migration helper `vaultMigration.ensureDefaultProfileForService` unchanged (unlock-time migration of old vaults) |
-| AD-123-6 | Green dot rule = the app has ≥ 1 profile (`accessProfiles.some(p => p.serviceId === id)`), one pure helper used by the tile; no count, no textual status on tiles | FR-15/16, §8.6 | Behaviour change for profiles with incomplete credentials — see TQ-1 |
-| AD-123-7 | Default profile: exactly-one-default invariant kept (`normalizeExactlyOneDefaultPerService`). Floating window opens on the default (fallback: the only / first profile). Switching in the window is session-local and does not change the stored default; the default is changed only by the explicit modal action | FR-04/05; existing invariant | TQ-3 confirms with Product |
-| AD-123-8 | Catalog overlay: extract ManageServices «הוספת אתרים» (search, categories, cards, already-added marking, add, custom add + duplicate classifier) into a container-agnostic `AppCatalog` body hosted in an overlay opened from Digital Home «+ הוספת אפליקציה». Closing returns to the same Digital Home state | FR-09…FR-13, R6 (reuse), OQ-03 (container is a UX choice) | Default container = large modal until OQ-03 decides; body independent of container |
-| AD-123-9 | Retirement of ManageServices as a user destination: delete the screen only after a parity matrix shows every capability lives in Digital Home context (list = Digital Home grid; edit / profiles = modal; add = catalog; remove = app menu; custom site details edit = app menu for `user-created` apps, see TQ-2) | A6, migration safety | Reversible until the last slice; no data migration needed (§7) |
-| AD-123-10 | User-side confirm primitive: one accessible in-app dialog (focus trap, Escape, `role="alertdialog"`), no browser dialogs. Copy-only parameters | FR-18, R4 | May reuse the pattern of `AdminConfirmDialog`, but no import from `src/admin` (boundary) |
-| AD-123-11 | Removal / profile-deletion semantics are implemented exactly as Product decides OQ-01 / OQ-02, applied consistently to BOTH the local vault and the cloud in one operation (no state where local and cloud disagree after success) | R4; today's AC-104-16 inconsistency | GATED until Product decision |
-| AD-123-12 | Observability without a new telemetry system: PRD diagnostic metrics are computed server-side from existing timestamps (`user_services.created_at`, `access_profiles.created_at`) via an admin-only aggregate (SQL / RPC, counts only, no per-user data, no credential data). Client logs stay dev-only and never contain credential values | §6 diagnostic metric; no analytics SDK exists | Adding product analytics (task funnels) = separate decision (§10) |
+| AD-123-1 | One user screen: Digital Home. `'manage'` removed from user navigation; post-login always lands on Digital Home; 0 apps → clean empty state with a central «+ הוספת אפליקציה» (no automatic catalog opening) | §8.1, §8.9, FR-01, FR-30 | `resolvePostAuthScreen` / `Screen` simplified |
+| AD-123-2 | The floating window (`LoginAssistancePanel`) is the app context: profile switcher (≥ 2 profiles, regardless of credential completeness), «עריכת פרופיל» (active profile), «הוספת פרופיל», 0-profile empty state with «הוסף פרופיל», app-actions menu: «הסרת אפליקציה» always; «עריכת פרטי האתר» only for custom sites | §8.2, §8.7, FR-02/07/09/20/24; Success metric 3 (≤ 2 actions: tile → «עריכת פרופיל») | R2 / R5: actions only; management stays in the modal |
+| AD-123-3 | The §8.4 central modal = existing `ServiceProfileManagementModal`, opened through ONE Digital Home host (merge the duplicated wiring of `DigitalHomeCredentialModal`), focused on the active profile, with an "add profile" entry mode | FR-07/08/09 | No new credential UI or save path |
+| AD-123-4 | Profiles and credentials are written ONLY through existing reducers + `persistVault` + existing cloud functions (`deleteAccessProfileFromCloud`, `deleteCloudEncryptedCredentialByLocalProfileId`, `removeUserServiceFromCloud`). No new storage, crypto, key, or sync mechanism | Owner constraint | Crypto / unlock / `persistVault` / sync algorithm untouched |
+| AD-123-5 | A profile is created only by an explicit "add profile" save. `profileManagement.ensureDefaultProfileForService` is no longer called from any user flow. `vaultMigration` (legacy keys) unchanged | §8.7, FR-18 | Opening the modal on a 0-profile app shows the add form, nothing is persisted until save |
+| AD-123-6 | Green dot = `appHasProfile(state, id)` (any profile, with or without credentials). No count, no status text on tiles | §8.8, FR-21/22/23, R3 | Existing auto-created empty «ראשי» profiles get a dot — accepted by §8.8; no data rewrite |
+| AD-123-7 | Default: exactly-one-default invariant applies to every app with ≥ 1 profile (0 profiles = no default, valid). The window opens on the default each time it opens; switching is local to that open window, never persisted; the default changes only via the explicit modal action | §8.2, §8.3, FR-04/05/06 | `initialActiveProfile(profiles)` pure helper |
+| AD-123-8 | Catalog: extract ManageServices «הוספת אתרים» (search, categories, cards, already-added marking, add, custom add + duplicate classifier) into a container-agnostic `AppCatalog` body, hosted in a large central modal over Digital Home. Existing cards / search / categories preserved | §8.5/8.6, FR-14…19, R5 | Closing returns to the same Digital Home state |
+| AD-123-9 | ManageServices deleted as a user destination after a parity matrix (list = grid; profiles / credentials = modal; add / custom add = catalog; custom edit + remove = app menu) | §10 A5, migration safety | Last slice; reversible until then |
+| AD-123-10 | User-side UI primitives (no import from `src/admin`): accessible confirm dialog (`role="alertdialog"`, focus trap, Escape = cancel) and an Undo toast (`role="status"`, keyboard-reachable «ביטול», 5 s countdown). No browser dialogs | FR-26/27, R1 | Copy parameterised; destructive copy states exactly what is deleted |
+| AD-123-11 | Remove app = full deletion with a deferred commit (Undo without restoration). On confirm the tile is hidden immediately (UI-only pending state) and the Undo toast shows for 5 s. Undo = cancel; nothing was written. On expiry, the removal commits as ONE operation through existing functions: (1) `bumpDualWriteGeneration`; (2) `removeUserServiceFromCloud` (cloud cascade deletes profiles + ciphertext); (3) local `persistVault` of the new pure reducer `removeAppFromVault` (drops the id from `selectedIds`, all `accessProfiles` of the app, their `credentials`, and the `customServices` entry for a custom site), awaiting cloud sync; (4) re-verify `removeUserServiceFromCloud`; (5) custom site only: `deleteCustomServiceRegistryRow` | §8.10, §8.11, FR-24/25/27/28/29; avoids re-creating ciphertext / registry rows (a "restore" would be a second write path and could fail half-way) | Fail-closed: failure in (2)–(4) → tile reappears, Hebrew error, nothing deleted locally. Failure in (5) → app is already removed for the user; one retry, then dev-warn (orphan row visible only to its owner / admin; see AD-123-16). Supersedes AC-104-16 |
+| AD-123-12 | Undo window edge rules: one pending removal at a time (a second removal, logout, or vault lock commits the pending one immediately); adding the same app from the catalog during the window commits the removal first, then adds it fresh (no profiles); closing / reloading the page during the window → nothing was committed, the app remains (see PQ-123-1) | No persisted "pending" state = no new storage | PQ-123-1 confirms with Product |
+| AD-123-13 | Delete profile (from the modal, existing in-dialog confirmation): last profile allowed → app stays with 0 profiles, no dot, empty state. Deleting the default: 1 remaining → it becomes default automatically; ≥ 2 remaining → the delete flow requires the user to pick the new default before confirming. `deleteAccessProfile` changes: no last-profile guard; new argument `replacementDefaultId` required when the default is deleted and ≥ 2 remain (missing / invalid → throws, fail-closed, no arbitrary pick). Cloud-first order unchanged (`deleteAccessProfileFromCloud` before local) | §8.12, §8.13, FR-10…13 | `normalizeExactlyOneDefaultPerService` accepts 0-profile apps |
+| AD-123-14 | Custom sites: «+ הוספת אתר מותאם אישית» lives in the catalog (existing `addCustomService`, unchanged); «עריכת פרטי האתר» in the app-actions menu opens the existing custom-site form via `updateCustomService` (unchanged). "Custom" = the app is in the user's vault `customServices` (user-created). Catalog apps never show the edit action | §8.11, FR-19/20 | A custom site promoted to the global catalog by an admin is treated as catalog-origin: step (5) of AD-123-11 matches no row (owner + `source_type='user'` filter) → only membership deleted, consistent with §8.11 |
+| AD-123-15 | Observability without a new telemetry system: admin-only aggregate (counts only) from existing `user_services.created_at` / `access_profiles.created_at` for "apps without profile" (§13 Phase 2). Undo usage and funnels are NOT measured in MVP (needs an analytics decision). Client logs dev-only, never values | No analytics SDK exists | Separate decision if Product wants event metrics |
+| AD-123-16 | **OWNER APPROVED (2026-10-03) — conditional.** FR-29 requires the owner to delete their own custom registry row, including rows still `pending_review`. Current RLS select on `service_registry` requires `service_status='active'`; PostgreSQL applies the select policy to the rows a DELETE with WHERE can see, so a pending row may be undeletable (this is P-1). Proposed: one narrow additive policy — owner may SELECT own `source_type='user'` rows regardless of status (no change to admin policies or user tables). Verification first: Developer proves with a real pending row whether delete works today; the policy is added only if it does not | FR-29; also fixes P-1 (own custom sites not hydrating) | Requires explicit Owner approval in the architecture review (RLS change) |
+
+| AD-123-17 | **(Architect, 2026-10-04, from 123.1 Known Issue 1.)** Scope of the profile UI: a profile is a credential set, so the profile UI (switcher, «עריכת פרופיל», «הוספת פרופיל», 0-profile empty state + «הוסף פרופיל») applies only to apps whose credential entry is a form (launch kinds `credentials` / `missing-user-credentials`; custom sites are always forms). For `no-stored-credentials` and `not-configured` apps the window keeps today's content (no profile UI, no empty-state CTA). The green dot stays the pure AD-123-6 rule (legacy profiles of such apps still show it). The app-actions menu (123.2 «עריכת פרטי האתר» for custom sites; 123.3 «הסרת אפליקציה») MUST be available for EVERY launch kind — removal may not depend on the credential mode | PRD §3: profiles exist to hold login details; an empty-state CTA that cannot hold credentials would be a dead end; ManageServices disappears in 123.4, so removal must reach every app | No behaviour change in 123.1 (implementation already matches). Tika informed as FYI (no PRD behaviour defined for these modes) |
+
+| AD-123-19 | **(Owner requirement, 2026-10-04.) Catalog visibility gate.** A global catalog site is LISTED in the user catalog (and offered by the custom-add classifier as `catalog_service_available`) only when it is ready for users: `userApprovalState(row) === 'approved'` («מאושר למשתמשים», the same derivation as the admin badge), or the admin explicitly configured it as `no_stored_credentials` (nothing to map). Everything else (`no_mapping`, `not_approved`, `blocked`, `not_configured`) is hidden from users. Applies equally to admin-created sites and to user submissions promoted by the admin (promotion alone does not publish; publication = promotion + approved mapping). Before promotion a user-created site stays visible only to its owner (existing RLS: `owner_user_id = auth.uid()`). Apps already in a user's home are NOT removed when a site leaves the approved state (runtime stays fail-closed as today); the gate controls listing / new adds only. The admin area keeps seeing everything | Owner: no site reaches users before its mapping is approved | `userApprovalState` moves (unchanged logic) from `src/admin/userApproval.ts` to a shared user-side module that admin re-exports — admin behaviour unchanged. Client-side listing filter is sufficient: catalog metadata is not secret; credentials are unaffected. Evidence must report how many currently listed sites become hidden. Tika informed (FYI) |
 
 ## 3. Constraints / Non-Negotiables
-- Admin area (`src/admin/**`, `#/admin`, admin RPCs / policies) unchanged.
-- No change to authentication, unlock, key derivation, encryption, `persistVault`, sync algorithm, or RLS of user tables.
-- No new credential storage or alternative save path (AD-123-4).
-- No browser dialogs; Hebrew RTL; existing Digital Home visual language.
-- Fail-closed on cloud errors for destructive actions (existing pattern: block and show an error, nothing changes locally).
-- No extension / manifest change. Login / autofill execution (`executeServiceFromTile`, managed autofill) unchanged.
-- GATED items (§12) not implemented before a written Product decision.
+- Admin area (`src/admin/**`, `#/admin`, admin RPCs / policies) unchanged. Side effect accepted by §8.11: removing a pending custom site removes it from the admin approval queue.
+- No change to authentication, unlock, key derivation, encryption, `persistVault`, sync algorithm, or RLS of user tables. The only RLS candidate is AD-123-16 (registry, additive, Owner-gated).
+- No new credential storage or alternative save path (AD-123-4); no persisted Undo state (AD-123-12).
+- No browser dialogs; Hebrew RTL; existing Digital Home visual language; no counters or statuses on tiles (§13 Phase 2).
+- Fail-closed on cloud errors for destructive actions.
+- No extension / manifest change. Login / autofill execution unchanged.
+- Any technical limitation that changes PRD behaviour returns to Product before implementation (PRD §12).
 
 ## 4. Technical Boundaries / Out of Scope
-- Out: Admin; registry / approval model; catalog data model; login execution; credential crypto; Phase 2 refinements (PRD §13); product analytics SDK.
-- Out (pre-existing, recorded, not fixed here unless separately approved): see §11 risks P-1…P-4.
-- Boundary — Digital Home: tiles, floating window (app context), app-actions menu, empty states, hosts for the modal and the catalog.
-- Boundary — App Catalog: discovery and "add to home" only (search, categories, cards, already-added, add, custom add). It never edits profiles and never removes apps.
-- Boundary — Profile Management: one app's profiles and credentials only (modal). It never adds / removes apps.
+- Out: Admin; registry / approval model; catalog data model; login execution; credential crypto; analytics SDK; PRD §13 Phase 2.
+- Boundary — Digital Home: tiles, floating window (app context), app-actions menu, empty states, Undo toast, hosts for the modal and the catalog, removal orchestration.
+- Boundary — App Catalog: discovery and "add" only (search, categories, cards, already-added, add, custom add). Never edits profiles, never removes apps.
+- Boundary — Profile Management (modal): one app's profiles and credentials (add, edit, rename, set default, delete incl. last). Never adds / removes apps, never edits custom-site details.
 
 ## 5. Components — changed / unchanged
 
 | Component | Change |
 |---|---|
-| `App.tsx` | Remove `'manage'` screen path and `manageIsFirstRun`; host the catalog overlay and the single profile-management host; wire remove-app with confirmation |
-| `Dashboard.tsx` | Replace «ניהול אתרים» with «+ הוספת אפליקציה»; empty-home state; green-dot helper (AD-123-6) |
-| `Tile.tsx` | Indicator input changes to "has profile"; markup unchanged |
-| `LoginAssistancePanel.tsx` (+ `credentialsGate.ts`, `messages.ts`) | Profile switcher for ≥ 2 profiles regardless of credential completeness; «עריכת פרופיל»; «הוספת פרופיל»; 0-profile empty state + CTA; app-actions menu («הסרת אפליקציה»; «עריכת פרטי האתר» for `user-created`, TQ-2) |
-| `ServiceProfileManagementModal.tsx` | Open on a given profile; "add profile" entry mode; deletion rules per OQ-02 |
-| `DigitalHomeCredentialModal.tsx` | Becomes the single Digital Home host (or merged); no auto-create |
-| New `AppCatalog` body + overlay host | Extracted from ManageServices (logic reused: `filterDiscoveryServices`, `userFacingCategories`, `classifyAddCustomService`, `AddSiteModal`) |
-| New user confirm dialog | AD-123-10 |
-| `ManageServices.tsx` | Retired at the end (AD-123-9) |
-| `serviceSelection.ts`, `profileManagement.ts`, `persistence.ts` | Reused; only the removal / profile-delete composition changes per OQ-01 / OQ-02 |
-| Unchanged | `src/vault/crypto.ts`, `vault.ts` (`persistVault`), `db.ts`, sync / hydrate algorithm, `src/execution/**`, `extension/**`, `src/admin/**`, registry loaders, migrations of user tables |
+| `App.tsx` | Remove `'manage'`; host catalog, single modal host, confirm dialog, Undo toast; removal orchestration (AD-123-11/12) replacing `changeSelection('remove')`; no `ensureDefaultProfileForService` |
+| `Dashboard.tsx` | «+ הוספת אפליקציה» instead of «ניהול אתרים»; empty state; `appHasProfile` |
+| `Tile.tsx` | Indicator input = has profile; markup unchanged |
+| `LoginAssistancePanel.tsx` (+ `credentialsGate.ts`, `messages.ts`) | Switcher for ≥ 2 profiles; «עריכת פרופיל»; «הוספת פרופיל»; empty state; app-actions menu |
+| `ServiceProfileManagementModal.tsx` | Open on a given profile; add mode; delete-last; choose-new-default step |
+| `DigitalHomeCredentialModal.tsx` | Single host (or merged); no auto-create |
+| `profileManagement.ts` | `deleteAccessProfile` per AD-123-13; normalize accepts 0 profiles |
+| `serviceSelection.ts` | New pure `removeAppFromVault` (AD-123-11) |
+| New `AppCatalog` body + modal host | Extracted from ManageServices (reuses `filterDiscoveryServices`, `userFacingCategories`, `classifyAddCustomService`, `AddSiteModal`) |
+| New user confirm dialog + Undo toast | AD-123-10 |
+| `ManageServices.tsx` | Deleted at the end (AD-123-9) |
+| Supabase | No schema change. Possibly one additive registry policy (AD-123-16, Owner-gated). Admin aggregate (AD-123-15) = admin-only read function |
+| Unchanged | `crypto.ts`, `vault.ts` (`persistVault`), `db.ts`, `vaultMigration.ts`, sync / hydrate, `persistence.ts` functions, `registryPersistence.ts` functions, `src/execution/**`, `extension/**`, `src/admin/**` |
 
-## 6. Interface contracts (between Digital Home, App Catalog, Profile Management)
-- Digital Home → Catalog: `openCatalog()`; Catalog → host callbacks `onAddApp(serviceId) → Promise<AddOutcome>`, `onAddCustom(definition) → Promise<CustomAddOutcome>` (existing `addService` / `addCustomService` semantics), `onClose()`. Input: `selectedIds`, catalog services, categories, pending ids. No profile data enters the catalog.
-- Digital Home → Profile Management: `openProfileManagement({ serviceId, profileId?, mode: 'edit' | 'add' })`. Callbacks reuse the existing reducer set (AD-123-4) through `onVaultStateChange`, plus `onDeleteProfile` per OQ-02. Output to Digital Home: updated `VaultState` only.
-- Digital Home → removal: `removeApp(serviceId) → Promise<'removed' | 'failed'>`, always behind the confirm dialog; implementation per OQ-01.
-- Pure helpers (testable): `appHasProfile(state, id)`, `initialActiveProfile(profiles)`, `appContextActions(service, profiles)`.
+## 6. Interface contracts
+- Digital Home → Catalog: `openCatalog()`. Catalog → host: `onAddApp(serviceId) → Promise<AddOutcome>`, `onAddCustom(definition) → Promise<AddCustomServiceResult>` (existing semantics), `onClose()`. Input: `selectedIds` (pending-removal app counts as not added — AD-123-12), services, categories, pending ids. No profile data enters the catalog.
+- Digital Home → Profile Management: `openProfileManagement({ serviceId, profileId?, mode: 'edit' | 'add' })`. Output: updated `VaultState` only, via existing reducers.
+- Digital Home → removal: `requestRemoveApp(serviceId)` (confirm) → `beginPendingRemoval(serviceId)` → `undoPendingRemoval()` | `commitPendingRemoval() → Promise<'removed' | 'failed'>`.
+- Profile delete: `deleteAccessProfile(state, profileId, replacementDefaultId?)`.
+- Pure helpers (unit-testable): `appHasProfile`, `initialActiveProfile`, `appContextActions(service, profiles, isCustom)`, `removeAppFromVault`, `deleteProfilePlan(profiles, profileId) → 'simple' | 'auto_default' | 'choose_default'`.
 
 ## 7. Data / State Considerations
-- Data model: no schema change required for MVP. 0-profile apps are already representable locally (`selectedIds` without profiles) and in the cloud (`user_services` without `access_profiles`).
-- Default profile: `AccessProfile.isDefault` + invariant unchanged.
-- Behaviour per profile count:
-  - 0 → no dot; window shows empty state + «הוספת פרופיל»; no autofill action.
-  - 1 → dot; window shows that profile (no switcher); edit / add available.
-  - ≥ 2 → dot (no count); window opens on the default; switcher; edit acts on the active profile.
-- Backward compatibility / migration:
-  - Existing users: no data migration. Apps already in `selectedIds` appear as before.
-  - Existing auto-created «ראשי» profiles without credentials remain profiles → they get a dot under AD-123-6 (TQ-1 decides whether that is acceptable or whether such empty profiles are treated differently — no data rewrite either way without approval).
-  - Users who land on the old `manage` screen state (in-memory only) are routed to Digital Home; nothing persisted references the screen.
-  - Local credentials retained from earlier removals (AC-104-16) are handled per OQ-01 (e.g. purge on next removal only, or a one-time cleanup — Product / Architect decision after OQ-01).
+- No schema change. 0-profile apps are representable locally and in the cloud.
+- Per profile count:
+  - 0 → no dot; window: empty state + «הוסף פרופיל»; app menu still available.
+  - 1 → dot; window shows it (no switcher); edit / add / remove.
+  - ≥ 2 → dot (no count); opens on the default; switcher (session-only).
+- Backward compatibility:
+  - Existing users: no migration; apps in `selectedIds` appear as before.
+  - Empty auto-created «ראשי» profiles: now show a dot (§8.8) — the user can delete them (last-profile delete allowed).
+  - Local leftovers from earlier removals (AC-104-16): profiles / credentials of apps NOT in `selectedIds`. They are invisible. One-time cleanup at unlock is NOT added (it would be a new write path at unlock); instead, re-adding such an app must start without profiles: `addService` drops leftover profiles / credentials of that app before adding (same `removeAppFromVault` reducer), so old credentials never reappear.
+  - The old `manage` screen is in-memory only; nothing persisted references it.
 
 ## 8. Failure states
-- Cloud unavailable / no session during add, remove, delete profile: existing fail-closed behaviour (operation blocked, clear Hebrew error, local state unchanged).
-- Credential save: today `persistVault` sync is fire-and-forget (local save succeeds, cloud sync may fail silently). Kept as is (AD-123-4); recorded as risk P-3.
-- Catalog load error inside the overlay: inline error + retry; Digital Home stays usable.
-- Concurrent actions: existing selection lock (`pendingIds`) reused for add / remove; actions disabled while pending.
-- Admin disabled / removed an app: existing prune / registry-presence logic unchanged.
+- Cloud unavailable / no session on remove-commit or profile delete: fail-closed (tile reappears / profile stays, Hebrew error, local unchanged).
+- Custom registry delete fails after membership removal: app removed for the user; one retry; dev-warn; row is invisible to other users.
+- Credential save: `persistVault` cloud sync stays fire-and-forget (AD-123-4) — P-3.
+- Catalog load error: inline error + retry inside the modal; Digital Home stays usable.
+- Concurrency: existing selection lock (`pendingIds`) covers add / remove-commit; one pending removal at a time.
+- Page closed during Undo window: nothing deleted (AD-123-12, PQ-123-1).
 
 ## 9. Security / Privacy Considerations
-- Zero-knowledge model unchanged; credentials only in the encrypted vault and per-profile cloud ciphertext.
-- Removal must leave no orphaned ciphertext in the cloud and, per OQ-01, no silently retained local copies unless Product chooses a recovery option (then retention must be explicit and bounded).
-- Confirmation before destructive actions (FR-18); copy states what is deleted (depends on OQ-01).
-- No credential values in logs, metrics, or the catalog. Metrics are aggregate counts only, admin-only.
-- Custom site submissions: removal does not touch other users; registry row handling per OQ-01b.
+- Zero-knowledge model unchanged.
+- After a committed removal: no local profiles / credentials of the app, no cloud `user_services` / `access_profiles` / `encrypted_credentials` rows, no own custom registry row.
+- During the Undo window nothing is deleted; data stays in its normal encrypted form (no extra copy, no snapshot).
+- Confirmation copy states that all profiles and login details of the app will be deleted from all of the user's devices.
+- No credential values in logs, metrics, or the catalog. Admin aggregate = counts only.
+- Removal touches only the current user's rows (existing RLS / owner filters).
 
 ## 10. Observability
-- Required for the phase: admin-only aggregate for the PRD diagnostic metric (% apps added without profile; % still without profile after 7 days), computed from existing timestamps; no new client telemetry.
-- Not in MVP without a separate decision: event analytics for task completion / funnels (PRD §6 items 2–4 are measured in usability tests; item 5 from the support system).
-- Dev-only diagnostics may log action names and outcomes, never values.
+- MVP: admin-only aggregate "apps without profile" (AD-123-15).
+- Not in MVP: Undo usage, task funnels, credential-update failure analysis (PRD §13 Phase 2) — requires a separate analytics decision.
+- Dev-only diagnostics: action names and outcomes, never values.
 
 ## 11. Risks (technical)
-- T-1 Behaviour change of the green dot (complete credentials → has profile): profiles without credentials now show a dot. Mitigation: TQ-1.
-- T-2 Removing the `manage` screen loses an un-migrated capability. Mitigation: parity matrix (AD-123-9) before deletion.
-- T-3 Floating window complexity (R5). Mitigation: only the listed actions; management stays in the modal.
-- Pre-existing, outside scope unless approved separately:
-  - P-1 User-submitted custom rows are `pending_review`, but the owner's RLS read requires `active` → own custom sites may not hydrate on a second device and could be pruned. Affects custom apps in the unified home.
-  - P-2 Remove-site local retention vs cloud cascade (AC-104-16) — resolved by OQ-01.
-  - P-3 Credential cloud sync failures are silent (fire-and-forget; best-effort cloud credential delete can resurrect a deleted credential on next hydrate).
+- T-1 Green-dot meaning change (complete credentials → has profile). Accepted by §8.8.
+- T-2 Removing ManageServices loses a capability. Mitigation: parity matrix (AD-123-9).
+- T-3 Floating-window complexity (R2 / R5). Mitigation: listed actions only.
+- T-4 Deferred commit lost on page close (PQ-123-1).
+- T-5 Removal step (5) failure leaves an orphan own row (low impact; AD-123-11).
+- Pre-existing, outside scope unless approved:
+  - P-1 Own `pending_review` custom rows not readable by their owner → may not hydrate on a second device; addressed only if AD-123-16 is approved.
+  - P-3 Credential cloud sync failures are silent.
   - P-4 Profile delete cloud-first then local can desync on a local failure.
 
-## 12. Open questions — Product (Tika) decides; implementation GATED
-- OQ-01 Removal semantics (PRD): when an app with profiles is removed — (a) are profiles and credentials deleted locally and in the cloud; (b) for a user-created (custom) app, is its submission / registry row also removed; (c) is recovery offered (none / short undo window / restore)?
-- OQ-02 Profile deletion (PRD): (a) may the user delete the LAST profile (returning the app to the 0-profile state)? (b) when the default is deleted, which profile becomes default (automatic rule, e.g. oldest remaining, or the user chooses)?
-- OQ-03 Catalog container (PRD): modal / drawer / overlay. The body is container-agnostic; a large modal is the interim default.
-- TQ-1 What counts as "a profile" for the green dot: any saved profile, or only a profile with credentials? (Today's auto-created empty «ראשי» profiles depend on this.)
-- TQ-2 Custom (user-created) apps: confirm «+ הוספת אתר שאינו ברשימה» lives in the catalog overlay and «עריכת פרטי האתר» lives in the app-actions menu.
-- TQ-3 Switching profile in the floating window: session-only (stored default unchanged), as designed in AD-123-7?
-- TQ-4 Empty home (user with 0 apps): empty-state copy + «+ הוספת אפליקציה» (no automatic catalog opening)?
+## 12. Open items
+- Product authority: from 2026-10-04 the Owner holds all Product decisions for this phase (Tika consulted only for the initial PRD; "Tika informed (FYI)" notes above need no action).
+- PQ-123-1 — **RESOLVED by the Owner (2026-10-04): recommended behaviour accepted** (page closed / reloaded during the Undo window → removal not committed, app remains). Original text: if the user closes or reloads the page during the 5-second Undo window, the removal has not been committed and the app is still there on return. Recommended: accept (safe, no data loss, no new storage). Alternative: persist a "pending removal" marker in the encrypted vault and commit on next open (new persisted state, needs Architect approval).
+- AD-123-16: OWNER APPROVED (conditional) — verify delete of an own pending row first; add the narrow owner-select policy only if delete is blocked.
+- Resolved by PRD v1.1: v1 OQ-01 (§8.10/8.11), OQ-02 (§8.12/8.13), OQ-03 (§8.5 large central modal), TQ-1 (§8.8 any profile), TQ-2 (FR-19/20), TQ-3 (§8.2), TQ-4 (§8.9).
 
-## 13. Slices (proposed order; each functionally testable)
-- 123.1 App context: green-dot rule, no auto-create, floating window switcher / «עריכת פרופיל» / «הוספת פרופיל» / empty state, single modal host. (Depends on TQ-1, TQ-3.)
-- 123.2 Catalog overlay from Digital Home (search, categories, already-added, add without profile, custom add). (Depends on OQ-03 for the container only; TQ-2.)
-- 123.3 Remove app from app context with confirmation; profile deletion rules. (GATED: OQ-01, OQ-02.)
-- 123.4 Navigation unification: post-login to Digital Home, empty home, remove «ניהול אתרים», parity matrix, retire ManageServices; admin aggregate for the diagnostic metric. (TQ-4.)
+## 13. Slices (each functionally testable)
+- 123.1 App context: green dot = has profile; no auto-create; switcher / «עריכת פרופיל» / «הוספת פרופיל» / empty state; single modal host; profile delete rules incl. last profile and choose-new-default (AD-123-13).
+- 123.2 Catalog modal from Digital Home: search, categories, already-added, add without profile, custom add; «עריכת פרטי האתר» in the app menu for custom sites.
+- 123.3 Remove app: confirm dialog, Undo toast, deferred commit, full local + cloud deletion, custom row deletion, leftover cleanup on re-add. (AD-123-16 verification first; PQ-123-1.)
+- 123.4 Navigation unification: post-login to Digital Home, empty home, remove «ניהול אתרים», parity matrix, delete ManageServices; admin aggregate.
 
 ## Testing and Lint Expectations
-- New `verifyPhase123*` scripts per slice (real components in the existing harness style), following the T-1 test policy (per-prompt `--no-mutations` + slice mutations; full sweep and `scripts/runOfflineRegression.mjs` at END OF ROUND).
-- PRD traceability: one check per FR-01…FR-18 (table below) plus per-profile-count behaviour (0 / 1 / ≥ 2).
-- Persistence checks: every profile / credential write goes through the AD-123-4 reducers + `persistVault` (static scan: no new IndexedDB / Supabase writes in Digital Home components).
-- Removal checks (after OQ-01): local and cloud state identical after success; nothing changes on cloud failure; confirmation required.
-- Admin unchanged: `git diff --stat src/admin supabase/migrations` limited to the approved admin aggregate (if any); all Phase 121 / 122 admin verifies pass.
-- tsc / build clean; no `window.confirm` / `alert` in `src/` outside admin.
+- New `verifyPhase123*` scripts per slice (existing harness style), T-1 test policy (per prompt `--no-mutations` + slice mutations; full sweep and `scripts/runOfflineRegression.mjs` at END OF ROUND).
+- Pure-helper unit checks: `appHasProfile`, `initialActiveProfile`, `appContextActions`, `removeAppFromVault`, `deleteProfilePlan`, `deleteAccessProfile` (last allowed; `replacementDefaultId` required / validated).
+- Persistence checks: static scan — no new IndexedDB / Supabase writes in Digital Home components; all writes via AD-123-4 functions.
+- Removal checks: after commit, local vault and cloud contain no rows of the app (incl. custom row); Undo within 5 s → zero writes; cloud failure → nothing deleted, tile back; logout / second removal commits pending; re-add during window → fresh app, no profiles.
+- Unlock check: deleting the last profile, then lock / unlock → still 0 profiles.
+- Admin unchanged: `git diff --stat src/admin` empty; migrations limited to the admin aggregate and (if approved) AD-123-16; Phase 121 / 122 admin verifies pass.
+- tsc / build clean; no `window.confirm` / `alert` / `prompt` in `src/` outside admin.
 
 | FR | Verified by |
 |---|---|
-| FR-01 | Navigation test: every action reachable from Digital Home; no `manage` screen |
+| FR-01 | Every PRD MVP action reachable from Digital Home; no `manage` screen |
 | FR-02 | Tile click opens the floating window |
 | FR-03 | One tile per app with ≥ 2 profiles |
-| FR-04 | Window opens on the default profile |
-| FR-05 | Switcher changes the active profile; stored default unchanged |
-| FR-06 / FR-07 | «עריכת פרופיל» opens the modal on the active profile; saves via the existing reducers |
-| FR-08 | «הוספת פרופיל» creates exactly one profile on save |
-| FR-09 / 10 / 11 | Catalog overlay opens over Digital Home; search; categories |
-| FR-12 | Added app marked; no duplicate instance |
-| FR-13 | Add from catalog creates no profile |
-| FR-14 | 0-profile app: no dot; empty state + CTA |
-| FR-15 / 16 | ≥ 1 profile: dot; no count / text on tiles |
-| FR-17 / 18 | Remove from app menu behind the confirm dialog |
+| FR-04 | Exactly one default whenever ≥ 1 profile |
+| FR-05 | Switching changes the active profile; stored default unchanged; reopen → default |
+| FR-06 | Default changes only via the modal action |
+| FR-07 / FR-08 | «עריכת פרופיל» opens the central modal on the active profile (≤ 2 actions from the tile) |
+| FR-09 | «הוספת פרופיל» creates exactly one profile on save |
+| FR-10 / 11 / 12 | Delete profile incl. last → 0-profile state, no dot, empty state |
+| FR-13 | Deleting the default with ≥ 2 remaining requires choosing; with 1 remaining auto-default |
+| FR-14 / 15 / 16 | Catalog opens as a large central modal; search; categories |
+| FR-17 | Added app marked; no duplicate tile |
+| FR-18 | Add from catalog creates no profile |
+| FR-19 | Custom add from the catalog |
+| FR-20 | «עריכת פרטי האתר» only for custom sites |
+| FR-21 / 22 / 23 | Dot for ≥ 1 profile, also without credentials; no count / text |
+| FR-24 / 26 | Remove from the app menu behind the confirm dialog |
+| FR-25 | After commit: no profiles / credentials locally or in the cloud |
+| FR-27 / 28 | Undo for 5 s restores without writes; after expiry no restore path |
+| FR-29 | Custom site removal deletes the own registry row |
+| FR-30 | 0 apps → empty state + «+ הוספת אפליקציה» |
 
 ## Functional Testability
-- Page/screen the user can open: the user app (`http://localhost:5173/`), Digital Home after login.
-- User-visible behavior: tile → floating window with profiles / edit / add / remove; «+ הוספת אפליקציה» → catalog overlay; no «ניהול אתרים» screen.
-- Command-line flow: `node scripts/verifyPhase123*.mjs`; `node scripts/runOfflineRegression.mjs` at END OF ROUND.
-- API endpoint / request: none new for users; existing Supabase tables via existing functions.
-- Minimal end-to-end flow: add an app from the catalog without a profile → no dot → open → empty state → add profile → dot → open → edit password → save → remove app → confirm.
-- Expected observable result: every PRD MVP action completes inside the Digital Home; Admin unchanged.
+- Page: the user app (`http://localhost:5173/`), Digital Home after login.
+- User-visible behaviour: tile → floating window (switch / edit / add / empty state / app menu); «+ הוספת אפליקציה» → catalog modal; removal → confirm → Undo toast; no «ניהול אתרים».
+- Command-line: `node scripts/verifyPhase123*.mjs`; `node scripts/runOfflineRegression.mjs` at END OF ROUND.
+- API: none new for users (existing tables / functions); admin aggregate read for admins.
+- Minimal end-to-end flow: empty home → add an app from the catalog (no profile, no dot) → open → empty state → add profile → dot → edit password → add a second profile → delete the default (choose new default) → delete remaining profiles (no dot) → remove app → Undo → remove again → wait 5 s → app gone locally and in the cloud.
+- Expected result: every PRD MVP action completes inside the Digital Home; Admin unchanged.
 
 ## Handoff Notes for Manager
-Not handed off. Waiting for (1) Owner architecture review of this design and (2) Product decisions on §12. Slices 123.1 / 123.2 may be authorized after TQ-1 / TQ-2 / TQ-3 are answered; 123.3 only after OQ-01 / OQ-02.
+Handed off 2026-10-04 (Owner approved all slices). Order: 123.1 → 123.2 → 123.3 → 123.4; each slice is a separate Developer prompt with its own verify, reviewed by the Architect before the next. 123.3 starts with the AD-123-16 verification (real own pending row) and reports the result before any migration. PQ-123-1 = recommended behaviour unless Tika answers otherwise. END OF ROUND (full mutation sweep + offline regression) after 123.4.
 
 ## Architect Review
 ARCHITECT_REVIEW_STATUS: NOT_REVIEWED
 
 ### Review Notes
+- 2026-10-04 — Manager plan (`manager-phase123.md`) review: ALIGNED with this architecture, with three corrections for 123.1 / 123.3:
+  - MC-1: N-2 paths are wrong — `src/crypto.ts` / `src/db.ts` do not exist; the protected files are `src/vault/crypto.ts` and `src/vault/db.ts` (an unchanged-check on a missing path passes vacuously).
+  - MC-2: 123.1 verify must also prove that the first profile added to a 0-profile app becomes the default (FR-04), with a mutation that leaves it non-default.
+  - MC-3: 123.3 Step 0 independent read: if the Developer has no admin / service-role read, she prepares the row and the call and gives the Owner a read-only SQL query to run; the Owner's result is the proof.
+- 2026-10-04 — **Slice 123.1 Architect review: PASS (conditional).**
+  - Checked: AD-123-2/3/5/6/7/13 implemented as specified (helpers in `src/digitalHome/appContext.ts`; `deleteAccessProfile` with `replacementDefaultId`, fail-closed; no `ensureDefaultProfileForService(` call outside its definition and `vaultMigration.ts` (spot-checked); exactly one `<ServiceProfileManagementModal` render site, in `DigitalHomeCredentialModal.tsx` (spot-checked); host pre-validates locally before the cloud delete; dot = `appHasProfile`; switching session-only). MC-1 fixed; MC-2 covered by M9. Superseded legacy assertions limited to AD-123-2/3 with comments; AC-113-45 restored instead of weakened — correct. Deviations accepted (single add CTA at 0 profiles; add form after last-profile delete; dead last-profile copy removed; `customServiceIds` prepared).
+  - Known Issue 1 → decided as AD-123-17 (no code change in 123.1; app menu must cover every launch kind in 123.2 / 123.3).
+  - Known Issue 2 → **R-123-1 (authorized, test-only task, runs with 123.2):** re-baseline `verifyPhase121IframeSurface`, `verifyPhase121InspectReadinessEligible`, `verifyPhase121PartialOcclusionPick`. Their "revert slice edits == HEAD" scope checks are replaced by a comparison against a frozen pre-slice reference: the commit before the slice edits landed (e.g. `909cc8b^`) if `git show` there reproduces the pre-slice file exactly, otherwise frozen baseline files under `scripts/lib/phase121-baseline/` (precedent: `scripts/lib/phase122-baseline/`). Only these scope checks change; every behavioural assertion and mutation stays; `extension/**` untouched. All three must PASS before the 123.4 END OF ROUND.
+  - **C-123.1-1 (closing condition, not a blocker for 123.2) — see below:** the 7-step manual run on `localhost:5173` is performed by the Owner, combined with the 123.2 manual run, and recorded in `dev-phase123.md` before 123.3 opens. 123.1 is CLOSED only when it is recorded without unexplained differences.
+- 2026-10-04 — **Slice 123.2 + R-123-1 Architect review: PASS.**
+  - Checked: AD-123-8 (container-agnostic `AppCatalog` body, read-only import allow-list, no profile input, writes only through `addApp` → `changeSelection('add')` and the byte-identical `addCustomService` / `updateCustomService`); large central modal with focus trap / Escape / focus return; FR-15…FR-19 covered; AD-123-14 menu entry; AD-123-17 menu outside the profile-UI gate (M4 bites). R-123-1: only the three scope references changed, byte-identity proven against `909cc8b~1`, bite proof shown, `extension/**` unchanged — accepted (the `~1` vs `^` reasoning is correct).
+  - Accepted as-is: dev Known Issue 1 (0 apps + failed inline retry → existing full-screen error) — must be removed in 123.4 (empty state + inline error, already planned); Known Issue 2 (two "custom" rules) ends in 123.4; Known Issue 4 copy change.
+  - **AD-123-14 clarification (binding from 123.3):** «עריכת פרטי האתר» requires the app to be in vault `customServices` AND its runtime source to be `user-created`. A vault-custom id whose runtime source is the catalog (promoted) is catalog-origin: no edit entry (an edit would hit the owner-only registry update and fail), removal deletes membership only. This also gives Digital Home a single "custom" rule. The 123.2 AD-123-17 fixture (promoted no-stored / not-configured custom apps) therefore changes in 123.3: the every-launch-kind menu check is proven with «הסרת אפליקציה» on built-in apps in all four launch kinds.
+  - **Binding for 123.3:** `showAppMenu` = any menu entry (`edit_site_details || remove_app`); because `remove_app` is always true, the menu shows for every app and every launch kind (AD-123-17).
+  - Gate: 123.3 opens only after C-123.1-1 (Owner combined manual run of the 123.1 + 123.2 tables) is recorded.
+- 2026-10-04 — **C-123.1-1 Owner manual run: 123.1 step 6 FAILED → defect D-123-1; slice 123.1 REOPENED (fix only).** Steps 1–5 and 7 PASS.
+  - Observation (real account, app «PayPal גרסה 2», profiles created before Phase 123): all profiles deleted in the modal (last-profile delete allowed), but the green dot stays and the window shows the 1-profile-without-credentials state instead of the 0-profile empty state. The dot also stays after logout / login.
+  - Architect reading: UI gating is consistent (dot, panel and modal all count with the same trimmed `serviceId` rule), so a profile of the app survives in `vaultState`. Because it survives immediately (not only after hydrate), the local delete path / a profile hidden from the modal list are the first suspects; cloud resurrection on hydrate (0-row `deleteAccessProfileFromCloud` not detected) may add to it. Any fix touching protected persistence / hydrate / sync code requires Architect approval first.
+  - Gate: 123.3 stays closed until D-123-1 passes Manager + Architect review and the Owner re-runs step 6 successfully.
+  - **D-123-1 root cause (Developer, real account, accepted):** multi-session resurrection. `syncVaultStateToSupabase` upserts every local profile on every save (never deletes, by design); a second session still holding the profile recreates the cloud row; `hydrateWorkspaceFromCloud` restores it at login. Plus an unobserved same-session race (in-flight background save not cancelled by profile delete). H2 / H3 ruled out. The same mechanism would resurrect apps removed in 123.3 (`user_services` + profiles). Fix requires a sync change → **AD-123-18 OWNER APPROVED (2026-10-04)** — recommended option, with the Owner's requirement that a deleted profile / app must NOT stay visible in another open window:
+    1. **Session-scoped insert rule** (`syncVaultStateToSupabase`): a session may INSERT cloud rows only for profiles / app memberships (and their credentials) it created itself since its last hydrate (in-memory set, not persisted). Every other local row is update-only — it is written only if the cloud row still exists; a deleted row is never recreated. No schema change, no new table.
+    2. **Deleted elsewhere → removed here:** when an update-only write finds that the cloud row no longer exists, the session removes that profile / app (and its credentials) from its local vault through the existing reducers + `persistVault`, so the UI updates.
+    3. **Refresh on return:** when the user app window becomes visible / focused again (and at most once per short interval), it re-hydrates from the cloud (existing `hydrateWorkspaceFromCloud`), keeping this session's own not-yet-synced creations from (1). An open floating window / modal on an item that disappeared closes with a short Hebrew notice instead of acting on it.
+    4. **Same-session race:** profile delete (and the 123.3 removal) calls `bumpDualWriteGeneration` before the cloud delete, so an in-flight background save cannot write the row back.
+    Scope: user app only; no change to crypto, keys, unlock, `persistVault` semantics, RLS or schema. The same rule protects 123.3 removal. Fail-closed: if the existence check cannot be performed (offline / error), nothing is inserted and nothing is removed locally.
+  - **AD-123-18 amendment A (Architect, 2026-10-04, from Manager review round 1 "Known Issue 1"):** the in-memory "created by this session" set is replaced by a small persisted **outbox** inside the existing encrypted vault payload: ids of profiles / app memberships / custom sites created locally and not yet confirmed in the cloud. Rules: (i) a cloud INSERT is allowed only for ids in the outbox; an id leaves the outbox only after its insert is confirmed; (ii) at login / re-hydrate, a local row that is absent in the cloud is kept and inserted if its id is in the outbox (never-synced creation — no data loss, also across reloads / offline), otherwise it is treated as deleted elsewhere and removed locally (with its credentials); (iii) legacy rows (created before this change, not in the outbox) follow (ii)-otherwise — the cloud is authoritative for them. No cloud schema change; crypto / keys / unlock / `persistVault` semantics unchanged; the payload gains one field with a default of empty for existing vaults (backward compatible).
+  - **123.2b in parallel (ruling on Manager B-1):** 123.2b was authorized by the Architect (AD-123-19) and handed to the Developer by the Owner; the `src/admin/userApproval.ts` change is AUTHORIZED, limited to replacing the logic with a re-export of the moved, unchanged function. To avoid a moving tree, the fix round and 123.2b are resubmitted TOGETHER on one frozen tree, with separate evidence sections and separate verify results; the Manager adds 123.2b to the manager plan from AD-123-19 before reviewing.
+  - **Confirmations on the Manager's joint-resubmission plan (2026-10-04):**
+    - N-2 exception for amendment A CONFIRMED as limited by the Manager: in `src/vault/crypto.ts` / `src/vault/vault.ts` only the outbox field declaration, its empty default on decode, and the persist mapping; no change to encryption / decryption, KDF, keys, unlock or `persistVault` logic; anything more = stop and report.
+    - **AD-123-19 clarifications:** (a) a non-approved site that is already in the user's home is still shown in the catalog, marked «✓ כבר בבית הדיגיטלי» with no add action (FR-17); once removed from the home it is no longer listed. (b) The gate applies to global sites only: the user's own not-yet-promoted custom sites are always listed for their owner (category «מותאם אישית»), as today; other users never see them (RLS).
+  - **Architect early read of the fix-round round-1 evidence (2026-10-04; formal review after the joint resubmission):**
+    - AD-123-18 implementation approach ACCEPTED: update-only writes with a zero-row "gone" signal, session tombstones (found by the Developer's own regression — good), fail-closed reads, throttled focus refresh, bump before delete; `vault.ts` untouched in round 1.
+    - D-123-5 combined with AD-123-18 ACCEPTED (only changed / new rows are written; idle save = 0 requests); background catalog reload after custom save accepted.
+    - Known Issue 1 → resolved by amendment A. Known Issues 2, 4, 6 accepted (4 ends with ManageServices in 123.4).
+    - Known Issue 3 (empty cloud membership never reported as gone, D-109-25 guard): accepted for now; it must be re-decided in 123.3, where removing the LAST app in one window would otherwise stay visible in another window.
+    - Known Issue 5 (login repair still writes every known row, ≈ 140 sequential requests): the login repair should also write only rows that differ from the just-hydrated cloud state; gone rows at login are known from the hydrate read itself. Include in the joint resubmission if it stays inside the AD-123-18 exception; otherwise report. The Owner's manual run records login time.
+  - **H-1 (Manager):** the Manager's harness corrections (pages closed in `finally`, bounded server close, shared `withTimeout` failing — never "caught" — on timeout, bite proof, full `--mutations=M1..M13` single run + M7–M9 chain ×3) are confirmed as required before the Architect review.
+  - Owner retest (2026-10-04, no second product window open): deleting all profiles of two apps (incl. while an external bank-site tab was open — irrelevant, only other product windows matter) cleared the dot immediately. Consistent with the root cause; no code had changed.
+- 2026-10-04 — **C-123.1-1 Owner manual run, 123.2 part:** steps 1–4 and 7 PASS; findings on 5 / 6 → follow-up defects (fix round together with D-123-1, slice 123.2 reopened for these only):
+  - **D-123-2 Catalog modal size:** the modal height must be fixed (same size for every search / category result; e.g. a fixed height bounded by the viewport) with the card grid scrolling inside. No size jumps.
+  - **D-123-3 Form dialogs close on text selection:** selecting text with the mouse inside the custom-site form (name, address) closes the dialog and loses the input (a press inside + release on the backdrop counts as a backdrop click). Rule for ALL user dialogs (catalog, add / edit site, offer dialog, profile modal, later confirm dialog): a backdrop click never closes a dialog that contains a form; non-form dialogs close on the backdrop only when the press both started and ended on the backdrop. Closing stays possible via ×, «ביטול» and Escape.
+  - **D-123-4 Custom-site category (Owner product decision, same rule as admin G-122-12):** in create mode the category field starts empty and is required (Hebrew validation message; save disabled or blocked until chosen). Edit mode keeps the stored category. `AddSiteModal.tsx` may change for this (it was protected in 123.2 only). Tika informed as FYI.
+  - **D-123-5 Save time:** custom-site create and edit (even a name-only edit) take ~15 s with the form stuck on «שומר...». Pre-existing, but inside Phase 123 flows. Developer measures the stage breakdown on the real account (registry upsert, `persistVault` + awaited cloud sync, catalog / category reload) and reports it. Target: a typical save completes within ~2–3 s. Fixes outside protected code may proceed; if the cost sits in `persistVault` / sync, report first (it may interact with AD-123-18).
+- 2026-10-04 — **Joint resubmission Architect review (fix round D-123-1…5 + AD-123-18 + amendment A + H-1 + Known Issue 5, and slice 123.2b / AD-123-19 + addenda (a)/(b)): PASS (conditional on the Owner items below).** Frozen tree `c06950a5…ff1c21` (Manager verified before / after his runs; this note changes `team-Yuri/` only).
+  - Checked: amendment A (i)–(iii) as ruled; N-2 exception = 3 lines per file in `src/vault/crypto.ts` / `vault.ts` (field, decode default, persist mapping + imports; quoted diff, guarded by `checkVaultPayloadShapeOnly` + M13–M15); old vault unlocks with real argon2id + AES-GCM (M24). Known Issue 5 inside the AD-123-18 exception: `fetchCloudSyncBaseline` is read-only (spot-checked: two `select`s + one credential `select`, cloud-key decrypt only, any error → `null`); login order hydrate → baseline → keep-or-drop → baseline reset → local persist → diff-only repair (spot-checked in `handleAuthenticated`); removing the pre-hydrate re-key call is ACCEPTED because a vault-key ciphertext never matches the cloud-key baseline and is rewritten by the repair (M25). D-123-2…5 and H-1 as ruled. 123.2b: gate + (a)/(b), admin change = re-export only (byte-identical moved body, M14/M15), home never gated (M16).
+  - **Rulings on the Manager flags:**
+    1. Baseline-read failure → re-key deferred to the next login with a successful read: ACCEPTED (fail-closed; same exposure as HEAD; other browsers still read via the vault key).
+    2. Amendment A (ii)/(iii): NO carve-out. A legacy never-synced row cannot be told apart from a row deleted elsewhere; seeding the outbox from legacy rows would resurrect deleted rows once (D-123-1, against the Owner requirement). Test environment; HEAD's pre-hydrate full upsert was the resurrection path itself.
+    3. Outbox scope `serviceIds` / `profileIds` MATCHES the ruling: a custom site is covered by its membership (registry row written before the local commit); a credential travels with its profile, and a credential change on an existing profile goes through the update-only path. Binding for 123.3: a removal never puts an id in the outbox, and a removed app / profile leaves the outbox in the same commit.
+    4. Addendum (b) category: an own site appears under its stored category. The «מותאם אישית» parenthesis in addendum (b) is superseded by D-123-4 (Owner: the user chooses the category). No forced category.
+  - Known Issues: 2, 4, 6, 7 accepted; KI-3 re-decided at 123.3 (unchanged); 123.2b KI-1/2/3 accepted (KI-3 per ruling 4).
+  - **Conditions (Owner, recorded in `dev-phase123.md` before 123.3 opens):** 123.1 step 6 with two windows (C-123.1-1); 123.2 steps 5–6; real-account `[timing] login` and `[timing] custom-site create|edit` (target ~2–3 s); live `[catalog-gate]` hidden count; 123.2b manual visibility check.
+  - Gate: 123.3 opens only after these are recorded without unexplained differences. 123.3 Step 0 = AD-123-16 verification (MC-3).
+- 2026-10-04 — **Owner manual run (conditions of the joint-resubmission PASS), partial:** item 1 (two windows, D-123-1) PASS; item 2 PASS, custom-site create = registryUpsert 390 + persistVaultAndSync 440 ms (form wait ≈ 0.8 s; background catalog reload 610; total 1439), edit = 400 + 33 ms (≈ 0.4 s; total 719) — D-123-5 target met; item 3 login = unlock 757, hydrate 1130, cloudBaseline 315, persistLocal 11, repairSync 2, total 2215 ms — Known Issue 5 met (optional future idea, not authorized: merge the baseline read into hydrate, ≈ 0.3 s). Item 4 (123.2b visibility + `[catalog-gate]` count) pending. New findings during the catalog check → **fix round D-123-6…8 (before 123.3):**
+  - **D-123-6 Admin message shows an internal id:** `src/admin/ApprovalQueue.tsx` success copy `אושר כאתר גלובלי (${globalId}).` Ruling: copy only → «"<display name>" אושר כאתר גלובלי.» without the id. N-1 exception (copy only, this file). The Developer lists any other admin-visible messages that print internal ids (`custom-…` / uuids) and reports them; changing them needs Architect approval.
+  - **D-123-7 Custom-site URL gets `www.`:** `validateCustomPrimaryUrl` (`src/catalog/customService.ts`) prefixes `www.` to apex hosts on every save (create and edit), so `wolt.com/he/discovery` became `https://www.wolt.com/he/discovery` (broken) and a manual fix is overwritten. Pre-existing (Iteration 3.3a). Ruling: complete the scheme only (`https://`; `http://` → `https://`); never change the host, path or query the user typed. Existing stored URLs are not migrated; the user fixes them by edit. Catalog identity matching (Phase 116 offer / «already in home») must keep working for www / non-www variants — prove it with the existing identity verify.
+  - **D-123-8 Custom-site credentials disappear after an admin change** (even a rename / category change; also after a mapping): the green dot stays and the window shows the profile actions, but no stored values. Architect reading (hypothesis, to be confirmed): values are not deleted but stored under field ids that no longer match the site's current login fields (`serviceHasUsableCredentials` reads only current field ids), i.e. an admin save rewrites the field definition. **Owner product decision (2026-10-04): users MAY save credentials for a custom site before any mapping; nothing is deleted.** Rules: (i) an admin change that does not edit login fields (name, category, URL, approval / promotion without a mapping change) must not change the site's field ids — stored values stay visible; (ii) when the admin changes the login fields, stored values whose field id still exists are shown automatically; values under ids that no longer exist are kept in the vault (never deleted by any admin change, sync, hydrate or load) until the user saves that profile; (iii) when a profile holds stored values that no current field shows, the floating window shows a Hebrew notice «שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.» with «עריכת פרופיל». Sequence: Step 1 read-only root-cause report (where the field ids change; whether any path really drops values) → STOP for Architect approval if the fix touches `src/admin`, registry persistence, the mapper, sync, hydrate, crypto or `persistVault`; a user-side-only fix (notice + display) may proceed. No site / serviceId branches.
+  - Gate: 123.3 stays closed until D-123-6…8 pass Manager + Architect review and the Owner items (incl. item 4 and a D-123-7 / D-123-8 re-check) are recorded.
 
 ### Required Corrections

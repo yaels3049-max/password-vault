@@ -23,6 +23,8 @@ function assert(cond, message) {
   if (!cond) throw new Error(message);
 }
 
+// AD-123-19: the classifier offers only global sites listed for users; these identity cases use
+// published sites (explicit no_stored_credentials). Hidden sites: verifyPhase123CatalogGate.
 function def(partial) {
   return {
     schemaVersion: 1,
@@ -31,6 +33,7 @@ function def(partial) {
     url: 'https://example.test/',
     icon: '✦',
     source: 'built-in-catalog',
+    metadata: { credentialMode: 'no_stored_credentials' },
     ...partial,
   };
 }

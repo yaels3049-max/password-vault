@@ -30,6 +30,15 @@ export const MSG_MISSING_USER_CREDENTIALS_LAUNCH =
 
 export const LABEL_ADD_CREDENTIALS = 'הוסף פרטי כניסה';
 
+/** Phase 123.1 — app context (AD-123-2). */
+export const LABEL_EDIT_PROFILE = 'עריכת פרופיל';
+export const LABEL_ADD_PROFILE = 'הוספת פרופיל';
+export const LABEL_ADD_FIRST_PROFILE = 'הוסף פרופיל';
+export const MSG_NO_PROFILES = 'עדיין אין פרופיל לאתר זה.';
+/** Phase 123.2 — app-actions menu (AD-123-14 / AD-123-17). */
+export const LABEL_APP_ACTIONS = 'פעולות אפליקציה';
+export const LABEL_EDIT_SITE_DETAILS = 'עריכת פרטי האתר';
+
 /** Launch Card copy for resolved NO_STORED_CREDENTIALS (informational — not an error). */
 export const MSG_NO_STORED_CREDENTIALS_LAUNCH =
   'פרטי הכניסה לאתר אינם נשמרים בבית הדיגיטלי.';

@@ -3,6 +3,7 @@ import {
   serviceMatchesRegisteredUrl,
   type AddCustomServiceResult,
 } from '../supabase/registryPersistence';
+import { isListedInUserCatalog } from './catalogVisibility';
 
 export type ClassifiedAddCustomServiceResult = Exclude<
   AddCustomServiceResult,
@@ -24,6 +25,9 @@ function isGlobalCatalogDefinition(definition: ServiceDefinition): boolean {
  *
  * Returns null when no duplicate/catalog business outcome applies and create
  * may proceed.
+ *
+ * AD-123-19: a global site that is not listed for users is never offered; it still
+ * counts as already in the home when the user has it.
  */
 export function classifyAddCustomService(input: {
   normalizedUrl: string;
@@ -43,11 +47,13 @@ export function classifyAddCustomService(input: {
         displayName: globalMatch.displayName,
       };
     }
-    return {
-      status: 'catalog_service_available',
-      existingServiceId: globalMatch.id,
-      displayName: globalMatch.displayName,
-    };
+    if (isListedInUserCatalog(globalMatch)) {
+      return {
+        status: 'catalog_service_available',
+        existingServiceId: globalMatch.id,
+        displayName: globalMatch.displayName,
+      };
+    }
   }
 
   const localMatch = input.localCustomServices.find((existing) =>

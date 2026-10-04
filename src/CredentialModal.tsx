@@ -12,6 +12,7 @@ import {
   type CredentialEntryResolution,
 } from './service/credentialSchema';
 import { TRUST_COPY, HubCredentialInput, TrustIndicator, VaultStateBadge } from './trust';
+import { useEscapeToClose } from './digitalHome/dialogDismiss';
 
 interface CredentialModalProps {
   serviceName: string;
@@ -58,6 +59,8 @@ export default function CredentialModal({
   );
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  // D-123-3: form dialog — closes via «ביטול» / Escape only.
+  useEscapeToClose(onCancel);
   const [localError, setLocalError] = useState<string | null>(null);
   const resolvedKind = entryKind ?? (loginFields.length === 0 ? 'incomplete' : 'form');
 
@@ -109,12 +112,8 @@ export default function CredentialModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div
-        className="modal-dialog"
-        dir="rtl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="modal-overlay" data-dialog-form="true">
+      <div className="modal-dialog" dir="rtl">
         <div className="profile-management-trust-bar">
           <VaultStateBadge unlocked={vaultUnlocked} onLock={onLockVault} />
           <TrustIndicator />

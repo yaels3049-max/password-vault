@@ -22,10 +22,12 @@ import {
 } from './catalog';
 
 import { isDevBuild } from './dev/devMode';
+import { startSaveTiming, type SaveTiming } from './dev/saveTiming';
+import { logCatalogGateSummary } from './dev/catalogGateSummary';
 
 import { preloadServiceLogos } from './logoCache';
 
-import { setRuntimeBuiltinServices, setRuntimeCategoryCatalog, type Service } from './mockServices';
+import { setRuntimeBuiltinServices, setRuntimeCategoryCatalog } from './mockServices';
 
 import { clearRegistryCatalogCache } from './registry/registryLoader';
 import { loadRegistryCategories } from './registry/categoryCatalog';
@@ -50,8 +52,6 @@ import {
   isKnownBuiltinServiceId,
 } from './catalog/knownServiceBootstrap';
 
-import { credentialsByServiceId } from './vault/credentialAccess';
-
 import {
   addToSelection,
   removeFromSelection,
@@ -75,14 +75,44 @@ import {
   syncVaultStateToSupabase,
   removeUserServiceFromCloud,
   bumpDualWriteGeneration,
+  refreshWorkspaceFromCloud,
+  setCloudGoneListener,
+  setCloudConfirmedListener,
+  fetchCloudSyncBaseline,
 } from './supabase/persistence';
+import {
+  clearSessionSyncScope,
+  resetSessionSyncBaseline,
+  resetSessionSyncBaselineFromCloud,
+} from './supabase/sessionSyncScope';
+import {
+  clearConfirmedInserts,
+  clearDroppedRows,
+  hasConfirmedInserts,
+  noteDeliberateAdd,
+  noteDroppedRows,
+  recordLocalCreations,
+  rememberEarlyConfirmations,
+  takeEarlyConfirmations,
+  type ConfirmedInserts,
+} from './vault/syncOutbox';
+import {
+  applyOutboxAfterHydrate,
+  CLOUD_REFRESH_MIN_INTERVAL_MS,
+  dropGoneFromVault,
+  reconcileChanges,
+  type GoneRows,
+} from './digitalHome/cloudReconcile';
 
 import { ProfileResolution } from './profile';
 
 import { AppVaultShell } from './trust';
 import DigitalHomeCredentialModal from './loginAssistance/DigitalHomeCredentialModal';
-import { offersCredentialManagementPanel, resolveCredentialEntry } from './service/credentialSchema';
-import { ensureDefaultProfileForService } from './vault/profileManagement';
+import { offersCredentialManagementPanel } from './service/credentialSchema';
+import type { ProfileManagementRequest } from './digitalHome/appContext';
+import { userFacingCategories, type AddOutcome } from './digitalHome/catalogModel';
+import AppCatalogModal from './digitalHome/AppCatalogModal';
+import EditSiteDetailsModal from './digitalHome/EditSiteDetailsModal';
 
 import './App.css';
 
@@ -226,7 +256,20 @@ function App() {
 
   const [vaultState, setVaultState] = useState<VaultState>(() => emptyVaultState());
 
-  const [homeCredentialService, setHomeCredentialService] = useState<Service | null>(null);
+  /** AD-123-3 — the single profile-management host (one per app, both screens). */
+  const [profileRequest, setProfileRequest] = useState<ProfileManagementRequest | null>(null);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [siteEditServiceId, setSiteEditServiceId] = useState<string | null>(null);
+  /** AD-123-18 (3) — apps changed by a cloud reconcile; Digital Home closes its window on them. */
+  const [homeReconcile, setHomeReconcile] = useState<{
+    seq: number;
+    affectedServiceIds: string[];
+    closedOtherSurface: boolean;
+  } | null>(null);
+  const profileRequestRef = useRef(profileRequest);
+  profileRequestRef.current = profileRequest;
+  const siteEditServiceIdRef = useRef(siteEditServiceId);
+  siteEditServiceIdRef.current = siteEditServiceId;
 
 
 
@@ -240,12 +283,9 @@ function App() {
 
   const selectionLockRef = useRef<Set<string>>(new Set());
 
-  const credentials = useMemo(
-
-    () => credentialsByServiceId(vaultState),
-
-    [vaultState],
-
+  const customServiceIds = useMemo(
+    () => new Set(customServices.map((service) => service.id.trim())),
+    [customServices],
   );
 
 
@@ -432,6 +472,9 @@ function App() {
   vaultStateRef.current = vaultState;
   const catalogDefinitionsRef = useRef(catalogDefinitions);
   catalogDefinitionsRef.current = catalogDefinitions;
+  useEffect(() => {
+    logCatalogGateSummary(catalogDefinitions);
+  }, [catalogDefinitions]);
   const catalogHydratedRef = useRef(catalogHydrated);
   catalogHydratedRef.current = catalogHydrated;
   const catalogLoadingRef = useRef(catalogLoading);
@@ -482,7 +525,7 @@ function App() {
         if (nextSelected.length === current.selectedIds.length) {
           return;
         }
-        const next: VaultState = { ...current, selectedIds: nextSelected };
+        const next = recordLocalCreations(current, { ...current, selectedIds: nextSelected });
         await persistVault(next, { awaitCloudSync: true });
         setVaultState(next);
       } catch (error) {
@@ -503,7 +546,141 @@ function App() {
     vaultState.customServices,
   ]);
 
+  /**
+   * AD-123-18 (3) — a cloud reconcile removed apps / profiles: an open modal or site editor on
+   * them closes (Digital Home closes its floating window and shows the notice).
+   */
+  function closeSurfacesAfterReconcile(before: VaultState, after: VaultState) {
+    const changes = reconcileChanges(before, after);
+    if (changes.affectedServiceIds.size === 0) {
+      return;
+    }
+    let closedOtherSurface = false;
+    const request = profileRequestRef.current;
+    if (request && changes.affectedServiceIds.has(request.serviceId.trim())) {
+      setProfileRequest(null);
+      closedOtherSurface = true;
+    }
+    const siteEdit = siteEditServiceIdRef.current;
+    if (siteEdit && changes.removedServiceIds.has(siteEdit.trim())) {
+      setSiteEditServiceId(null);
+      closedOtherSurface = true;
+    }
+    setHomeReconcile((previous) => ({
+      seq: (previous?.seq ?? 0) + 1,
+      affectedServiceIds: [...changes.affectedServiceIds],
+      closedOtherSurface,
+    }));
+  }
 
+  async function commitReconciledState(before: VaultState, next: VaultState) {
+    await persistVault(next, { skipCloudSync: true });
+    setVaultState(next);
+    vaultStateRef.current = next;
+    const changes = reconcileChanges(before, next);
+    noteDroppedRows(changes.removedServiceIds, changes.removedProfileIds);
+    closeSurfacesAfterReconcile(before, next);
+  }
+
+  // AD-123-18 amendment A — confirmed outbox inserts leave the outbox (local persist only).
+  function commitConfirmedInserts(confirmed: ConfirmedInserts) {
+    const before = vaultStateRef.current;
+    rememberEarlyConfirmations(before, confirmed);
+    const next = clearConfirmedInserts(before, confirmed);
+    if (next === before) {
+      return;
+    }
+    vaultStateRef.current = next;
+    setVaultState(next);
+    void persistVault(next, { skipCloudSync: true }).catch((error) => {
+      if (import.meta.env.DEV) {
+        console.warn('[vault] clearing confirmed outbox entries failed:', error);
+      }
+    });
+  }
+
+  useEffect(() => {
+    if (!isUnlocked) {
+      return;
+    }
+    setCloudConfirmedListener(commitConfirmedInserts);
+    return () => setCloudConfirmedListener(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUnlocked]);
+
+  useEffect(() => {
+    if (!isUnlocked) {
+      return;
+    }
+    const early = takeEarlyConfirmations(vaultState);
+    if (hasConfirmedInserts(early)) {
+      commitConfirmedInserts(early);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUnlocked, vaultState]);
+
+  // AD-123-18 (2) — a background dual-write found rows deleted elsewhere → remove them here.
+  useEffect(() => {
+    if (!isUnlocked) {
+      return;
+    }
+    setCloudGoneListener((gone: GoneRows) => {
+      const before = vaultStateRef.current;
+      const next = dropGoneFromVault(before, gone);
+      if (next === before) {
+        return;
+      }
+      void commitReconciledState(before, next).catch((error) => {
+        if (import.meta.env.DEV) {
+          console.warn('[vault] removing rows deleted elsewhere failed:', error);
+        }
+      });
+    });
+    return () => setCloudGoneListener(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUnlocked]);
+
+  // AD-123-18 (3) — re-hydrate when the window becomes visible / focused again (throttled).
+  const accountUserId = accountProfile?.id ?? null;
+  useEffect(() => {
+    if (!isUnlocked || !accountUserId) {
+      return;
+    }
+    const userId = accountUserId;
+    let lastRun = Date.now();
+    let inFlight = false;
+    async function refreshOnReturn() {
+      if (document.visibilityState !== 'visible' || inFlight) return;
+      if (Date.now() - lastRun < CLOUD_REFRESH_MIN_INTERVAL_MS) return;
+      inFlight = true;
+      lastRun = Date.now();
+      try {
+        const keys = [getCloudCredentialCryptoKey(), getActiveVaultCryptoKey()].filter(
+          (key): key is CryptoKey => Boolean(key),
+        );
+        if (keys.length === 0) return;
+        const before = vaultStateRef.current;
+        const refreshed = await refreshWorkspaceFromCloud(userId, keys, before);
+        // A local change during the read wins; the next return refreshes again.
+        if (!refreshed || vaultStateRef.current !== before) return;
+        await commitReconciledState(before, refreshed);
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.warn('[vault] refresh on return failed:', error);
+        }
+      } finally {
+        inFlight = false;
+      }
+    }
+    const onReturn = () => void refreshOnReturn();
+    document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener('focus', onReturn);
+    return () => {
+      document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener('focus', onReturn);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUnlocked, accountUserId]);
 
   async function saveVaultState(state: VaultState) {
 
@@ -516,9 +693,14 @@ function App() {
   /** D-109-23 / D-109-26: drop prior user's in-memory workspace before loading another. */
   function clearWorkspaceMemory() {
     lockVault();
+    clearSessionSyncScope();
+    clearDroppedRows();
+    setHomeReconcile(null);
     setIsUnlocked(false);
     setVaultState(emptyVaultState());
-    setHomeCredentialService(null);
+    setProfileRequest(null);
+    setCatalogOpen(false);
+    setSiteEditServiceId(null);
     setCatalogDefinitions([]);
     setCatalogHydrated(false);
     setCatalogError(null);
@@ -563,45 +745,54 @@ function App() {
   async function handleAuthenticated(profile: AppUserProfile, password: string) {
     clearWorkspaceMemory();
     try {
+      const timing = startSaveTiming('login');
       const loaded = await unlockVault(password, profile.id);
       const vaultKey = getActiveVaultCryptoKey();
       const cloudCredKey = getCloudCredentialCryptoKey();
       if (!vaultKey || !cloudCredKey) {
         throw new Error('Vault key missing after unlock');
       }
-
-      // Re-key cloud ciphertext under the deterministic cloud-cred key so Edge can decrypt.
-      // Uses local Chrome credentials when present (legacy vault-key dual-write era).
-      if (Object.keys(loaded.credentials).length > 0) {
-        try {
-          await syncVaultStateToSupabase(cloudCredKey, loaded, {
-            expectedUserId: profile.id,
-          });
-        } catch (error) {
-          if (isDevBuild()) {
-            console.warn('[vault] cloud credential re-key failed:', error);
-          }
-        }
-      }
+      timing.mark('unlock');
 
       // D-109-24 / AC-109-38: cloud→local before Digital Home paint (Chrome↔Edge parity).
-      const hydrated = await hydrateWorkspaceFromCloud(
+      let hydrated = await hydrateWorkspaceFromCloud(
         profile.id,
         [cloudCredKey, vaultKey],
         loaded,
       );
-      // Persist into THIS browser's IndexedDB; upsert-only dual-write repairs cloud
-      // without wiping ciphertext omitted from partial payloads (D-109-25).
+      timing.mark('hydrate');
+      // AD-123-18 amendment A: rows absent from the cloud are kept only when in the outbox.
+      const cloud = await fetchCloudSyncBaseline(profile.id, cloudCredKey);
+      hydrated = applyOutboxAfterHydrate(loaded, hydrated, cloud);
+      // The repair writes only rows that differ from the cloud as read. A local credential the
+      // cloud key cannot read (legacy vault-key era) differs, so it is re-keyed for Edge.
+      if (cloud) {
+        resetSessionSyncBaselineFromCloud(profile.id, hydrated, cloud);
+      } else {
+        resetSessionSyncBaseline(profile.id, hydrated);
+      }
+      timing.mark('cloudBaseline');
+      // Persist into THIS browser's IndexedDB; the repair dual-write inserts only outbox rows,
+      // and never wipes ciphertext omitted from partial payloads (D-109-25).
       await persistVault(hydrated, { skipCloudSync: true });
+      timing.mark('persistLocal');
       try {
-        await syncVaultStateToSupabase(cloudCredKey, hydrated, {
+        const repair = await syncVaultStateToSupabase(cloudCredKey, hydrated, {
           expectedUserId: profile.id,
         });
+        const settled = clearConfirmedInserts(dropGoneFromVault(hydrated, repair), repair.confirmed);
+        if (settled !== hydrated) {
+          // Stale local rows (deleted in another session) are dropped, not recreated (D-123-1).
+          hydrated = settled;
+          await persistVault(hydrated, { skipCloudSync: true });
+        }
       } catch (error) {
         if (isDevBuild()) {
-          console.warn('[vault] post-hydrate upsert-only sync failed:', error);
+          console.warn('[vault] post-hydrate update-only sync failed:', error);
         }
       }
+      timing.mark('repairSync');
+      timing.done();
 
       setAccountProfile(profile);
       setAuthBootError(null);
@@ -646,7 +837,10 @@ function App() {
   // Idempotent, persist-first selection change (D-104-4, D-104-5, D-104-14).
   // Digital Home reflects the change only after persistVault succeeds (AC-104-15).
   // Remove: cloud user_services delete must succeed before UI success (D-113-29 / AC-113-51).
-  async function changeSelection(id: string, mode: 'add' | 'remove') {
+  async function changeSelection(
+    id: string,
+    mode: 'add' | 'remove',
+  ): Promise<boolean | undefined> {
     if (selectionLockRef.current.has(id)) {
       return;
     }
@@ -666,8 +860,13 @@ function App() {
         }
       }
 
-      const next =
-        mode === 'add' ? addToSelection(vaultState, id) : removeFromSelection(vaultState, id);
+      if (mode === 'add') {
+        noteDeliberateAdd(id);
+      }
+      const next = recordLocalCreations(
+        vaultState,
+        mode === 'add' ? addToSelection(vaultState, id) : removeFromSelection(vaultState, id),
+      );
 
       if (mode === 'remove') {
         // Durable remove: delete cloud membership BEFORE local success paint.
@@ -713,6 +912,7 @@ function App() {
       }
 
       setVaultState(next);
+      return true;
     } catch (error) {
       if (import.meta.env.DEV) {
         console.warn('[serviceManagement] selection persist failed:', error);
@@ -728,12 +928,23 @@ function App() {
     }
   }
 
-  function addService(id: string): Promise<void> {
+  function addService(id: string): Promise<boolean | undefined> {
     return changeSelection(id, 'add');
   }
 
-  function removeService(id: string): Promise<void> {
-    return changeSelection(id, 'remove');
+  /** AD-123-8 / FR-18 — catalog add = addService → changeSelection(id, 'add'); no profile. */
+  async function addApp(id: string): Promise<AddOutcome> {
+    if (vaultStateRef.current.selectedIds.includes(id)) {
+      return { status: 'already_added' };
+    }
+    const ok = await addService(id);
+    return ok === true
+      ? { status: 'added' }
+      : { status: 'failed', message: SELECTION_PERSIST_FAILED_MESSAGE };
+  }
+
+  async function removeService(id: string): Promise<void> {
+    await changeSelection(id, 'remove');
   }
 
 
@@ -804,9 +1015,11 @@ function App() {
       return classified;
     }
 
+    const timing = startSaveTiming('custom-site create');
     // Explicit login entry only. Do not call Login Discovery (D-108-4 / D-108-7).
     try {
       await upsertCustomServiceRegistryRow(definition);
+      timing.mark('registryUpsert');
     } catch (error) {
       if (error instanceof DuplicateCustomServiceError) {
         const displayName = displayNameForExistingCustom(
@@ -833,15 +1046,17 @@ function App() {
     }
 
     const persistBase = vaultStateRef.current;
-    const nextState: VaultState = {
+    noteDeliberateAdd(definition.id);
+    const nextState = recordLocalCreations(persistBase, {
       ...persistBase,
       customServices: [...persistBase.customServices, definition],
       selectedIds: [...new Set([...persistBase.selectedIds, definition.id])],
-    };
+    });
 
     // Persist-first: only commit the tile after persistVault succeeds (AC-104-14, AC-104-15).
     try {
       await persistVault(nextState, { awaitCloudSync: true });
+      timing.mark('persistVaultAndSync');
     } catch (error) {
       try {
         await deleteCustomServiceRegistryRow(definition.id);
@@ -855,16 +1070,33 @@ function App() {
 
     setVaultState(nextState);
     setSelectionError(null);
-    clearRegistryCatalogCache();
-    const refreshed = await loadBuiltinCatalogDefinitions();
-    setRuntimeCategoryCatalog(await loadRegistryCategories());
-    setCatalogDefinitions(refreshed);
+    // D-123-5: the tile already comes from vault `customServices`; the catalog refresh runs in
+    // the background instead of holding the form on «שומר…».
+    void refreshCatalogAfterCustomSave(timing);
     return { status: 'created' };
   }
 
+  async function refreshCatalogAfterCustomSave(timing: SaveTiming) {
+    try {
+      clearRegistryCatalogCache();
+      const refreshed = await loadBuiltinCatalogDefinitions();
+      setRuntimeCategoryCatalog(await loadRegistryCategories());
+      setCatalogDefinitions(refreshed);
+      timing.mark('catalogReload (background)');
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('[vault] catalog refresh after custom save failed:', error);
+      }
+    } finally {
+      timing.done();
+    }
+  }
+
   async function updateCustomService(definition: ServiceDefinition): Promise<void> {
+    const timing = startSaveTiming('custom-site edit');
     try {
       await upsertCustomServiceRegistryRow(definition);
+      timing.mark('registryUpsert');
     } catch (error) {
       if (error instanceof DuplicateCustomServiceError) {
         throw new Error(CUSTOM_SERVICE_DUPLICATE_MESSAGE);
@@ -886,36 +1118,47 @@ function App() {
     };
 
     await persistVault(nextState, { awaitCloudSync: true });
+    timing.mark('persistVaultAndSync');
     setVaultState(nextState);
     setSelectionError(null);
-    clearRegistryCatalogCache();
-    const refreshed = await loadBuiltinCatalogDefinitions();
-    setRuntimeCategoryCatalog(await loadRegistryCategories());
-    setCatalogDefinitions(refreshed);
+    void refreshCatalogAfterCustomSave(timing);
   }
 
 
   async function handleVaultStateChange(state: VaultState) {
+    const next = recordLocalCreations(vaultStateRef.current, state);
 
-    setVaultState(state);
+    setVaultState(next);
 
-    await saveVaultState(state);
+    await saveVaultState(next);
 
   }
 
-  async function openHomeCredentialModal(service: Service) {
-    if (!offersCredentialManagementPanel(service)) {
+  /** AD-123-3 / AD-123-5 — opens the host only; nothing is written until a save in the modal. */
+  function openProfileManagement(request: ProfileManagementRequest) {
+    const service = allServices.find((item) => item.id === request.serviceId);
+    if (!service || !offersCredentialManagementPanel(service)) {
       return;
     }
-    const entry = resolveCredentialEntry(service);
-    if (entry.kind === 'form') {
-      const ensured = ensureDefaultProfileForService(vaultState, service.id);
-      if (ensured !== vaultState) {
-        await handleVaultStateChange(ensured);
-      }
-    }
-    setHomeCredentialService(service);
+    setProfileRequest(request);
   }
+
+  const profileHostService = profileRequest
+    ? allServices.find((item) => item.id === profileRequest.serviceId) ?? null
+    : null;
+
+  const profileHost =
+    profileRequest && profileHostService ? (
+      <DigitalHomeCredentialModal
+        service={profileHostService}
+        request={{ profileId: profileRequest.profileId, mode: profileRequest.mode }}
+        vaultState={vaultState}
+        vaultUnlocked={isUnlocked}
+        onLockVault={handleLockVault}
+        onVaultStateChange={handleVaultStateChange}
+        onClose={() => setProfileRequest(null)}
+      />
+    ) : null;
 
 
 
@@ -953,10 +1196,13 @@ function App() {
     );
   }
 
-  async function retryCatalogLoad() {
+  /** `inline`: retry from the catalog modal without replacing Digital Home by the loading screen. */
+  async function retryCatalogLoad(options: { inline?: boolean } = {}) {
     setCatalogLoading(true);
     setCatalogError(null);
-    setCatalogHydrated(false);
+    if (!options.inline) {
+      setCatalogHydrated(false);
+    }
     // Phase 109: do not sign out the account session on catalog retry
     clearRegistryCatalogCache();
 
@@ -970,6 +1216,42 @@ function App() {
       setCatalogLoading(false);
       setCatalogHydrated(true);
     }
+  }
+
+  const catalogHost = catalogOpen ? (
+    <AppCatalogModal
+      services={allServices}
+      categories={userFacingCategories()}
+      selectedIds={selectedIds}
+      pendingIds={pendingIds}
+      catalogError={catalogError}
+      onRetryCatalog={() => void retryCatalogLoad({ inline: true })}
+      onAddApp={addApp}
+      onAddCustom={addCustomService}
+      onClose={() => setCatalogOpen(false)}
+    />
+  ) : null;
+
+  const siteEditService = siteEditServiceId
+    ? allServices.find((item) => item.id === siteEditServiceId) ?? null
+    : null;
+
+  const siteEditHost = siteEditService ? (
+    <EditSiteDetailsModal
+      service={siteEditService}
+      definition={vaultState.customServices.find((item) => item.id === siteEditService.id)}
+      categories={userFacingCategories()}
+      onSave={updateCustomService}
+      onClose={() => setSiteEditServiceId(null)}
+    />
+  ) : null;
+
+  /** AD-123-14 — only apps in the vault `customServices` can be edited. */
+  function openSiteDetailsEdit(serviceId: string) {
+    if (!customServiceIds.has(serviceId)) {
+      return;
+    }
+    setSiteEditServiceId(serviceId);
   }
 
 
@@ -1031,8 +1313,6 @@ function App() {
 
               services={selectedServices}
 
-              credentials={credentials}
-
               credentialsByProfileId={vaultState.credentials}
 
               accessProfiles={vaultState.accessProfiles}
@@ -1063,22 +1343,21 @@ function App() {
 
               }}
 
-              onAddCredentials={(service) => {
-                void openHomeCredentialModal(service);
-              }}
+              customServiceIds={customServiceIds}
+
+              onOpenProfileManagement={openProfileManagement}
+
+              onOpenCatalog={() => setCatalogOpen(true)}
+
+              onEditSiteDetails={(service) => openSiteDetailsEdit(service.id)}
+
+              cloudReconcile={homeReconcile}
 
             />
 
-            {homeCredentialService ? (
-              <DigitalHomeCredentialModal
-                service={homeCredentialService}
-                vaultState={vaultState}
-                vaultUnlocked={isUnlocked}
-                onLockVault={handleLockVault}
-                onVaultStateChange={handleVaultStateChange}
-                onClose={() => setHomeCredentialService(null)}
-              />
-            ) : null}
+            {profileHost}
+            {catalogHost}
+            {siteEditHost}
             </>
           )}
 
@@ -1104,11 +1383,12 @@ function App() {
         pendingIds={pendingIds}
         selectionError={selectionError}
         catalogError={catalogError}
-        onAddService={addService}
+        onAddApp={addApp}
         onRemoveService={removeService}
         onAddCustom={(definition) => addCustomService(definition)}
         onUpdateCustom={(definition) => updateCustomService(definition)}
-        onVaultStateChange={handleVaultStateChange}
+        onOpenProfileManagement={openProfileManagement}
+        profileManagementOpen={profileHost !== null}
         onRetryCatalog={() => void retryCatalogLoad()}
         onContinue={() => {
           void saveVaultState(vaultState);
@@ -1118,6 +1398,8 @@ function App() {
         onLockVault={handleLockVault}
         vaultUnlocked={isUnlocked}
       />
+
+      {profileHost}
 
     </AppVaultShell>
 

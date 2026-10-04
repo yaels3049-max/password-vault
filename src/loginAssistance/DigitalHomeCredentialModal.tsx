@@ -1,20 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { Credential } from '../credentials';
 import type { Service } from '../mockServices';
 import ServiceProfileManagementModal from '../ServiceProfileManagementModal';
 import {
+  addProfileWithCredential,
+  type ProfileManagementRequest,
+} from '../digitalHome/appContext';
+import {
+  bumpDualWriteGeneration,
   deleteAccessProfileFromCloud,
   deleteCloudEncryptedCredentialByLocalProfileId,
 } from '../supabase/persistence';
+import { offersCredentialManagementPanel } from '../service/credentialSchema';
 import {
-  offersCredentialManagementPanel,
-  resolveCredentialEntry,
-} from '../service/credentialSchema';
-import {
-  addAccessProfile,
   deleteAccessProfile,
   deleteCredentialForProfile,
-  ensureDefaultProfileForService,
   getProfilesForService,
   ProfileManagementError,
   PROFILE_DELETE_CLOUD_FAILED_MESSAGE,
@@ -32,8 +32,8 @@ function toHebrewProfileError(message: string): string {
   if (message === 'Profile not found') {
     return 'הפרופיל לא נמצא';
   }
-  if (message === 'Cannot delete the last profile for a service') {
-    return 'לא ניתן למחוק את הפרופיל האחרון לאתר';
+  if (message === 'Choose a new default profile') {
+    return 'יש לבחור פרופיל ברירת מחדל חדש לפני המחיקה';
   }
   if (/marked default; exactly one is required/.test(message)) {
     return 'מצב הפרופילים תוקן. סגרו את החלון, פתחו שוב ונסו להוסיף פרופיל.';
@@ -43,6 +43,7 @@ function toHebrewProfileError(message: string): string {
 
 interface DigitalHomeCredentialModalProps {
   service: Service;
+  request: Omit<ProfileManagementRequest, 'serviceId'>;
   vaultState: VaultState;
   vaultUnlocked?: boolean;
   onLockVault?: () => void;
@@ -50,9 +51,14 @@ interface DigitalHomeCredentialModalProps {
   onClose: () => void;
 }
 
-/** Reuses ServiceProfileManagementModal — no new credential editor. */
+/**
+ * AD-123-3 — the one profile-management host for the user app. Reuses
+ * ServiceProfileManagementModal; writes only through profileManagement reducers + the caller's
+ * persist, and the existing cloud delete functions.
+ */
 export default function DigitalHomeCredentialModal({
   service,
+  request,
   vaultState,
   vaultUnlocked = true,
   onLockVault,
@@ -60,28 +66,15 @@ export default function DigitalHomeCredentialModal({
   onClose,
 }: DigitalHomeCredentialModalProps) {
   const [profileError, setProfileError] = useState<string | null>(null);
-  const ensuredServiceIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (ensuredServiceIdRef.current === service.id) {
-      return;
-    }
-    if (!offersCredentialManagementPanel(service)) {
-      return;
-    }
-    const entry = resolveCredentialEntry(service);
-    if (entry.kind !== 'form') {
-      return;
-    }
-    ensuredServiceIdRef.current = service.id;
-    const ensured = ensureDefaultProfileForService(vaultState, service.id);
-    if (ensured !== vaultState) {
-      void onVaultStateChange(ensured);
-    }
-  }, [service, vaultState, onVaultStateChange]);
 
   if (!offersCredentialManagementPanel(service)) {
     return null;
+  }
+
+  function toFriendly(error: unknown): string {
+    return error instanceof ProfileManagementError
+      ? toHebrewProfileError(error.message)
+      : toFriendlySecurityError(error);
   }
 
   async function applyVaultUpdate(updater: (state: VaultState) => VaultState) {
@@ -90,12 +83,7 @@ export default function DigitalHomeCredentialModal({
       const nextState = updater(vaultState);
       await onVaultStateChange(nextState);
     } catch (error) {
-      if (error instanceof ProfileManagementError) {
-        const friendly = toHebrewProfileError(error.message);
-        setProfileError(friendly);
-        throw new Error(friendly);
-      }
-      const friendly = toFriendlySecurityError(error);
+      const friendly = toFriendly(error);
       setProfileError(friendly);
       throw new Error(friendly);
     }
@@ -105,6 +93,7 @@ export default function DigitalHomeCredentialModal({
 
   return (
     <ServiceProfileManagementModal
+      key={`${service.id}:${request.mode}:${request.profileId ?? ''}`}
       service={service}
       profiles={profiles}
       credentials={vaultState.credentials}
@@ -112,17 +101,36 @@ export default function DigitalHomeCredentialModal({
       vaultUnlocked={vaultUnlocked}
       onLockVault={onLockVault}
       onClose={onClose}
-      onAddProfile={(displayName) =>
-        void applyVaultUpdate((state) => addAccessProfile(state, service.id, displayName))
-      }
+      initialProfileId={request.profileId ?? null}
+      initialMode={request.mode}
+      onCreateProfile={async (displayName, credential) => {
+        let createdId = '';
+        await applyVaultUpdate((state) => {
+          const created = addProfileWithCredential(state, service.id, displayName, credential);
+          createdId = created.profileId;
+          return created.state;
+        });
+        return createdId;
+      }}
       onRenameProfile={(profileId, displayName) =>
         void applyVaultUpdate((state) => renameAccessProfile(state, profileId, displayName))
       }
       onSetDefaultProfile={(profileId) =>
         void applyVaultUpdate((state) => setDefaultAccessProfile(state, profileId))
       }
-      onDeleteProfile={async (profileId) => {
+      onDeleteProfile={async (profileId, replacementDefaultId) => {
+        setProfileError(null);
+        // Fail-closed: an invalid local delete must not reach the cloud first.
         try {
+          deleteAccessProfile(vaultState, profileId, replacementDefaultId);
+        } catch (error) {
+          const friendly = toFriendly(error);
+          setProfileError(friendly);
+          throw new Error(friendly);
+        }
+        try {
+          // AD-123-18 (4): an in-flight background save must not write the row back.
+          bumpDualWriteGeneration();
           await deleteAccessProfileFromCloud(profileId);
         } catch (error) {
           if (import.meta.env.DEV) {
@@ -131,7 +139,9 @@ export default function DigitalHomeCredentialModal({
           setProfileError(PROFILE_DELETE_CLOUD_FAILED_MESSAGE);
           throw new Error(PROFILE_DELETE_CLOUD_FAILED_MESSAGE);
         }
-        await applyVaultUpdate((state) => deleteAccessProfile(state, profileId));
+        await applyVaultUpdate((state) =>
+          deleteAccessProfile(state, profileId, replacementDefaultId),
+        );
       }}
       onSaveCredential={(profileId, credential: Credential) =>
         applyVaultUpdate((state) => saveCredentialForProfile(state, profileId, credential))

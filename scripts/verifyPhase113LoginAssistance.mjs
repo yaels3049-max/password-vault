@@ -156,7 +156,13 @@ function mainStatic() {
 
   const panel = read('src/loginAssistance/LoginAssistancePanel.tsx');
   assert(panel.includes('data-floating') || panel.includes('la-panel--float'), 'floating panel');
-  assert(panel.includes('showProfileChips') && panel.includes('profiles.length > 1'), 'chips only when multi');
+  // AD-123-2: chips = appContextActions(...).switcher (≥ 2 profiles), no longer an inline length check.
+  assert(
+    panel.includes('showProfileChips') &&
+      panel.includes('actions.switcher') &&
+      read('src/digitalHome/appContext.ts').includes('switcher: count >= 2'),
+    'chips only when multi',
+  );
   assert(!panel.includes('supportLevelLabel'), 'no visible support badge text');
   assert(!/\bManual Only\b/i.test(panel) && !/\bBest Effort\b/i.test(panel), 'panel Hebrew-facing');
   assert(panel.includes('IconCopy') && panel.includes('IconEye') && panel.includes('IconClose'), 'icon buttons');
@@ -164,7 +170,13 @@ function mainStatic() {
   assert(panel.includes('MSG_NOT_CONFIGURED_LAUNCH'), 'not-configured launch card copy');
   assert(panel.includes('MSG_MISSING_USER_CREDENTIALS_LAUNCH'), 'missing-user-credentials launch card copy');
   assert(panel.includes("launchKind === 'missing-user-credentials'"), 'panel branches missing-user-credentials');
-  assert(panel.includes('LABEL_ADD_CREDENTIALS'), 'add credentials CTA on missing-credentials card');
+  // AD-123-2: the add-credentials CTA is replaced by «עריכת פרופיל» / «הוספת פרופיל» / empty state.
+  assert(
+    panel.includes('LABEL_EDIT_PROFILE') &&
+      panel.includes('LABEL_ADD_PROFILE') &&
+      panel.includes('LABEL_ADD_FIRST_PROFILE'),
+    'profile edit / add CTAs on the missing-credentials card',
+  );
   assert(panel.includes('{LABEL_OPEN_SITE}'), 'unified service-open CTA for every launch kind');
   assert(panel.includes('LABEL_TRY_AUTO'), 'Autofill CTA remains a separate action');
   assert(
@@ -188,11 +200,12 @@ function mainStatic() {
       !/clearStatusSoon\(\s*MSG_NO_CREDENTIALS/.test(dash),
     'tile click must not emit page-level no-credentials banner',
   );
-  assert(dash.includes('onAddCredentials'), 'missing-credentials card can open existing editor');
+  // AD-123-3: one host opened via openProfileManagement replaces onAddCredentials / openHomeCredentialModal.
+  assert(dash.includes('onOpenProfileManagement'), 'missing-credentials card can open existing editor');
   const appSrcLaunch = read('src/App.tsx');
   assert(
     appSrcLaunch.includes('DigitalHomeCredentialModal') &&
-      appSrcLaunch.includes('openHomeCredentialModal'),
+      appSrcLaunch.includes('openProfileManagement'),
     'Home missing-credentials CTA reuses existing credential editor',
   );
   assert(dash.includes('setStatusMessage(null)'), 'opening Launch Card must clear the global warning');
@@ -391,8 +404,9 @@ function mainStatic() {
     'AC-113-48 useServiceLogos must not re-effect on inline array identity (modal freeze)',
   );
   assert(
+    // AD-123-3: add-entry mode opens the add form; edit mode keeps it collapsed.
     credDetails.includes('+ הוספת פרופיל נוסף') &&
-      /\[showAddProfile,\s*setShowAddProfile\]\s*=\s*useState\(false\)/.test(
+      /\[adding,\s*setAdding\]\s*=\s*useState<AddOrigin>\(\(\)\s*=>\s*initialMode === 'add' \|\| sortedProfiles\.length === 0 \? 'entry' : null,?\s*\)/.test(
         credDetails,
       ),
     'AC-113-43 add-profile collapsed by default',

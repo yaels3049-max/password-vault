@@ -8,6 +8,10 @@ import {
   isExplicitHttpUrl,
 } from './catalog/explicitLoginEntry';
 import { categoryLabels, runtimeCategoryLabels, type ServiceCategory } from './mockServices';
+import { useBackdropDismiss, useEscapeToClose } from './digitalHome/dialogDismiss';
+
+export const CATEGORY_REQUIRED_MESSAGE = 'יש לבחור קטגוריה';
+export const CATEGORY_PLACEHOLDER_LABEL = 'בחרו קטגוריה';
 
 export interface AddSiteFormValues {
   displayName: string;
@@ -47,9 +51,16 @@ export default function AddSiteModal({
 }: AddSiteModalProps) {
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [primaryUrl, setPrimaryUrl] = useState(initialPrimaryUrl);
-  const [category, setCategory] = useState<ServiceCategory>(
-    initialCategory ?? categoryOptions[0] ?? 'shopping',
+  // D-123-4: create starts with no category (required); edit keeps the stored one.
+  const [category, setCategory] = useState<ServiceCategory | ''>(
+    mode === 'edit' ? (initialCategory ?? categoryOptions[0] ?? '') : '',
   );
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const cancelIfIdle = () => {
+    if (!isSaving) onCancel();
+  };
+  const backdrop = useBackdropDismiss(cancelIfIdle, { containsForm: true });
+  useEscapeToClose(cancelIfIdle);
   const [sameAsWebsite, setSameAsWebsite] = useState(initialSameAsWebsite);
   const [dedicatedLoginUrl, setDedicatedLoginUrl] = useState(
     initialSameAsWebsite ? '' : initialLoginUrl,
@@ -79,6 +90,10 @@ export default function AddSiteModal({
     if (!trimmedName || !trimmedUrl) return;
     const normalized = normalizeUrlField(trimmedUrl);
     if (!normalized) return;
+    if (!category) {
+      setCategoryError(CATEGORY_REQUIRED_MESSAGE);
+      return;
+    }
 
     if (!sameAsWebsite) {
       const dedicated = dedicatedLoginUrl.trim();
@@ -102,11 +117,10 @@ export default function AddSiteModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={isSaving ? undefined : onCancel}>
+    <div className="modal-overlay" data-dialog-form="true" {...backdrop}>
       <div
         className="modal-dialog modal-dialog--frost"
         dir="rtl"
-        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="modal-title">
           {mode === 'edit' ? 'עריכת כתובת כניסה' : 'הוספת אתר חדש'}
@@ -179,9 +193,20 @@ export default function AddSiteModal({
             <span>קטגוריה</span>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value as ServiceCategory)}
+              onChange={(e) => {
+                setCategory(e.target.value as ServiceCategory | '');
+                if (e.target.value) setCategoryError(null);
+              }}
               disabled={isSaving}
+              aria-required="true"
+              aria-invalid={categoryError ? true : undefined}
+              data-field="category"
             >
+              {category === '' && (
+                <option value="" disabled>
+                  {CATEGORY_PLACEHOLDER_LABEL}
+                </option>
+              )}
               {categoryOptions.map((option) => (
                 <option key={option} value={option}>
                   {runtimeCategoryLabels[option] ?? categoryLabels[option] ?? option}
@@ -189,9 +214,9 @@ export default function AddSiteModal({
               ))}
             </select>
           </label>
-          {(urlError || error) && (
+          {(urlError || categoryError || error) && (
             <p className="modal-field-error" role="alert">
-              {urlError ?? error}
+              {urlError ?? categoryError ?? error}
             </p>
           )}
           <div className="modal-actions">

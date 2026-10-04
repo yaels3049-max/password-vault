@@ -56,7 +56,9 @@ function sameUserCustomDuplicateMessageProbe(serviceName) {
 }
 
 function main() {
-  const manage = read('src/ManageServices.tsx');
+  // AD-123-8: the «הוספת אתרים» body moved to the shared AppCatalog, which ManageServices renders; both files
+  // form the Service Management surface (absence checks now cover the catalog body too).
+  const manage = `${read('src/ManageServices.tsx')}\n${read('src/digitalHome/AppCatalog.tsx')}`;
 
   // AC-104-1 — screen title (glossary: אתרים)
   assert(
@@ -83,9 +85,10 @@ function main() {
   );
 
   // AC-104-4 — exactly one custom-add entry point; legacy per-category button removed
+  // AD-123-14: the single custom-add entry point is «+ הוספת אתר מותאם אישית» (was «+ הוסף אתר»).
   assert(
-    countOccurrences(manage, '+ הוסף אתר') === 1,
-    'Exactly one "+ הוסף אתר" custom-add entry point required',
+    countOccurrences(manage, '+ הוספת אתר מותאם אישית') === 1 && countOccurrences(manage, '+ הוסף אתר') === 0,
+    'Exactly one "+ הוספת אתר מותאם אישית" custom-add entry point required',
   );
   assert(
     !manage.includes('הוסף שירות מותאם'),
@@ -410,6 +413,8 @@ function main() {
   console.log('  (R3/R4 retired — Service Management no longer executes)');
 }
 
+// AD-123-19: the classifier offers only global sites listed for users; these identity cases use
+// published sites (explicit no_stored_credentials). Hidden sites: verifyPhase123CatalogGate.
 function def(partial) {
   return {
     schemaVersion: 1,
@@ -419,6 +424,7 @@ function def(partial) {
     category: 'other',
     icon: '✦',
     source: 'built-in-catalog',
+    metadata: { credentialMode: 'no_stored_credentials' },
     ...partial,
   };
 }

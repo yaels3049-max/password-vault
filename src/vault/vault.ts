@@ -18,6 +18,7 @@ import {
 } from './crypto';
 import { getVault, putVault, vaultStorageIdForUser, type VaultRecord } from './db';
 import { migrateVaultPayload } from './vaultMigration';
+import type { SyncOutbox } from './syncOutbox';
 import {
   ensureVaultKdfSeeded,
   fetchVaultKdf,
@@ -40,6 +41,7 @@ export interface VaultState {
   accessProfiles: AccessProfile[];
   selectedIds: string[];
   customServices: ServiceDefinition[];
+  syncOutbox?: SyncOutbox;
 }
 
 export function emptyVaultState(): VaultState {
@@ -98,6 +100,7 @@ function payloadFromVaultState(state: VaultState): VaultPayload {
     accessProfiles: state.accessProfiles,
     selectedIds: state.selectedIds,
     customServices: state.customServices,
+    syncOutbox: state.syncOutbox,
   };
 }
 

@@ -1,14 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AccessProfile } from '../profile';
-import { preselectedProfileId, profilesForService } from '../profile';
+import { profilesForService } from '../profile';
 import type { Credential } from '../credentials';
+import { appContextActions, initialActiveProfile } from '../digitalHome/appContext';
 import type { Service } from '../mockServices';
 import { isFieldMasked, resolveCredentialEntry } from '../service/credentialSchema';
 import {
   attemptExistingAutomaticCompletion,
   openAssistanceUrl,
 } from './assistanceActions';
-import { resolveDigitalHomeLaunchKind } from './credentialsGate';
+import { launchKindOffersProfileUi, resolveDigitalHomeLaunchKind } from './credentialsGate';
 import { copyCredentialField } from './copyField';
 import {
   computeFloatingPanelPosition,
@@ -21,9 +22,13 @@ import {
 } from './supportLevel';
 import {
   LABEL_ASSISTANCE,
-  LABEL_ADD_CREDENTIALS,
+  LABEL_ADD_FIRST_PROFILE,
+  LABEL_ADD_PROFILE,
+  LABEL_APP_ACTIONS,
   LABEL_CLOSE,
   LABEL_COPY,
+  LABEL_EDIT_PROFILE,
+  LABEL_EDIT_SITE_DETAILS,
   LABEL_HIDE_PASSWORD,
   LABEL_OPEN_SITE,
   LABEL_SHOW_PASSWORD,
@@ -32,6 +37,7 @@ import {
   MSG_COPY_FAILED,
   MSG_MANUAL_ONLY,
   MSG_MISSING_USER_CREDENTIALS_LAUNCH,
+  MSG_NO_PROFILES,
   MSG_NO_STORED_CREDENTIALS_LAUNCH,
   MSG_NOT_CONFIGURED_LAUNCH,
 } from './messages';
@@ -55,8 +61,14 @@ export interface LoginAssistancePanelProps {
   onClose: () => void;
   /** Bubble non-blocking status to Digital Home banner (optional). */
   onStatus?: (message: string, tone?: 'info' | 'warn' | 'success') => void;
-  /** Open existing credential editor (missing-user-credentials only). */
-  onAddCredentials?: (service: Service) => void;
+  /** App is in the vault `customServices` (AD-123-14). */
+  isCustom?: boolean;
+  /** «עריכת פרופיל» — open the profile host on this profile (AD-123-3). */
+  onEditProfile?: (service: Service, profileId: string) => void;
+  /** «הוספת פרופיל» / «הוסף פרופיל» — open the profile host in add mode. */
+  onAddProfile?: (service: Service) => void;
+  /** App-actions menu «עריכת פרטי האתר» — custom sites only (AD-123-14). */
+  onEditSiteDetails?: (service: Service) => void;
 }
 
 export default function LoginAssistancePanel({
@@ -67,7 +79,10 @@ export default function LoginAssistancePanel({
   logoSrc = null,
   onClose,
   onStatus,
-  onAddCredentials,
+  isCustom = false,
+  onEditProfile,
+  onAddProfile,
+  onEditSiteDetails,
 }: LoginAssistancePanelProps) {
   const profiles = profilesForService(accessProfiles, service.id);
   const level = resolveLoginAssistanceLevel(service);
@@ -80,15 +95,23 @@ export default function LoginAssistancePanel({
   const entry = resolveCredentialEntry(service);
   const loginFields = launchKind === 'credentials' && entry.kind === 'form' ? entry.fields : [];
   const showCredentialUi = launchKind === 'credentials';
-  const showProfileChips = showCredentialUi && profiles.length > 1;
+  const profileUi = launchKindOffersProfileUi(launchKind);
+  const actions = appContextActions(service, profiles, isCustom);
+  const showProfileChips = profileUi && actions.switcher;
+  const showEmptyState = profileUi && actions.empty_state;
+  // AD-123-17: the app-actions menu depends only on its entries — never on the launch kind / profile UI.
+  const showEditSiteDetails = actions.menu.edit_site_details && Boolean(onEditSiteDetails);
+  const showAppMenu = showEditSiteDetails;
+  const profileIdsKey = profiles.map((profile) => profile.id).join('|');
 
   const panelRef = useRef<HTMLElement | null>(null);
   const [coords, setCoords] = useState<FloatingPanelCoords>(() =>
     computeFloatingPanelPosition(anchorRect),
   );
 
+  // AD-123-7: every open starts on the default; switching is local to this open window.
   const [activeProfileId, setActiveProfileId] = useState<string | null>(() =>
-    preselectedProfileId(profiles, service.id),
+    initialActiveProfile(profiles),
   );
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [copyFlashFieldId, setCopyFlashFieldId] = useState<string | null>(null);
@@ -96,16 +119,28 @@ export default function LoginAssistancePanel({
 
   const [panelStatus, setPanelStatus] = useState<string | null>(null);
   const [logoFailed, setLogoFailed] = useState(false);
+  const [appMenuOpen, setAppMenuOpen] = useState(false);
 
-  // Re-sync when service changes; single profile auto-select (AC-113-8).
+  // Another tile opened while the window is open = a new open.
   useEffect(() => {
-    const next = profilesForService(accessProfiles, service.id);
-    setActiveProfileId(preselectedProfileId(next, service.id));
+    setActiveProfileId(initialActiveProfile(profilesForService(accessProfiles, service.id)));
     setPasswordVisible(false);
     setCopyFlashFieldId(null);
     setPanelStatus(null);
     setLogoFailed(false);
-  }, [service.id, accessProfiles]);
+    setAppMenuOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset per service only
+  }, [service.id]);
+
+  // Profiles changed while open: keep the active profile while it still exists.
+  useEffect(() => {
+    setActiveProfileId((current) =>
+      current && profiles.some((profile) => profile.id === current)
+        ? current
+        : initialActiveProfile(profiles),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the profile id set
+  }, [profileIdsKey]);
 
   useEffect(() => {
     setLogoFailed(false);
@@ -137,7 +172,7 @@ export default function LoginAssistancePanel({
       window.removeEventListener('resize', reposition);
       window.removeEventListener('scroll', reposition, true);
     };
-  }, [anchorRect, service.id, showProfileChips, panelStatus, passwordVisible, launchKind]);
+  }, [anchorRect, service.id, showProfileChips, showEmptyState, panelStatus, passwordVisible, launchKind, appMenuOpen]);
 
   // Close on Escape; click-outside closes without blocking copy/open.
   useEffect(() => {
@@ -281,6 +316,39 @@ export default function LoginAssistancePanel({
             <span className="la-panel-title-text">{service.name}</span>
           </h2>
         </div>
+        {showAppMenu && (
+          <div className="la-app-menu" data-app-menu="true">
+            <button
+              type="button"
+              className="la-icon-btn la-app-menu-btn"
+              aria-label={LABEL_APP_ACTIONS}
+              title={LABEL_APP_ACTIONS}
+              aria-haspopup="menu"
+              aria-expanded={appMenuOpen}
+              onClick={() => setAppMenuOpen((open) => !open)}
+            >
+              ⋮
+            </button>
+            {appMenuOpen && (
+              <div className="la-app-menu-list" role="menu" aria-label={LABEL_APP_ACTIONS}>
+                {showEditSiteDetails && onEditSiteDetails && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="la-app-menu-item"
+                    data-action="edit-site-details"
+                    onClick={() => {
+                      setAppMenuOpen(false);
+                      onEditSiteDetails(service);
+                    }}
+                  >
+                    {LABEL_EDIT_SITE_DETAILS}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <button
           type="button"
           className="la-icon-btn la-close-btn"
@@ -295,12 +363,6 @@ export default function LoginAssistancePanel({
       {!allowAuto && showCredentialUi && (
         <p className="la-manual-hint" role="status">
           {MSG_MANUAL_ONLY}
-        </p>
-      )}
-
-      {showCredentialUi && profiles.length === 0 && (
-        <p className="la-empty la-empty--notice">
-          {MSG_MISSING_USER_CREDENTIALS_LAUNCH}
         </p>
       )}
 
@@ -331,6 +393,22 @@ export default function LoginAssistancePanel({
       ) : launchKind === 'no-stored-credentials' ? (
         <div className="la-fields" role="status">
           <p className="la-empty la-empty--notice">{MSG_NO_STORED_CREDENTIALS_LAUNCH}</p>
+        </div>
+      ) : showEmptyState ? (
+        <div className="la-fields la-empty-state" data-app-context="empty-state">
+          <p className="la-empty la-empty--notice" role="status">
+            {MSG_NO_PROFILES}
+          </p>
+          {onAddProfile && (
+            <button
+              type="button"
+              className="la-secondary-btn"
+              data-action="add-first-profile"
+              onClick={() => onAddProfile(service)}
+            >
+              {LABEL_ADD_FIRST_PROFILE}
+            </button>
+          )}
         </div>
       ) : launchKind === 'missing-user-credentials' ? (
         <div className="la-fields" role="status">
@@ -393,13 +471,24 @@ export default function LoginAssistancePanel({
         <button type="button" className="la-primary-btn" onClick={handleOpenSite}>
           {LABEL_OPEN_SITE}
         </button>
-        {launchKind === 'missing-user-credentials' && onAddCredentials && (
+        {profileUi && actions.edit_profile && activeProfileId && onEditProfile && (
           <button
             type="button"
             className="la-secondary-btn"
-            onClick={() => onAddCredentials(service)}
+            data-action="edit-profile"
+            onClick={() => onEditProfile(service, activeProfileId)}
           >
-            {LABEL_ADD_CREDENTIALS}
+            {LABEL_EDIT_PROFILE}
+          </button>
+        )}
+        {profileUi && actions.add_profile && !actions.empty_state && onAddProfile && (
+          <button
+            type="button"
+            className="la-secondary-btn"
+            data-action="add-profile"
+            onClick={() => onAddProfile(service)}
+          >
+            {LABEL_ADD_PROFILE}
           </button>
         )}
         {allowAuto && showCredentialUi && (

@@ -265,7 +265,8 @@ function checkScope(c) {
   assert(psi.split(d57Words).length === 2, 'D-121-57 accessibility words present exactly once');
   const reverted = revertD12152ReadinessEdits(psi.replace(d57Words, ''));
   assert(sha(reverted) === 'c4dd466db55e558840fbf7c45e1ab751058cf699ff28fe24a3fcc3d654965ec5', 'page-structure-inspect.js untouched outside the D-121-52 edits');
-  const head = git(`show HEAD:${PSI_FILE}`);
+  // R-123-1: pre-slice reference frozen at 909cc8b~1 (HEAD now contains the Phase 121 edits).
+  const head = git(`show ${PRE_SLICE_REV}:${PSI_FILE}`);
   const oldRule = '      var eligibleCount = Array.isArray(page.inputs) ? page.inputs.length : 0;\n\n      if (eligibleCount > 0) {\n';
   assert(reverted.includes(oldRule) && head.includes(oldRule), 'pre-slice rule = the committed Phase 119 early-exit rule');
   const fnStart = psi.indexOf('function inspectReadinessCounts');
@@ -300,8 +301,11 @@ function checkScope(c) {
 
 function revertD12149Ok() {
   // D-121-71 (authorized later) changed the hit-test point rule; reverted first.
-  return revertD12149EligibilityEdits(revertD12171EligibilityEdits(read(MTE_FILE))) === git(`show HEAD:${MTE_FILE}`);
+  return revertD12149EligibilityEdits(revertD12171EligibilityEdits(read(MTE_FILE))) === git(`show ${PRE_SLICE_REV}:${MTE_FILE}`);
 }
+
+/** R-123-1: last commit before the Phase 121 extension edits landed (909cc8b = Phase 122); `~1` not `^` (cmd.exe escape). */
+const PRE_SLICE_REV = '909cc8b~1';
 
 const GROUPS = [checkOverlayThenUncovered, checkEligibleAtOnce, checkPermanentlyOccluded, checkNoInputs, checkScope];
 

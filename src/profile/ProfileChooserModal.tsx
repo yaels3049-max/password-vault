@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AccessProfile } from './accessProfileModel';
+import { useEscapeToClose } from '../digitalHome/dialogDismiss';
 
 interface ProfileChooserModalProps {
   serviceName: string;
@@ -19,6 +20,8 @@ export default function ProfileChooserModal({
   const [selectedProfileId, setSelectedProfileId] = useState(
     () => initialProfileId ?? profiles[0]?.id ?? '',
   );
+  // D-123-3: form dialog — closes via «ביטול» / Escape only.
+  useEscapeToClose(onCancel);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,12 +32,8 @@ export default function ProfileChooserModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div
-        className="modal-dialog profile-chooser-dialog"
-        dir="rtl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="modal-overlay" data-dialog-form="true">
+      <div className="modal-dialog profile-chooser-dialog" dir="rtl">
         <h2 className="modal-title">בחירת פרופיל</h2>
         <p className="modal-subtitle">{serviceName}</p>
         <form onSubmit={handleSubmit}>

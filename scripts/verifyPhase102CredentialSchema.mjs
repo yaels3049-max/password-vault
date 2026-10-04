@@ -80,7 +80,11 @@ function mainStatic() {
   assert(panel.includes('MSG_NO_STORED_CREDENTIALS_LAUNCH'), 'Launch Card no-stored message');
   assert(panel.includes('MSG_NOT_CONFIGURED_LAUNCH'), 'Launch Card not-configured message');
   assert(panel.includes('MSG_MISSING_USER_CREDENTIALS_LAUNCH'), 'Launch Card missing-user-credentials message');
-  assert(panel.includes('LABEL_ADD_CREDENTIALS'), 'missing-user-credentials add CTA');
+  // AD-123-2: the add-credentials CTA is replaced by «עריכת פרופיל» / «הוספת פרופיל» / empty state.
+  assert(
+    panel.includes('LABEL_EDIT_PROFILE') && panel.includes('LABEL_ADD_FIRST_PROFILE'),
+    'missing-user-credentials card offers profile edit / add',
+  );
   assert(
     read('src/loginAssistance/messages.ts').includes(
       'פרטי הכניסה לאתר אינם נשמרים בבית הדיגיטלי.',

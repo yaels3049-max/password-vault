@@ -1074,10 +1074,12 @@ console.log('  ✓ 9. genericity grep gate: no fixture names / hostnames / servi
   const manifest = JSON.parse(read('extension/manifest.json'));
   assert(JSON.stringify(manifest.permissions) === JSON.stringify(['tabs', 'scripting']), 'permissions = tabs, scripting');
   assert(git('diff --name-only HEAD -- src/autofill/validatedProfile.ts').trim() === '', 'src/autofill/validatedProfile.ts untouched');
-  // D-121-49 / D-121-71 (authorized) edit the eligibility hit rule; reverting exactly those edits must give HEAD.
+  // D-121-49 / D-121-71 (authorized) edit the eligibility hit rule; reverting exactly those edits must give the
+  // pre-slice bytes. R-123-1: frozen at 909cc8b~1 (= 909cc8b^; `^` is an escape char in cmd.exe; HEAD now
+  // contains the Phase 121 edits).
   assert(
     revertD12149EligibilityEdits(revertD12171EligibilityEdits(read('extension/generic/managed-target-eligibility.js'))) ===
-      git('show HEAD:extension/generic/managed-target-eligibility.js').replace(/\r\n/g, '\n'),
+      git('show 909cc8b~1:extension/generic/managed-target-eligibility.js').replace(/\r\n/g, '\n'),
     'extension/generic/managed-target-eligibility.js untouched outside the D-121-49 edits',
   );
   // D-121-35 adds the action-only locator vocabulary to locator-determinism.js; it stays frame-free

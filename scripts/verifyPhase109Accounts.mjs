@@ -350,19 +350,21 @@ function main() {
     'Hydrate must not resurrect local-only deleted profiles when cloud has the service',
   );
 
-  const manageSrc = read('src/ManageServices.tsx');
+  // AD-123-3: profile management moved from ManageServices into the single Digital Home host;
+  // the same cloud-first delete guarantees are asserted on the host.
+  const hostSrc = read('src/loginAssistance/DigitalHomeCredentialModal.tsx');
   assert(
-    manageSrc.includes('deleteCloudEncryptedCredentialByLocalProfileId'),
-    'ManageServices must delete cloud ciphertext only on explicit credential delete',
+    hostSrc.includes('deleteCloudEncryptedCredentialByLocalProfileId'),
+    'Profile host must delete cloud ciphertext only on explicit credential delete',
   );
   assert(
-    manageSrc.includes('deleteAccessProfileFromCloud') &&
-      manageSrc.includes('PROFILE_DELETE_CLOUD_FAILED_MESSAGE'),
-    'ManageServices must cloud-delete profile before local success (AC-109-41)',
+    hostSrc.includes('deleteAccessProfileFromCloud') &&
+      hostSrc.includes('PROFILE_DELETE_CLOUD_FAILED_MESSAGE'),
+    'Profile host must cloud-delete profile before local success (AC-109-41)',
   );
   assert(
-    /deleteAccessProfileFromCloud\(profileId\)[\s\S]*deleteAccessProfile\(state,\s*profileId\)/.test(
-      manageSrc,
+    /deleteAccessProfileFromCloud\(profileId\)[\s\S]*deleteAccessProfile\(state,\s*profileId/.test(
+      hostSrc,
     ),
     'AC-109-41 cloud profile delete before local VaultState update',
   );

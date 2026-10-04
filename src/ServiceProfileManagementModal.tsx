@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Credential } from './credentials';
 import { hasCompleteCredentials } from './credentials';
+import { deleteProfilePlan, initialActiveProfile } from './digitalHome/appContext';
 import { copyCredentialField } from './loginAssistance/copyField';
 import { IconClose, IconCopy, IconEye, IconEyeOff } from './loginAssistance/icons';
 import type { AccessProfile } from './profile/accessProfileModel';
@@ -31,18 +32,24 @@ interface ServiceProfileManagementModalProps {
   credentials: Record<string, Credential>;
   onSaveCredential: (profileId: string, credential: Credential) => Promise<void>;
   onDeleteCredential: (profileId: string) => Promise<void>;
-  onAddProfile: (displayName: string) => void;
+  /** One save → exactly one new profile (+ its credential when entered); resolves to its id. */
+  onCreateProfile: (displayName: string, credential: Credential | null) => Promise<string>;
   onRenameProfile: (profileId: string, displayName: string) => void;
   onSetDefaultProfile: (profileId: string) => void;
-  onDeleteProfile: (profileId: string) => void | Promise<void>;
+  onDeleteProfile: (profileId: string, replacementDefaultId?: string) => Promise<void>;
   onClose: () => void;
   onLockVault?: () => void;
   error?: string | null;
   vaultUnlocked?: boolean;
+  /** Profile to open on; falls back to the default (AD-123-7). */
+  initialProfileId?: string | null;
+  initialMode?: 'edit' | 'add';
 }
 
 type DiscardKind = 'close' | { switchTo: string } | null;
 type ConfirmDeleteKind = 'credentials' | 'profile' | null;
+/** `entry`: the modal was opened to add (cancel closes it); `inline`: started from edit view. */
+type AddOrigin = 'entry' | 'inline' | null;
 
 const MSG_SAVE_OK = 'פרטי הכניסה נשמרו';
 const MSG_SAVE_FAIL =
@@ -58,6 +65,14 @@ const MSG_DELETE_CREDS_BODY =
 const MSG_DELETE_PROFILE_TITLE = 'למחוק את הפרופיל?';
 const MSG_DELETE_PROFILE_BODY =
   'הפרופיל ופרטי הכניסה שלו יימחקו. פעולה זו אינה ניתנת לביטול.';
+const MSG_DELETE_LAST_PROFILE_BODY =
+  'הפרופיל ופרטי הכניסה שלו יימחקו, ולאתר לא יישאר פרופיל. פעולה זו אינה ניתנת לביטול.';
+const MSG_CHOOSE_NEW_DEFAULT = 'בחרו איזה פרופיל יהיה ברירת המחדל במקומו:';
+const MSG_ADD_TITLE = 'פרופיל חדש';
+const MSG_ADD_OPTIONAL = 'אפשר לשמור פרופיל גם בלי פרטי כניסה ולהוסיף אותם אחר כך.';
+const MSG_PROFILE_NAME_REQUIRED = 'יש להזין שם פרופיל';
+const MSG_ADD_FIELDS_INCOMPLETE =
+  'יש למלא את כל שדות החובה של פרטי הכניסה, או להשאיר את כולם ריקים.';
 
 function emptyValues(
   fields: LoginField[],
@@ -89,7 +104,7 @@ export default function ServiceProfileManagementModal({
   credentials,
   onSaveCredential,
   onDeleteCredential,
-  onAddProfile,
+  onCreateProfile,
   onRenameProfile,
   onSetDefaultProfile,
   onDeleteProfile,
@@ -97,6 +112,8 @@ export default function ServiceProfileManagementModal({
   onLockVault,
   error = null,
   vaultUnlocked = true,
+  initialProfileId = null,
+  initialMode = 'edit',
 }: ServiceProfileManagementModalProps) {
   const logoServices = useMemo(() => [service], [service]);
   const logos = useServiceLogos(logoServices);
@@ -109,20 +126,23 @@ export default function ServiceProfileManagementModal({
     [profiles],
   );
 
-  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
-    () =>
-      sortedProfiles.find((profile) => profile.isDefault)?.id ??
-      sortedProfiles[0]?.id ??
-      null,
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() =>
+    initialProfileId && sortedProfiles.some((profile) => profile.id === initialProfileId)
+      ? initialProfileId
+      : initialActiveProfile(sortedProfiles),
   );
   const [credentialValues, setCredentialValues] = useState<Record<string, string>>(
     {},
   );
   const [baselineValues, setBaselineValues] = useState<Record<string, string>>({});
   const [newProfileName, setNewProfileName] = useState('');
+  const [addValues, setAddValues] = useState<Record<string, string>>({});
+  const [adding, setAdding] = useState<AddOrigin>(() =>
+    initialMode === 'add' || sortedProfiles.length === 0 ? 'entry' : null,
+  );
+  const [replacementDefaultId, setReplacementDefaultId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
-  const [showAddProfile, setShowAddProfile] = useState(false);
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<'ok' | 'err' | 'info'>('info');
@@ -134,6 +154,7 @@ export default function ServiceProfileManagementModal({
     () => !isFirstTimeSecurityTipDismissed(),
   );
   const dirtyRef = useRef(false);
+  const addNameRef = useRef<HTMLInputElement>(null);
 
   const entry = resolveCredentialEntry(service);
   const loginFields = entry.kind === 'form' ? entry.fields : [];
@@ -148,7 +169,9 @@ export default function ServiceProfileManagementModal({
   const dirty =
     selectedProfile != null &&
     !valuesEqual(loginFields, credentialValues, baselineValues);
-  dirtyRef.current = dirty;
+  const addHasValues = loginFields.some((field) => Boolean((addValues[field.id] ?? '').trim()));
+  const addDirty = adding !== null && (Boolean(newProfileName.trim()) || addHasValues);
+  dirtyRef.current = dirty || addDirty;
   const selectedHasCredentials = selectedProfile
     ? hasCompleteCredentials(credentials[selectedProfile.id], loginFields)
     : false;
@@ -156,7 +179,12 @@ export default function ServiceProfileManagementModal({
     const credential = credentials[profile.id];
     return Boolean(credential && Object.values(credential).some((value) => Boolean(value?.trim())));
   });
-  const canDeleteProfile = sortedProfiles.length > 1;
+  const deletePlan = selectedProfile
+    ? deleteProfilePlan(sortedProfiles, selectedProfile.id)
+    : 'simple';
+  const replacementCandidates = selectedProfile
+    ? sortedProfiles.filter((profile) => profile.id !== selectedProfile.id)
+    : [];
   const fieldsComplete =
     !schemaIncomplete &&
     loginFields.every(
@@ -183,17 +211,15 @@ export default function ServiceProfileManagementModal({
   useEffect(() => {
     if (sortedProfiles.length === 0) {
       setSelectedProfileId(null);
+      // AD-123-5: a 0-profile app shows the add form; nothing is written until its save.
+      setAdding((current) => current ?? 'entry');
       return;
     }
     if (
       !selectedProfileId ||
       !sortedProfiles.some((profile) => profile.id === selectedProfileId)
     ) {
-      const fallback =
-        sortedProfiles.find((profile) => profile.isDefault)?.id ??
-        sortedProfiles[0]?.id ??
-        null;
-      setSelectedProfileId(fallback);
+      setSelectedProfileId(initialActiveProfile(sortedProfiles));
     }
   }, [sortedProfiles, selectedProfileId]);
 
@@ -231,8 +257,13 @@ export default function ServiceProfileManagementModal({
   }, [storedCredentialKey, loginFieldKey, selectedProfileId, saving]);
 
   useEffect(() => {
-    closeBtnRef.current?.focus();
-  }, []);
+    if (adding && showProfileManagement) {
+      addNameRef.current?.focus();
+    } else {
+      closeBtnRef.current?.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focus follows the add form only
+  }, [adding]);
 
   function handleCredentialChange(id: string, value: string) {
     setCredentialValues((prev) => ({ ...prev, [id]: value }));
@@ -349,30 +380,82 @@ export default function ServiceProfileManagementModal({
     }
   }
 
+  function requestDeleteProfile() {
+    setReplacementDefaultId(null);
+    setDeletePrompt('profile');
+  }
+
   async function handleDeleteProfile() {
-    if (!selectedProfile || !canDeleteProfile) return;
+    if (!selectedProfile || saving) return;
+    if (deletePlan === 'choose_default' && !replacementDefaultId) return;
     setSaving(true);
     setStatusMessage(null);
     try {
-      await onDeleteProfile(selectedProfile.id);
-      setDeletePrompt(null);
+      await onDeleteProfile(
+        selectedProfile.id,
+        deletePlan === 'choose_default' ? replacementDefaultId ?? undefined : undefined,
+      );
     } catch {
       setStatusTone('err');
       setStatusMessage(MSG_SAVE_FAIL);
-      setDeletePrompt(null);
     } finally {
+      setDeletePrompt(null);
+      setReplacementDefaultId(null);
       setSaving(false);
     }
   }
 
-  function handleAddProfile(e: React.FormEvent) {
-    e.preventDefault();
-    if (!showProfileManagement) return;
-    const trimmed = newProfileName.trim();
-    if (!trimmed) return;
-    onAddProfile(trimmed);
+  function startAdd(origin: Exclude<AddOrigin, null>) {
     setNewProfileName('');
-    setShowAddProfile(false);
+    setAddValues({});
+    setPasswordVisible(false);
+    setStatusMessage(null);
+    setAdding(origin);
+  }
+
+  function cancelAdd() {
+    if (adding === 'entry' || sortedProfiles.length === 0) {
+      onClose();
+      return;
+    }
+    setAdding(null);
+    setNewProfileName('');
+    setAddValues({});
+  }
+
+  async function handleCreateProfile(e: React.FormEvent) {
+    e.preventDefault();
+    if (!showProfileManagement || saving) return;
+    const name = newProfileName.trim();
+    if (!name) {
+      setStatusTone('err');
+      setStatusMessage(MSG_PROFILE_NAME_REQUIRED);
+      return;
+    }
+    let credential: Credential | null = null;
+    if (addHasValues) {
+      const serialized = serializeCredentialValues(loginFields, addValues);
+      if (!serialized.ok) {
+        setStatusTone('err');
+        setStatusMessage(serialized.message ?? MSG_ADD_FIELDS_INCOMPLETE);
+        return;
+      }
+      credential = serialized.credential;
+    }
+    setSaving(true);
+    setStatusMessage(null);
+    try {
+      const profileId = await onCreateProfile(name, credential);
+      setAdding(null);
+      setNewProfileName('');
+      setAddValues({});
+      setSelectedProfileId(profileId);
+    } catch {
+      setStatusTone('err');
+      setStatusMessage(MSG_SAVE_FAIL);
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleRenameSubmit(e: React.FormEvent) {
@@ -407,12 +490,8 @@ export default function ServiceProfileManagementModal({
     !error && statusTone === 'ok' ? statusMessage : null;
 
   return (
-    <div
-      className="modal-overlay cd-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) requestClose();
-      }}
-    >
+    // D-123-3: profile / credential forms — the backdrop never closes this dialog.
+    <div className="modal-overlay cd-overlay" data-dialog-form="true">
       <div
         ref={dialogRef}
         className="modal-dialog cd-dialog"
@@ -479,7 +558,7 @@ export default function ServiceProfileManagementModal({
             </div>
           )}
 
-          {showProfileManagement && selectedProfile && (
+          {showProfileManagement && selectedProfile && !adding && (
             <div className="cd-profiles" role="tablist" aria-label="פרופילים">
               {isMultiProfile ? (
                 sortedProfiles.map((profile) => (
@@ -505,7 +584,7 @@ export default function ServiceProfileManagementModal({
             </div>
           )}
 
-          {showProfileManagement && selectedProfile && isRenaming && (
+          {showProfileManagement && selectedProfile && isRenaming && !adding && (
             <form className="cd-rename" onSubmit={handleRenameSubmit} autoComplete="off">
               <input
                 type="text"
@@ -561,7 +640,7 @@ export default function ServiceProfileManagementModal({
             </div>
           )}
 
-          {showCredentialForm && selectedProfile && (
+          {showCredentialForm && selectedProfile && !adding && (
             <div className="cd-fields">
               {!selectedHasCredentials && !dirty && (
                 <p className="cd-empty">{MSG_EMPTY_PROFILE}</p>
@@ -659,11 +738,11 @@ export default function ServiceProfileManagementModal({
                     מחיקת פרטי כניסה
                   </button>
                 )}
-                {canDeleteProfile && selectedProfile && (
+                {selectedProfile && (
                   <button
                     type="button"
                     className="cd-secondary-btn cd-secondary-btn--danger"
-                    onClick={() => setDeletePrompt('profile')}
+                    onClick={requestDeleteProfile}
                     disabled={saving}
                   >
                     מחיקת פרופיל
@@ -673,46 +752,97 @@ export default function ServiceProfileManagementModal({
             </div>
           )}
 
-          {showProfileManagement && (
-          <div className="cd-add">
-            {!showAddProfile ? (
+          {showProfileManagement && !adding && (
+            <div className="cd-add">
               <button
                 type="button"
                 className="cd-add-toggle"
-                onClick={() => setShowAddProfile(true)}
+                onClick={() => startAdd('inline')}
+                disabled={saving}
               >
                 + הוספת פרופיל נוסף
               </button>
-            ) : (
-              <form
-                className="cd-add-form"
-                onSubmit={handleAddProfile}
-                autoComplete="off"
-              >
+            </div>
+          )}
+
+          {showProfileManagement && adding && (
+            <form
+              className="cd-fields cd-add-profile"
+              data-mode="add-profile"
+              onSubmit={(e) => void handleCreateProfile(e)}
+              autoComplete="off"
+            >
+              <h3 className="cd-add-title">{MSG_ADD_TITLE}</h3>
+              <label className="cd-field">
+                <span className="cd-field-label">שם פרופיל</span>
                 <input
+                  ref={addNameRef}
                   type="text"
+                  className="cd-field-input"
                   value={newProfileName}
-                  onChange={(e) => setNewProfileName(e.target.value)}
+                  onChange={(e) => {
+                    setNewProfileName(e.target.value);
+                    if (statusMessage) setStatusMessage(null);
+                  }}
                   placeholder="שם פרופיל חדש"
                   aria-label="שם פרופיל חדש"
                   autoComplete="off"
+                  disabled={saving}
                 />
-                <button type="submit" className="modal-btn modal-btn-secondary">
-                  הוספה
-                </button>
+              </label>
+              {loginFields.map((field) => {
+                const masked = isFieldMasked(field);
+                return (
+                  <label key={field.id} className="cd-field">
+                    <span className="cd-field-label">{field.label}</span>
+                    <div className="cd-field-row">
+                      <HubCredentialInput
+                        serviceId={service.id}
+                        fieldId={field.id}
+                        fieldType={field.type}
+                        digitString={fieldInputType(field) === 'number'}
+                        maskDisplay={masked && field.type !== 'password'}
+                        revealAsText={masked && passwordVisible}
+                        value={addValues[field.id] ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setAddValues((prev) => ({ ...prev, [field.id]: value }));
+                          if (statusMessage) setStatusMessage(null);
+                        }}
+                        disabled={saving}
+                        className="cd-field-input"
+                      />
+                      {masked && (
+                        <button
+                          type="button"
+                          className="cd-icon-btn"
+                          aria-label={passwordVisible ? 'הסתרת סיסמה' : 'הצגת סיסמה'}
+                          aria-pressed={passwordVisible}
+                          onClick={() => setPasswordVisible((v) => !v)}
+                          disabled={saving}
+                        >
+                          {passwordVisible ? <IconEyeOff /> : <IconEye open={false} />}
+                        </button>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+              <p className="cd-empty">{MSG_ADD_OPTIONAL}</p>
+              <button type="submit" className="cd-save" disabled={saving}>
+                {saving ? 'שומר…' : 'שמירת פרופיל'}
+              </button>
+              <div className="cd-secondary-actions">
                 <button
                   type="button"
-                  className="modal-btn modal-btn-secondary"
-                  onClick={() => {
-                    setShowAddProfile(false);
-                    setNewProfileName('');
-                  }}
+                  className="cd-secondary-btn"
+                  onClick={cancelAdd}
+                  disabled={saving}
                 >
                   ביטול
                 </button>
-              </form>
-            )}
-          </div>
+              </div>
+            </form>
           )}
         </div>
 
@@ -749,8 +879,28 @@ export default function ServiceProfileManagementModal({
             <p>
               {deletePrompt === 'credentials'
                 ? MSG_DELETE_CREDS_BODY
-                : MSG_DELETE_PROFILE_BODY}
+                : replacementCandidates.length === 0
+                  ? MSG_DELETE_LAST_PROFILE_BODY
+                  : MSG_DELETE_PROFILE_BODY}
             </p>
+            {deletePrompt === 'profile' && deletePlan === 'choose_default' && (
+              <fieldset className="cd-default-choice" data-step="choose-new-default">
+                <legend>{MSG_CHOOSE_NEW_DEFAULT}</legend>
+                {replacementCandidates.map((profile) => (
+                  <label key={profile.id} className="cd-default-option">
+                    <input
+                      type="radio"
+                      name="cd-new-default"
+                      value={profile.id}
+                      checked={replacementDefaultId === profile.id}
+                      onChange={() => setReplacementDefaultId(profile.id)}
+                      disabled={saving}
+                    />
+                    <span>{profile.displayName}</span>
+                  </label>
+                ))}
+              </fieldset>
+            )}
             <div className="cd-confirm-actions">
               <button
                 type="button"
@@ -762,6 +912,12 @@ export default function ServiceProfileManagementModal({
               <button
                 type="button"
                 className="cd-delete-confirm"
+                disabled={
+                  saving ||
+                  (deletePrompt === 'profile' &&
+                    deletePlan === 'choose_default' &&
+                    !replacementDefaultId)
+                }
                 onClick={() => {
                   if (deletePrompt === 'credentials') {
                     void handleDeleteCredentials();

@@ -83,6 +83,15 @@ export function resolveDigitalHomeLaunchKind(
 }
 
 /**
+ * Phase 123.1 — profile switcher / «עריכת פרופיל» / «הוספת פרופיל» / empty state are offered only
+ * where the profile modal manages profiles (a credential form). Non-form entries keep today's
+ * gating. Independent of whether credentials are stored (AD-123-2).
+ */
+export function launchKindOffersProfileUi(kind: DigitalHomeLaunchKind): boolean {
+  return kind === 'credentials' || kind === 'missing-user-credentials';
+}
+
+/**
  * Whether Digital Home may open the floating Launch Card for this service click.
  * Every resolved launch kind uses the Launch Card (no page-level banner).
  */

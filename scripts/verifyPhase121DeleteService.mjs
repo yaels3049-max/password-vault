@@ -435,12 +435,20 @@ const PRESENT = () => ({ ids: new Set(['kept', 'mizrahi']), rows: 20 });
 const upsertedServices = (sb) => sb.log.filter((e) => e.table === 'user_services').map((e) => e.payload.service_id);
 const upsertedProfiles = (sb) => sb.log.filter((e) => e.table === 'access_profiles').map((e) => e.payload.local_profile_id);
 
+// AD-123-18 amendment A (Phase 123 fix round): sync inserts only rows in the persisted outbox.
+// Putting every local row in the outbox makes it "own", so the D-121-51 registry filter below is
+// exercised exactly as before (with an empty outbox the sync would insert nothing at all).
+const asOwnCreations = (state) => ({
+  ...state,
+  syncOutbox: { serviceIds: [...state.selectedIds], profileIds: state.accessProfiles.map((p) => p.id) },
+});
+
 async function clientGroups(m) {
   globalThis.__uid = USER;
   // B1 sync never re-upserts a deleted service; re-seeded built-in and private custom kept.
   let sb = fakeSupabase({}, PRESENT());
   globalThis.__sb = sb;
-  await m.syncVaultStateToSupabase({}, localState(), {});
+  await m.syncVaultStateToSupabase({}, asOwnCreations(localState()), {});
   assert(JSON.stringify(upsertedServices(sb).sort()) === JSON.stringify(['custom-x', 'kept', 'mizrahi']), `sync upserts only registry-present + custom (got ${upsertedServices(sb)})`);
   assert(!upsertedProfiles(sb).includes('profile-del'), 'sync does not upsert the deleted service\'s profile');
   const asked = sb.rpcCalls.find((c) => c.fn === 'registry_service_ids_existing');
@@ -450,7 +458,7 @@ async function clientGroups(m) {
   for (const presence of [{ mode: 'error', ids: new Set() }, { ids: new Set(['kept']), rows: 0 }]) {
     sb = fakeSupabase({}, presence);
     globalThis.__sb = sb;
-    await m.syncVaultStateToSupabase({}, localState(), {});
+    await m.syncVaultStateToSupabase({}, asOwnCreations(localState()), {});
     assert(upsertedServices(sb).length === 4, `unknown presence (${presence.mode ?? 'empty registry'}) keeps today's upserts`);
   }
 
@@ -489,7 +497,7 @@ async function clientGroups(m) {
   // B5 the hydrated state is not re-upserted.
   sb = fakeSupabase({}, PRESENT());
   globalThis.__sb = sb;
-  await m.syncVaultStateToSupabase({}, h1, {});
+  await m.syncVaultStateToSupabase({}, asOwnCreations(h1), {});
   assert(!upsertedServices(sb).includes('deleted-site') && upsertedServices(sb).includes('mizrahi'), 'post-hydrate sync: deleted not re-upserted, built-in upserted');
 
   // B6 unknown presence in hydrate drops nothing.

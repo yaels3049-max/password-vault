@@ -265,7 +265,9 @@ function checkScope(c) {
   const mte = c.sources[MTE_FILE];
   const vtp = c.sources[VTP_FILE];
   assert(git('show HEAD:extension/manifest.json') === read('extension/manifest.json'), 'manifest unchanged');
-  assert(revertD12149EligibilityEdits(revertD12171EligibilityEdits(read(MTE_FILE))) === git(`show HEAD:${MTE_FILE}`), 'eligibility: reverting D-121-71 then D-121-49 reproduces HEAD (only evaluate() changed)');
+  // R-123-1: pre-slice reference frozen at 909cc8b~1 (= 909cc8b^; `^` is an escape char in cmd.exe; HEAD now
+  // contains the Phase 121 edits).
+  assert(revertD12149EligibilityEdits(revertD12171EligibilityEdits(read(MTE_FILE))) === git(`show 909cc8b~1:${MTE_FILE}`), 'eligibility: reverting D-121-71 then D-121-49 reproduces the pre-slice bytes (only evaluate() changed)');
   assert(sha(revertD12171VisualPickEdits(read(VTP_FILE))) === VTP_PRE_SLICE_SHA, 'visual-target-pick: reverting D-121-71 reproduces the pre-slice bytes');
   const blocks = [mte.slice(mte.indexOf('D-121-71'), mte.indexOf('return evaluate();')), vtp.slice(vtp.indexOf('D-121-71'), vtp.indexOf('function managedEligibleFor'))];
   for (const block of blocks) {

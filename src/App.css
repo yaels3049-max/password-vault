@@ -170,7 +170,78 @@
 .dashboard-manage-bar {
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   width: 100%;
+}
+
+/* Phase 123.2 — catalog modal over Digital Home (AD-123-8). */
+.dh-catalog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+/* D-123-2 — fixed height bounded by the viewport; only the result grid scrolls. */
+.dh-catalog-dialog {
+  width: min(1100px, 96vw);
+  height: min(820px, 92vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding: 1rem 1.25rem 1.25rem;
+  border-radius: var(--app-shell-radius, 18px);
+  background: rgba(248, 250, 252, 0.97);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28);
+  outline: none;
+}
+
+.dh-catalog-dialog > .app-catalog {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dh-catalog-dialog > .app-catalog > * {
+  flex: 0 0 auto;
+}
+
+.dh-catalog-dialog > .app-catalog > .sm-add-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+.dh-catalog-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.dh-catalog-title {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.dh-catalog-close {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.app-catalog-status {
+  margin: 0.25rem 0 0.5rem;
+  color: #166534;
 }
 
 .dashboard-manage-cta {
@@ -435,6 +506,52 @@
   font-weight: 600;
   line-height: 1.45;
   color: #1e293b;
+}
+
+.la-empty-state {
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+/* Phase 123.2 — app-actions menu in the floating window (AD-123-14 / AD-123-17). */
+.la-app-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.la-app-menu-btn {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.la-app-menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  inset-inline-end: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 10rem;
+  padding: 0.25rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
+}
+
+.la-app-menu-item {
+  padding: 0.45rem 0.65rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.la-app-menu-item:hover,
+.la-app-menu-item:focus-visible {
+  background: #eff6ff;
 }
 
 .la-fields {
@@ -1458,19 +1575,34 @@
   color: #1d4ed8;
 }
 
-.cd-add-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+.cd-add-title {
+  margin: 0;
+  font-size: 1rem;
+  color: #0f172a;
 }
 
-.cd-add-form input {
-  flex: 1 1 10rem;
-  min-width: 0;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid #d5d9e0;
-  border-radius: 8px;
-  font: inherit;
+.cd-default-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.cd-default-choice legend {
+  margin-bottom: 0.35rem;
+  padding: 0;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.cd-default-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #1e293b;
+  cursor: pointer;
 }
 
 .cd-confirm {
@@ -1516,6 +1648,11 @@
 
 .cd-delete-confirm:hover {
   background: #b91c1c;
+}
+
+.cd-delete-confirm:disabled {
+  background: #fca5a5;
+  cursor: not-allowed;
 }
 
 @media (max-width: 560px) {

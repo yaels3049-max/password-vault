@@ -2195,7 +2195,9 @@ async function checkHelperShared() {
   assert(uses.length === 2 && uses.includes('row') && uses.includes('selectedRow'), `R3: header and cards render UserApprovalBadge from the saved row (${uses.join(', ')})`);
   const badge = read('src/admin/UserApprovalBadge.tsx');
   assert(/userApprovalState\(row\)/.test(badge), 'R3: the badge reads the shared pure helper');
-  const helper = read('src/admin/userApproval.ts');
+  // AD-123-19: the helper moved unchanged to src/service/userApproval.ts; admin re-exports it.
+  assert(/export \{ userApprovalState[^}]*\} from '\.\.\/service\/userApproval';/.test(read('src/admin/userApproval.ts')), 'R3: admin re-exports the shared helper');
+  const helper = read('src/service/userApproval.ts');
   assert(/resolveActiveLoginContract\(metadata\)/.test(helper) && /isVersionMatchedValidated\(profile\)/.test(helper) && /mappingsCoverRequiredSchema\(profile, resolved\.fields\)/.test(helper), 'R3: helper follows the runtime (active contract; version-matched validated profile covering the login fields)');
   assert(!/from 'react'|useState|draftDirty|specialDraftDirty/.test(helper), 'R3: helper is pure, no editor state');
   return '122.8 R3: header and cards render the same UserApprovalBadge from the saved row; one pure helper derived from the runtime contract (no editor state)';
@@ -2543,8 +2545,8 @@ const MUTATIONS = [
   [8, 'M54 test enabled with a partial STANDARD mapping', 'src/admin/AdminFillTestGrid.tsx', '    savedProfileReady &&\n    standardComplete &&\n', '    savedProfileReady &&\n'],
   [8, 'M55 SPECIAL test without checkSpecialDraft', 'src/admin/AdminFillTestGrid.tsx', 'specialContext && specialRunnable && specialComplete && !draftDirty', 'specialContext && specialRunnable && !draftDirty'],
   [8, 'M56 header badge read from editor state', 'src/admin/RegistryAdmin.tsx', '<UserApprovalBadge row={selectedRow} size="lg" />', '<UserApprovalBadge row={{ ...selectedRow, metadata: { ...selectedRow.metadata, credentialMode } }} size="lg" />'],
-  [8, 'M57 STANDARD changes_not_approved shown green', 'src/admin/userApproval.ts', "    return runs ? 'approved' : 'blocked';\n  }\n", "    return runs ? 'approved' : 'blocked';\n  }\n  if (profile?.validation) return 'approved';\n"],
-  [8, 'M58 SPECIAL_INVALID not shown as blocked', 'src/admin/userApproval.ts', "  if (contract.mode === 'SPECIAL_INVALID') return 'blocked';\n", ''],
+  [8, 'M57 STANDARD changes_not_approved shown green', 'src/service/userApproval.ts', "    return runs ? 'approved' : 'blocked';\n  }\n", "    return runs ? 'approved' : 'blocked';\n  }\n  if (profile?.validation) return 'approved';\n"],
+  [8, 'M58 SPECIAL_INVALID not shown as blocked', 'src/service/userApproval.ts', "  if (contract.mode === 'SPECIAL_INVALID') return 'blocked';\n", ''],
   [8, 'M59 cards not equal height', 'src/admin/admin.css', '.admin-card-grid,\n.admin-pending-grid {\n  grid-auto-rows: 1fr;\n}\n', ''],
   [8, 'M60 card footer not pinned to the bottom', 'src/admin/admin.css', '.admin-site-card-footer {\n  margin-top: auto;', '.admin-site-card-footer {\n  margin-top: 0;'],
   [8, 'M61 overflow chips dropped without «+N»', 'src/admin/AdminChipRow.tsx', '      {hidden.length > 0 ? (', '      {false ? ('],

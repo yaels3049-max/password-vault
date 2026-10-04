@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Credential } from './credentials';
-import { hasCompleteCredentials } from './credentials';
+import { appHasProfile, type ProfileManagementRequest } from './digitalHome/appContext';
+import { MSG_REMOVED_ELSEWHERE } from './digitalHome/cloudReconcile';
+import { LABEL_ADD_APP } from './digitalHome/AppCatalogModal';
 import {
   groupSelectedServicesByCategory,
   shouldUseCategoryLayout,
@@ -11,7 +13,7 @@ import {
   LoginAssistancePanel,
   shouldOpenLoginAssistancePanel,
 } from './loginAssistance';
-import { getLoginFields, type Service } from './mockServices';
+import type { Service } from './mockServices';
 import type { AccessProfile, ResolveProfileFn } from './profile';
 import Tile from './Tile';
 import { VaultStateBadge } from './trust';
@@ -20,8 +22,6 @@ import { isExtensionAvailable } from './pocAutofill';
 
 interface DashboardProps {
   services: Service[];
-  /** Default-profile credentials for tile badges (execution-only display). */
-  credentials: Record<string, Credential>;
   credentialsByProfileId: Record<string, Credential>;
   /** All access profiles — Login Assistance panel (Phase 113). */
   accessProfiles: AccessProfile[];
@@ -38,8 +38,20 @@ interface DashboardProps {
   /** Lock control rendered inside the Home shell (D-113-23 / AC-113-35). */
   vaultUnlocked?: boolean;
   onLockVault?: () => void;
-  /** Open existing credential editor from the missing-credentials Launch Card. */
-  onAddCredentials?: (service: Service) => void;
+  /** Ids of apps in the vault `customServices` (AD-123-14). */
+  customServiceIds?: ReadonlySet<string>;
+  /** AD-123-3 — open the single profile-management host. */
+  onOpenProfileManagement?: (request: ProfileManagementRequest) => void;
+  /** AD-123-8 — «+ הוספת אפליקציה» opens the catalog modal hosted in App. */
+  onOpenCatalog?: () => void;
+  /** AD-123-14 — app-actions menu «עריכת פרטי האתר» (custom sites). */
+  onEditSiteDetails?: (service: Service) => void;
+  /** AD-123-18 (3) — apps changed by a cloud reconcile (deleted in another window). */
+  cloudReconcile?: {
+    seq: number;
+    affectedServiceIds: string[];
+    closedOtherSurface: boolean;
+  } | null;
 }
 
 interface AssistanceState {
@@ -56,7 +68,6 @@ function digitalHomeTitle(userDisplayName?: string): string {
 
 export default function Dashboard({
   services,
-  credentials,
   credentialsByProfileId,
   accessProfiles,
   resolveProfile: _resolveProfile,
@@ -68,7 +79,11 @@ export default function Dashboard({
   catalogError = null,
   vaultUnlocked = true,
   onLockVault,
-  onAddCredentials,
+  customServiceIds,
+  onOpenProfileManagement,
+  onOpenCatalog,
+  onEditSiteDetails,
+  cloudReconcile = null,
 }: DashboardProps) {
   const logos = useServiceLogos(services);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -92,6 +107,23 @@ export default function Dashboard({
       setStatusMessage((current) => (current === message ? null : current));
     }, STATUS_TIMEOUT_MS);
   }
+
+  const handledReconcileSeq = useRef(cloudReconcile?.seq ?? 0);
+  useEffect(() => {
+    if (!cloudReconcile || cloudReconcile.seq === handledReconcileSeq.current) {
+      return;
+    }
+    handledReconcileSeq.current = cloudReconcile.seq;
+    const closesPanel =
+      assistance !== null && cloudReconcile.affectedServiceIds.includes(assistance.service.id);
+    if (closesPanel) {
+      setAssistance(null);
+    }
+    if (closesPanel || cloudReconcile.closedOtherSurface) {
+      clearStatusSoon(MSG_REMOVED_ELSEWHERE, 'warn');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudReconcile]);
 
   function handleServiceOpen(service: Service, anchorRect: DOMRect) {
     onDismissMagicMomentHint();
@@ -118,10 +150,7 @@ export default function Dashboard({
         serviceId={service.id}
         name={service.name}
         logoSrc={logos[service.id]}
-        hasCredentials={hasCompleteCredentials(
-          credentials[service.id],
-          getLoginFields(service),
-        )}
+        hasCredentials={appHasProfile({ accessProfiles }, service.id)}
         assisted={assistance?.service.id === service.id}
         onOpen={(anchorRect) => handleServiceOpen(service, anchorRect)}
       />
@@ -143,6 +172,16 @@ export default function Dashboard({
           >
             ניהול אתרים
           </button>
+          {onOpenCatalog && (
+            <button
+              type="button"
+              className="sm-action sm-action--primary sm-footer-nav dashboard-add-app-cta"
+              data-action="open-catalog"
+              onClick={onOpenCatalog}
+            >
+              {LABEL_ADD_APP}
+            </button>
+          )}
         </div>
       </header>
 
@@ -235,10 +274,27 @@ export default function Dashboard({
           logoSrc={logos[assistance.service.id]}
           onClose={() => setAssistance(null)}
           onStatus={clearStatusSoon}
-          onAddCredentials={
-            onAddCredentials
+          isCustom={customServiceIds?.has(assistance.service.id) ?? false}
+          onEditProfile={
+            onOpenProfileManagement
+              ? (service, profileId) => {
+                  onOpenProfileManagement({ serviceId: service.id, profileId, mode: 'edit' });
+                  setAssistance(null);
+                }
+              : undefined
+          }
+          onAddProfile={
+            onOpenProfileManagement
               ? (service) => {
-                  onAddCredentials(service);
+                  onOpenProfileManagement({ serviceId: service.id, mode: 'add' });
+                  setAssistance(null);
+                }
+              : undefined
+          }
+          onEditSiteDetails={
+            onEditSiteDetails
+              ? (service) => {
+                  onEditSiteDetails(service);
                   setAssistance(null);
                 }
               : undefined

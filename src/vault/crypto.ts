@@ -3,6 +3,7 @@ import type { Credential } from '../credentials';
 import type { AccessProfile } from '../profile/accessProfileModel';
 import type { ServiceDefinition } from '../service/serviceModel';
 import { normalizeStoredCustomServices } from '../catalog/customServiceStorage';
+import { normalizeSyncOutbox, type SyncOutbox } from './syncOutbox';
 
 export class WrongPasswordError extends Error {
   constructor() {
@@ -16,6 +17,7 @@ export interface VaultPayload {
   accessProfiles: AccessProfile[];
   selectedIds: string[];
   customServices: ServiceDefinition[];
+  syncOutbox?: SyncOutbox;
 }
 
 export interface KdfParams {
@@ -152,6 +154,7 @@ export function normalizePayload(
     accessProfiles: normalizeAccessProfiles(raw.accessProfiles),
     selectedIds: raw.selectedIds ?? [],
     customServices: normalizeStoredCustomServices(rawCustomServices),
+    syncOutbox: normalizeSyncOutbox(raw.syncOutbox),
   };
 }
 
