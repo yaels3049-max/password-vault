@@ -48,6 +48,8 @@ interface DashboardProps {
   onOpenCatalog?: () => void;
   /** AD-123-14 — app-actions menu «עריכת פרטי האתר» (custom sites). */
   onEditSiteDetails?: (service: Service) => void;
+  /** AD-123-11 — app-actions menu «הסרת אפליקציה» (every app); App owns confirm + Undo. */
+  onRemoveApp?: (service: Service) => void;
   /** AD-123-18 (3) — apps changed by a cloud reconcile (deleted in another window). */
   cloudReconcile?: {
     seq: number;
@@ -86,6 +88,7 @@ export default function Dashboard({
   onOpenProfileManagement,
   onOpenCatalog,
   onEditSiteDetails,
+  onRemoveApp,
   cloudReconcile = null,
 }: DashboardProps) {
   const logos = useServiceLogos(services);
@@ -300,6 +303,14 @@ export default function Dashboard({
               ? (service) => {
                   onEditSiteDetails(service);
                   setAssistance(null);
+                }
+              : undefined
+          }
+          onRemoveApp={
+            onRemoveApp
+              ? (service) => {
+                  setAssistance(null);
+                  onRemoveApp(service);
                 }
               : undefined
           }

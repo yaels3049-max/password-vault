@@ -21,15 +21,17 @@ import {
   forgetProfile,
   hasSessionSyncScope,
   markProfileSynced,
+  noteCloudServicesRead,
   pendingProfileIds,
   profileHasPendingWrite,
   profileSnapshot,
   rebaseSessionSyncScope,
+  servicesSeenInCloud,
   type CloudSyncBaseline,
 } from './sessionSyncScope';
 import { outboxOf, type ConfirmedInserts } from '../vault/syncOutbox';
-import { applyOutboxAfterHydrate } from '../digitalHome/cloudReconcile';
-import { isApprovedForUsers } from '../digitalHome/ownSiteDefinition';
+import { applyOutboxAfterHydrate, dropGoneFromVault } from '../digitalHome/cloudReconcile';
+import { ownSiteFollowsRegistry } from '../digitalHome/ownSiteDefinition';
 import {
   dropServicesMissingFromRegistry,
   fetchRegistryPresence,
@@ -788,11 +790,18 @@ export async function refreshWorkspaceFromCloud(
   if (!cloud) {
     return null;
   }
+  const seenInCloud = servicesSeenInCloud(userId);
+  noteCloudServicesRead(userId, cloud.serviceIds);
   const outboxServices = new Set(outboxOf(current).serviceIds);
   const knownServices = current.selectedIds.filter((id) => !outboxServices.has(id.trim()));
   if (cloud.serviceIds.size === 0 && knownServices.length > 0) {
-    // D-109-25: an empty cloud does not empty-win over a populated local Home.
-    return null;
+    // D-109-25: an empty cloud does not empty-win over a populated local Home — except apps this
+    // session saw in the cloud at its last successful read: they were removed elsewhere (KI-3).
+    const gone = knownServices.filter((id) => seenInCloud.has(id.trim()));
+    if (gone.length === 0) {
+      return null;
+    }
+    return dropGoneFromVault(current, { goneServiceIds: gone, goneProfileIds: [] });
   }
   const hydrated = await hydrateWorkspaceFromCloud(userId, cryptoKeys, current);
   if (hydrated === current) {
@@ -987,9 +996,9 @@ export async function hydrateWorkspaceFromCloud(
     for (const row of (customRows ?? []) as ServiceRegistryRow[]) {
       try {
         const definition = registryRowToServiceDefinition(row);
-        // D-123-8: the vault copy is the last version the owner may see — replaced only by an
-        // approved row; a row with no local copy is still added.
-        if (customById.has(definition.id) && !isApprovedForUsers(definition)) {
+        // D-123-8 / KI-5: the vault copy is the last version the owner may see — replaced only by
+        // an approved, complete row; a row with no local copy is still added.
+        if (customById.has(definition.id) && !ownSiteFollowsRegistry(definition)) {
           continue;
         }
         customById.set(definition.id, definition);

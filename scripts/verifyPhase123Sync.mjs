@@ -736,6 +736,61 @@ async function checkFailClosed(sessions) {
   return 'fail-closed: membership / profile read errors → no insert, no gone, refresh null; background gone → listener; empty cloud never reports gone nor inserts rows outside the outbox';
 }
 
+/**
+ * KI-3 (123.3 ruling) — an empty cloud membership stays "cannot verify" (D-109-25) except for apps
+ * this session saw in the cloud at its last successful read (login baseline / focus refresh).
+ */
+async function checkKi3EmptyCloudSeenApps(sessions) {
+  const db = makeDb();
+  setup(db);
+  seedCloud(db, ACCOUNT);
+  const { A, B } = await sessions();
+  await login(A, ACCOUNT);
+  let b = await login(B, ACCOUNT);
+  // Added in window A after B's login: B sees it at its focus refresh.
+  db.user_services.push({ id: 'us-svc-later', user_id: USER, service_id: 'svc-later', sort_order: 9 });
+  b = await B.refreshWorkspaceFromCloud(USER, KEY, b);
+  assert(b && b.selectedIds.includes('svc-later'), 'fixture: B sees svc-later at its focus refresh');
+  // Never seen in the cloud by this session and not in the outbox.
+  b = { ...b, selectedIds: [...b.selectedIds, 'svc-never'] };
+  for (const id of ['svc-pay', 'svc-solo', 'svc-gone', 'svc-later']) {
+    A.bumpDualWriteGeneration();
+    await A.removeUserServiceFromCloud(id);
+  }
+  assert(cloudServiceIds(db).length === 0, 'fixture: window A removed the last app (cloud membership empty)');
+
+  db.fail.add('user_services:select');
+  assert((await B.refreshWorkspaceFromCloud(USER, KEY, b)) === null, 'KI-3: a read error keeps everything (fail-closed)');
+  db.fail.clear();
+
+  const refreshed = await B.refreshWorkspaceFromCloud(USER, KEY, b);
+  assert(refreshed, 'KI-3: refresh on an empty cloud drops the apps this session saw in the cloud');
+  assert(!['svc-pay', 'svc-solo', 'svc-gone'].some((id) => refreshed.selectedIds.includes(id)), `KI-3: apps seen at the login baseline are dropped (left: ${refreshed.selectedIds.join()})`);
+  assert(!refreshed.selectedIds.includes('svc-later'), 'KI-3: an app seen at a focus refresh is dropped');
+  assert(refreshed.accessProfiles.length === 0 && Object.keys(refreshed.credentials).length === 0, 'KI-3: their profiles and credentials are dropped with them');
+  assert(refreshed.selectedIds.join() === 'svc-never', 'KI-3: a never-seen app is kept (D-109-25)');
+  assert((await B.refreshWorkspaceFromCloud(USER, KEY, refreshed)) === null, 'KI-3: on the next empty read the never-seen app still stays');
+
+  const { B: noRead } = await sessions();
+  noRead.scope.resetSessionSyncBaseline(USER, b);
+  assert((await noRead.refreshWorkspaceFromCloud(USER, KEY, b)) === null, 'KI-3: a session without a successful cloud read keeps everything on an empty cloud');
+
+  // Seen at the login baseline only (no refresh in between).
+  const db2 = makeDb();
+  setup(db2);
+  seedCloud(db2, ACCOUNT);
+  const { A: A2, B: B2 } = await sessions();
+  await login(A2, ACCOUNT);
+  const b2 = await login(B2, ACCOUNT);
+  for (const id of ACCOUNT.selectedIds) {
+    A2.bumpDualWriteGeneration();
+    await A2.removeUserServiceFromCloud(id);
+  }
+  const r2 = await B2.refreshWorkspaceFromCloud(USER, KEY, b2);
+  assert(r2 && r2.selectedIds.length === 0, 'KI-3: apps seen only at the login baseline are dropped on an empty cloud');
+  return 'KI-3: empty cloud on refresh drops the apps seen at the last successful read (login baseline and focus refresh) with their profiles / credentials; never-seen apps kept; read error / no baseline read → nothing changes';
+}
+
 async function checkNoOutboxNoInsertAndGeneration(sessions) {
   const db = makeDb();
   setup(db);
@@ -942,6 +997,7 @@ const SCENARIOS = [
   checkOutboxClearedOnlyOnConfirm,
   checkFocusRefresh,
   checkFailClosed,
+  checkKi3EmptyCloudSeenApps,
   checkNoOutboxNoInsertAndGeneration,
   checkLoginWritesOnlyDiffs,
   checkFailedInsertKeepsId,
@@ -1100,6 +1156,29 @@ const MUTATIONS = [
     [PERSISTENCE]: replaceOnce(read(PERSISTENCE),
       '    return { ok: false, error };\n',
       '    if (state.syncOutbox) cloudConfirmedListener?.(state.syncOutbox);\n    return { ok: false, error };\n', o),
+  })],
+  ['M31 KI-3: a seen app stays after its removal elsewhere (empty cloud)', (o) => ({
+    [PERSISTENCE]: replaceOnce(read(PERSISTENCE),
+      '    const gone = knownServices.filter((id) => seenInCloud.has(id.trim()));',
+      '    const gone: string[] = [];', o),
+  })],
+  ['M32 KI-3: a never-seen app is dropped on an empty cloud', (o) => ({
+    [PERSISTENCE]: replaceOnce(read(PERSISTENCE),
+      '    const gone = knownServices.filter((id) => seenInCloud.has(id.trim()));',
+      '    const gone = knownServices.filter((id) => seenInCloud.size >= 0 || id === "");', o),
+  })],
+  ['M33 KI-3: a read error drops apps', (o) => ({
+    [PERSISTENCE]: replaceOnce(read(PERSISTENCE),
+      '  if (!cloud) {\n    return null;\n  }\n  const seenInCloud = servicesSeenInCloud(userId);',
+      '  if (!cloud) {\n    return dropGoneFromVault(current, { goneServiceIds: current.selectedIds, goneProfileIds: [] });\n  }\n  const seenInCloud = servicesSeenInCloud(userId);', o),
+  })],
+  ['M34 KI-3: a focus refresh read is not recorded (seen = login baseline only)', (o) => ({
+    [PERSISTENCE]: replaceOnce(read(PERSISTENCE), '  noteCloudServicesRead(userId, cloud.serviceIds);\n', '', o),
+  })],
+  ['M35 KI-3: the login baseline does not record the apps seen in the cloud', (o) => ({
+    [SCOPE]: replaceOnce(read(SCOPE),
+      '    cloudServiceIds: new Set([...cloud.serviceIds].map((id) => id.trim())),',
+      '    cloudServiceIds: new Set(),', o),
   })],
 ];
 

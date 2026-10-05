@@ -15,6 +15,8 @@ interface SessionSyncScope {
   userId: string;
   profileSnapshots: Map<string, string>;
   credentialRefs: Map<string, Credential | undefined>;
+  /** KI-3 — app memberships in the cloud at this session's last successful read. */
+  cloudServiceIds: Set<string>;
 }
 
 let scope: SessionSyncScope | null = null;
@@ -51,6 +53,7 @@ export function resetSessionSyncBaseline(userId: string, state: VaultState): voi
     userId: userId.trim(),
     profileSnapshots: new Map(state.accessProfiles.map((p) => [p.id, profileSnapshot(p)])),
     credentialRefs: new Map(state.accessProfiles.map((p) => [p.id, state.credentials[p.id]])),
+    cloudServiceIds: new Set(),
   };
 }
 
@@ -76,11 +79,28 @@ export function resetSessionSyncBaselineFromCloud(
       local === undefined || sameCredential(local, cloud.credentials.get(profile.id)) ? local : NOT_IN_CLOUD,
     );
   }
-  scope = { userId: userId.trim(), profileSnapshots, credentialRefs };
+  scope = {
+    userId: userId.trim(),
+    profileSnapshots,
+    credentialRefs,
+    cloudServiceIds: new Set([...cloud.serviceIds].map((id) => id.trim())),
+  };
 }
 
 export function clearSessionSyncScope(): void {
   scope = null;
+}
+
+/** KI-3 — apps this session saw in the cloud at its last successful read (login / refresh). */
+export function servicesSeenInCloud(userId: string): Set<string> {
+  return new Set(scopeFor(userId)?.cloudServiceIds ?? []);
+}
+
+/** KI-3 — a successful cloud read replaces what this session has seen. */
+export function noteCloudServicesRead(userId: string, serviceIds: Set<string>): void {
+  const current = scopeFor(userId);
+  if (!current) return;
+  current.cloudServiceIds = new Set([...serviceIds].map((id) => id.trim()));
 }
 
 export function hasSessionSyncScope(userId: string): boolean {
@@ -158,6 +178,7 @@ export function rebaseSessionSyncScope(
     userId: previous.userId,
     profileSnapshots: new Map(),
     credentialRefs: new Map(),
+    cloudServiceIds: previous.cloudServiceIds,
   };
   for (const profile of state.accessProfiles) {
     if (!cloudProfileIds.has(profile.id)) continue;

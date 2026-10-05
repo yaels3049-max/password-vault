@@ -15,6 +15,7 @@ PHASE=123
   - AD-123-19 (a) and (b) implemented.
 - B-1 (re-frozen): the tree was frozen again after these changes. Fingerprint `c06950a50486cfef9fcfd041622aebbd3e5dfaa7a3d85e99038d9dff93ff1c21` (command and scope: section "Frozen-tree fingerprint" at the end). Every result marked "frozen tree" below ran on that tree; no source, test or config file was edited after it. Submitted together for Manager → Architect review.
 - Fix round D-123-6…8: COMPLETE — D-123-6, D-123-7 and D-123-8 implemented; one clean sequential T-1 run (68 jobs) + `tsc` + build PASS on frozen tree `1de67427…e387`. Owner re-check: awaiting Owner (after the Architect review). 123.3 not open. See section "Fix round D-123-6…8".
+- Slice 123.3 (Remove app): COMPLETE — Step 0 DELETED (accepted), Item 0a (KI-5), confirm + Undo, AD-123-11 commit order, AD-123-12 edge rules, PQ-123-1, AD-123-14 clarification, KI-3. One clean sequential T-1 run (70 jobs) + `tsc` + build PASS on frozen tree `664646a0…18af` (identical before / after). Owner manual steps: awaiting Owner. Stopping for Manager → Architect review; 123.4 not open. See section "Slice 123.3 - Remove app".
 
 ## Source References
 - `team-Yuri/manager-phase123.md` — sections "Slice 123.1", "Slice 123.2", "Task R-123-1", N-1…N-8, Test Policy (T-1).
@@ -1621,3 +1622,299 @@ Not run, per T-1 / standing rules: full mutation sweeps of AppContext / AdminWor
 Awaiting Owner, after the Architect review: item 4 if still open; D-123-7 (create / edit keep the typed URL; www / non-www recognised); D-123-6 (approve message); D-123-8 (an own site edited by an admin stays as the owner's copy until approved; after approval with changed fields the window shows «שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.» with «עריכת פרופיל»; global sites behave as today). 123.3 is not open.
 
 Stopping for the Manager / Architect review of D-123-8.
+
+## Slice 123.3 - Remove app (opened 2026-10-05)
+
+### WIP commit (baseline)
+- `0dfb9de70f50933b86b3b140c13bda28c8af523a`, on top of `af881f6b`. It holds the accepted fix-round tree: fingerprint `1de67427…e387` confirmed immediately before the commit, 19 files, explicit paths only, team docs under lowercase `team-yuri/`, no `node_modules/.tmp`. After the commit, `git diff` for `src scripts supabase` was empty.
+- All 123.3 fingerprints use `0dfb9de7` as BASE, with scope `-- src scripts supabase`. Each is the binary diff plus the untracked files.
+
+### Item 0a - KI-5 (approved + complete, one shared helper)
+The vault copy of an own site is now replaced on hydrate only by a row that is approved AND complete (category + icon). This is the same rule the resolver uses, and both now call one helper, `ownSiteFollowsRegistry` in `src/digitalHome/ownSiteDefinition.ts`. A row with no local copy is still added. `persistence.ts` has no other change: the import line and the 3 lines of the block.
+
+```diff
++export function ownSiteFollowsRegistry(
++  entry: Pick<ServiceDefinition, 'metadata' | 'loginFields' | 'category' | 'icon'> | null | undefined,
++): boolean {
++  return Boolean(entry?.category && entry.icon) && isApprovedForUsers(entry);
++}
+ ...
+-  if (registryEntry?.category && registryEntry.icon && isApprovedForUsers(registryEntry)) {
++  if (registryEntry && ownSiteFollowsRegistry(registryEntry)) {
+```
+
+```diff
+-import { isApprovedForUsers } from '../digitalHome/ownSiteDefinition';
++import { ownSiteFollowsRegistry } from '../digitalHome/ownSiteDefinition';
+ ...
+-        // D-123-8: the vault copy is the last version the owner may see — replaced only by an
+-        // approved row; a row with no local copy is still added.
+-        if (customById.has(definition.id) && !isApprovedForUsers(definition)) {
++        // D-123-8 / KI-5: the vault copy is the last version the owner may see — replaced only by
++        // an approved, complete row; a row with no local copy is still added.
++        if (customById.has(definition.id) && !ownSiteFollowsRegistry(definition)) {
+```
+
+Pins updated narrowly (superseded assertions; each change is commented with KI-5):
+- `verifyPhase123AppContext.mjs`: `checkPersistenceScope` now pins the new block text. Everything else in that check is unchanged.
+- `verifyPhase123D8OwnSite.mjs`:
+  - The `af881f6b` scope check uses the new import and block texts.
+  - New static group `checkKi5SharedPredicate`. It checks that:
+    - `persistence.ts` equals `0dfb9de7` once the import and block are swapped back;
+    - the helper body is approved + category + icon;
+    - the resolver and the hydrate block both use only the helper.
+  - New behaviour cases:
+    - resolver: an approved entry without an icon keeps the vault copy;
+    - hydrate: an approved row with `category_id: null` keeps the existing copy;
+    - hydrate: an approved row with no icon and no local copy is still added.
+  - All 17 earlier mutations are kept. M1, M2, M15 and M17 are re-anchored to the helper text. New mutations:
+    - M18: hydrate bypasses completeness (an approved but incomplete row replaces the copy);
+    - M19: the resolver uses its own predicate instead of the shared helper;
+    - M20: a hydrate change outside the block.
+
+| Verify | Result |
+|---|---|
+| `verifyPhase123D8OwnSite` (full) | PASS: 10 groups / 20 mutations caught |
+| `verifyPhase123AppContext --no-mutations` | exit 0 |
+| `verifyPhase123Sync --no-mutations` | exit 0 |
+
+Working-tree fingerprint after Item 0a: `8998f16a…b3f5`, 4 files (the two verifies, `ownSiteDefinition.ts`, `persistence.ts`). This is not the final freeze. The single T-1 run comes at the end of 123.3.
+
+### 123.3 Step 0 - AD-123-16 (owner delete of a pending own row)
+**Status: DELETED (2026-10-05): owner view + the Owner's post-run SQL (MC-3), 0 rows.**
+
+Run (Owner decision, test environment):
+- One PowerShell command. The test-account variables and `NODE_TLS_REJECT_UNAUTHORIZED=0` (Architect-approved, this single run only, because of a local TLS inspector) were set, used and removed in that command. Afterwards, none of the three is left in the shell.
+- The credentials are not in any file, log or this report. TLS-off is not in any project file or verify.
+
+| Step | Result |
+|---|---|
+| Sign-in (anon client) | ok, user `2bc7…` (36 chars) |
+| Custom add (real `createCustomServiceDefinition` → `upsertCustomServiceRegistryRow`) | ok, id shape `custom-<uuid>`, marker host `pv-step0-0647de59.example.test` |
+| Owner read before | 1 row: `source_type='user'`, `service_status='pending_review'`, `owner_user_id` = the signed-in user |
+| `deleteCustomServiceRegistryRow(id)` as the owner | returned without error |
+| Owner read after | 0 rows, no error |
+| Owner SQL (MC-3), before the run (10:29) | 0 rows. The row did not exist yet, so this is not proof. |
+| Owner SQL (MC-3), after the run (10:31) | "Success. No rows returned": 0 rows. This is the independent proof. |
+
+Conclusion: DELETED. Under the current RLS, the owner can delete her own pending custom row. AD-123-16 needs no migration and no owner-select policy. `%TEMP%\pv-step0` was deleted after the run.
+
+Execution path (Architect addition, Owner-authorized, test environment):
+- One-off script `%TEMP%\pv-step0\step0.mjs`, outside the repo and not committed. It will be deleted after the run.
+  1. It reads only `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` from `.env.local`. They are not printed and not written into the bundle: `import.meta.env` maps to a runtime global.
+  2. It bundles the real `upsertCustomServiceRegistryRow`, `deleteCustomServiceRegistryRow`, `createCustomServiceDefinition` and `getSupabaseClient`.
+  3. It signs in with the anon client using `PV_TEST_EMAIL` / `PV_TEST_PASSWORD` from the process environment. These are never echoed, logged or written.
+  4. It creates one custom site, `https://pv-step0-<8 hex>.example.test/` in category `shopping`, through the real custom-add registry path (`source_type='user'`, `service_status='pending_review'`, own `owner_user_id`).
+  5. It reads the row as the owner, calls `deleteCustomServiceRegistryRow(id)`, and re-reads as the owner.
+  6. Output: the id shape only, the redacted user id (4 chars + length), and error code / message only.
+- Dry run (`--dry-run`: bundle + client, no sign-in, no write): passed.
+- Independent proof (MC-3): the Owner's read-only SQL, below. Expected result if DELETED: 0 rows.
+
+```sql
+select id, source_type, service_status, owner_user_id is not null as has_owner, created_at
+from service_registry
+where primary_url like 'https://pv-step0-%.example.test/%';
+```
+
+Results: recorded in the table above. Architect: Step 0 = DELETED, ACCEPTED (arch Review Notes "123.3 progress (2026-10-05)"). No migration and no owner-select policy; the AD-123-16 conditional branch is closed. Item 0a (KI-5) is accepted as part of this submission.
+
+### 123.3 Implementation
+**Status: COMPLETE.** One clean sequential T-1 run (70 jobs, all exit 0), plus `tsc` and build, on frozen tree `664646a0…18af`. The fingerprint was identical before and after. Owner manual steps: awaiting Owner. Stopping for Manager → Architect review. 123.4 is not open.
+
+**User-side primitives** (new files, nothing imported from `src/admin`):
+- `src/digitalHome/RemoveAppConfirmDialog.tsx`:
+  - `role="alertdialog"`, `aria-modal`, labelled and described, `dir="rtl"`;
+  - focus starts on «ביטול»; Tab / Shift+Tab are trapped; Escape cancels (capture phase, so no other Escape handler runs); focus returns to the opener if it is still in the page;
+  - copy: «להסיר את {name}?» / «כל הפרופילים ופרטי ההתחברות של האפליקציה יימחקו מכל המכשירים שלך.» / «הסרה» (danger) / «ביטול».
+- `src/digitalHome/UndoToast.tsx`: `role="status"`, `aria-live="polite"`, RTL; «האפליקציה {name} הוסרה.» with a seconds countdown (`UNDO_WINDOW_MS = 5000`); the «ביטול» button gets focus when nothing else has it, and Tab reaches it.
+- CSS in `src/App.css` (`.dh-confirm-*`, `.dh-undo-*`, `.dh-remove-error`, `.la-app-menu-item--danger`). New message `LABEL_REMOVE_APP = 'הסרת אפליקציה'`.
+
+**Menu (AD-123-11 / AD-123-14 clarification).**
+- New predicate `isUserCustomApp(service, inVaultCustomServices)` in `appContext.ts`: in vault `customServices` AND runtime `source === 'user-created'`.
+- The panel uses this predicate for `appContextActions`.
+- In the panel: `showEditSiteDetails = menu.edit_site_details && onEditSiteDetails`, `showRemoveApp = menu.remove_app && onRemoveApp`, `showAppMenu = showEditSiteDetails || showRemoveApp`.
+- Effect:
+  - built-in apps get «הסרת אפליקציה» in every launch kind;
+  - user-created customs also get «עריכת פרטי האתר»;
+  - a promoted id (in `customServices` but resolved to the global) gets remove only.
+  - `App.openSiteDetailsEdit` applies the same rule.
+- The `showFieldsUpdated` input (D-123-8) is unchanged.
+
+**Flow (`App.tsx`).**
+- Digital Home (panel → Dashboard → App) and ManageServices (`removeService`) both call `requestRemoveApp(id)`.
+- `requestRemoveApp`: if this id is already pending, nothing happens. If another removal is pending, it is committed first (AD-123-12). Then the confirm dialog opens.
+- Confirm → `beginPendingRemoval`:
+  - React state + ref only: `{serviceId, serviceName, url, deleteOwnRow, deadline, committing}`; `deleteOwnRow` comes from the single custom rule;
+  - one 5 s timer;
+  - the tile is hidden on Digital Home, in the catalog and in ManageServices through `visibleSelectedIds` (the CatalogGate pins on `selectedServices` / `allServices` stay unchanged).
+  - Nothing is written.
+- Undo: clears the timer and the pending state; writes nothing.
+- `commitPendingRemoval()` returns `'removed' | 'failed' | 'none'` (`'none'` = nothing pending). It is shared by the timer, a second request, logout / lock, a catalog re-add and a custom re-add with the same URL identity. While it runs, the toast is hidden.
+- Commit = `changeSelection(id, 'remove', {deleteOwnRow})`, in AD-123-11 order:
+  1. bump the dual-write generation;
+  2. `removeUserServiceFromCloud(id)`;
+  3. `persistSelectionState(removeAppFromVault(state, id), {awaitCloudSync: true})`;
+  4. `removeUserServiceFromCloud(id)` again (re-verify);
+  5. user-created custom only: `deleteCustomServiceRegistryRow(id)`, with one retry. A second failure gives a dev-only `console.warn`; nothing is thrown or reverted.
+  - Steps 2–4 fail → the tile reappears, Hebrew error banner (`role="alert"`, `SELECTION_REMOVE_CLOUD_FAILED_MESSAGE`), result `'failed'`.
+  - If steps 3 / 4 fail, the previous vault is written back local-only (`skipCloudSync: true`), so local stays unchanged (see Known Issue 1).
+- `removeAppFromVault` (`serviceSelection.ts`, pure) removes:
+  - the selection;
+  - every profile of the app, with its credentials, plus a credential keyed by the service id;
+  - the `customServices` entry.
+  - It adds nothing to the outbox, and the removed profile ids leave it (arch ruling 3).
+- Arch §7: `addToSelection` of an app that is not selected first drops leftover profiles / credentials of that app, so a re-add starts with 0 profiles.
+- AD-123-12:
+  - one pending removal at a time;
+  - a second request, logout and lock (`handleLogout`) commit first;
+  - `addApp` of the pending id commits first and then adds fresh; if that commit fails, the add returns the failure message;
+  - `addCustomService` with the same URL identity commits first.
+- PQ-123-1: the pending state is never stored, so a reload during the window commits nothing.
+
+**KI-3 (ruling: an app this session saw in the cloud is dropped when the cloud read comes back empty).**
+- `sessionSyncScope.ts` keeps `cloudServiceIds` per session: the login baseline read, then every focus refresh read. New exports: `servicesSeenInCloud(userId)` (a copy) and `noteCloudServicesRead(userId, ids)`.
+- In `refreshWorkspaceFromCloud`, for an empty cloud with local apps:
+  - local apps this session saw in the cloud are dropped with their profiles / credentials (`dropGoneFromVault`);
+  - apps never seen there are kept (D-109-25 protection);
+  - nothing seen → `null`, as before;
+  - read errors → `null` (fail-closed).
+- The dual-write `canReportGone` is unchanged.
+
+### 123.3 Verifies
+- **New `scripts/verifyPhase123RemoveApp.mjs`:** 13 check groups, 20 mutations.
+  - Pure groups:
+    - `removeAppFromVault`, including outbox ruling 3;
+    - leftover cleanup on re-add;
+    - the single custom rule.
+  - Static groups:
+    - commit order and step 5;
+    - pending state in memory only and the commit-first call sites;
+    - panel menu;
+    - N-1 / N-4 / N-5 / N-6 / N-8.
+  - Browser groups (real `App` in StrictMode; persistence / vault / registry delete instrumented):
+    - menu in all four launch kinds;
+    - confirm dialog + Undo toast (Escape, focus trap, countdown, no writes);
+    - commit order and the persisted vault;
+    - step 2 / 3 / 4 failures;
+    - step-5 retry;
+    - AD-123-12 edge rules (second request, lock, catalog re-add with 0 profiles) and the reload (PQ-123-1).
+  - Mutations M1–M20 cover the required list:
+    - step order swapped;
+    - Undo writes;
+    - a failed commit hides the tile;
+    - step 5 reverts the removal;
+    - pending state persisted;
+    - re-add keeps the old profiles;
+    - credentials kept;
+    - `window.confirm` used;
+    - menu hidden for one launch kind;
+    - edit entry shown for a promoted id;
+    - plus 10 extras (M11–M20).
+- **`scripts/verifyPhase123Sync.mjs`:** new scenario `checkKi3EmptyCloudSeenApps` (15 groups) and mutations M31–M35 (35 in total). The scenario checks that, after window A empties the cloud:
+  - a read error gives `null`;
+  - apps seen at a focus refresh or at the login baseline are dropped with their profiles and credentials;
+  - a never-seen app is kept;
+  - the next empty read gives `null`;
+  - a session without a baseline read gives `null`.
+
+### 123.3 Superseded assertions (narrow updates, each commented with its AD)
+| Script / check | Old assertion | New assertion | AD |
+|---|---|---|---|
+| `verifyPhase123AppContext` `checkPanelStatic` | no «הסרת אפליקציה» before 123.3 | `showRemoveApp = actions.menu.remove_app && Boolean(onRemoveApp)` | AD-123-11 |
+| `verifyPhase123AppContext` `checkNoNewWriteSites` (N-3) | App.tsx `persistVault` count ≤ HEAD + 3 (AD-123-18) | ≤ HEAD + 3 + 1. The +1 is the local-only restore after a failed step 3 / 4. The "every added call is local-only" pin is unchanged | AD-123-11 |
+| `verifyPhase123Catalog` `withoutD1235` | `addCustomService` = HEAD after the D-123-5 undo | the undo also strips the `commitPendingRemovalForUrl` line | AD-123-12 |
+| `verifyPhase123Catalog` `checkMenuOutsideProfileGate` | menu = `edit_site_details` only, no remove-app | `showRemoveApp` = `menu.remove_app`, not gated by launch kind / profile UI; `showAppMenu` = edit \|\| remove | AD-123-11 |
+| `verifyPhase123Catalog` `checkProtectedUnchanged` | `serviceSelection.ts` unchanged | removed from the protected list (`removeAppFromVault`, leftover cleanup) | AD-123-11, arch §7 |
+| `verifyPhase123Catalog` M4 anchor | `const showAppMenu = showEditSiteDetails;` | `const showAppMenu = showEditSiteDetails \|\| showRemoveApp;` | AD-123-11 |
+| `verifyPhase123Catalog` `checkAppMenuAllKinds` | «עריכת פרטי האתר» for every vault-custom app in all kinds; no app menu for a built-in app | remove-app in every kind; promoted ids have no edit entry; the save path uses a user-created app; built-in menu = remove-app only | AD-123-11, AD-123-14 clarification |
+| `verifyPhase123D8OwnSite` `checkKi5SharedPredicate` / `checkHydrateScope` | `persistence.ts` = `0dfb9de7` after the KI-5 undo; `sessionSyncScope.ts` unchanged | first the exact KI-3 edits are undone (each must appear exactly once), then the same identities are checked | KI-3 ruling |
+
+### T-1 — Slice 123.3 final (frozen tree `664646a0…18af`, 2026-10-05 11:11:39 → 11:25:00)
+- **One** sequential run: a single inline PowerShell loop running 70 jobs one after another.
+  - Before it, `Get-CimInstance Win32_Process` showed no `pv-t1` / `scripts/verifyPhase` process; after it, none either. No other runner was started.
+  - Results: `%TEMP%\pv-t1-123-3-results.txt` (70 job lines, `nonzero=0`); one log per job in `%TEMP%\pv-t1-123-3-logs`.
+- **Fingerprint:** `%TEMP%\pv-fingerprint-123-3.mjs` (read-only helper outside the repo). BASE `0dfb9de7`, scope `-- src scripts supabase`: binary diff + untracked files. 14 tracked files changed, 3 untracked, `diff_bytes=70805`.
+  - Before (11:11:30): `664646a004d28fe107964527e69b2dfc6c5ec9e88aa9d5e87f2060a8d6c318af`.
+  - After T-1 + `tsc` + build (11:26:09): `664646a004d28fe107964527e69b2dfc6c5ec9e88aa9d5e87f2060a8d6c318af`. Identical.
+  - The Item 0a value `8998f16a…b3f5` is superseded.
+
+| Run | Result |
+|---|---|
+| `verifyPhase123RemoveApp --no-mutations` / full | PASS: 13 groups (19s) / 20 mutations caught (38s) |
+| `verifyPhase123Sync --no-mutations` / full (includes M31–M35) | PASS: 15 groups / 35 mutations caught (8s) |
+| `verifyPhase123D8OwnSite --no-mutations` / full | PASS: 10 groups / 20 mutations caught |
+| `verifyPhase123AppContext --no-mutations` / `--mutations=M3,M8,M10,M11,M12,M13,M14,M15` | PASS: 23 groups / 8 caught |
+| `verifyPhase123Catalog --no-mutations` / `--mutations=M1…M18` (includes M3 / M4) | PASS: 19 groups / 18 caught (2m 10s) |
+| `verifyPhase123CatalogGate --no-mutations` / full | PASS: 8 groups / 20 caught |
+| `verifyPhase123FixD6D8 --no-mutations` / full | PASS: 6 groups / 9 caught |
+| Touched (every non-retired verify reading a touched file, found with `rg`, + 108 ModalAudience as before): 116 CustomAddIdentity, 102 CredentialSchema, 103 Execution, 104 ServiceManagement, 108 BrowserIntegration, 108 KnownServiceBootstrap, 108 M1, 108 ModalAudience, 109 Accounts, 111 Assets, 113 LoginAssistance, 117 ManagedAutofill, ServiceSourceOwnership | 13/13 PASS |
+| Admin: 40 × `verifyPhase121*`, `verifyPhase122AdminNotes`, `verifyPhase122SubmitterProfiles`, `verifyPhase122AdminWorkspace --no-mutations` | 43/43 PASS (DeleteService: 4 groups / 43 mutations; AdminWorkspace: 32 groups, 1m 44s) |
+| `git diff --stat 0dfb9de7 -- src/admin` (inside the run) | empty |
+| `npx tsc -b` (separate plain command) | exit 0 |
+| `npm run build` (separate plain command) | exit 0 (existing chunk-size warning); `extension/`, `package*.json`, `supabase/` unchanged |
+
+Before the freeze (not evidence):
+- Pre-runs found one superseded pin, the AppContext N-3 count, fixed as in the table above.
+- `npx tsc -b` and lints were clean.
+
+Not run, per T-1 / standing rules:
+- full mutation sweeps of AppContext / Catalog / AdminWorkspace (END OF ROUND);
+- `runOfflineRegression`;
+- live-only `verifyPhase101Supabase` / `verifyPhase102Registry`.
+
+No live run: the test credentials are not reused, and env / secrets / DB stay off-limits.
+
+### 123.3 Known Issues
+1. **Step 3 / 4 failure after step 2 succeeded.** By then the cloud membership is already deleted, while local keeps the app (restored as required). On the next login reconcile / sync the app may be dropped as "removed elsewhere", or written back by a later dual-write. The user saw the error and the tile came back, so the outcome is still consistent with "failed", but cloud and local can differ until the next sync.
+2. **Dual-write still does not report "gone" against an empty cloud** (`canReportGone` is unchanged). The KI-3 drop happens only on the focus / visibility refresh of another window.
+3. **`dropGoneFromVault` keeps the `customServices` entry** of an app removed in another window. This is pre-existing and not changed. The membership and profiles go; the custom definition copy stays in the vault without being selected.
+4. A registry-only, incomplete own row added by hydrate (no category / icon; Item 0a rule: "a row with no local copy is still added") could fail `definitionToLegacyService` and not render. This is pre-existing and not changed.
+5. `commitPendingRemoval` also returns `'none'` (nothing pending), in addition to the planned `'removed' | 'failed'`.
+6. ManageServices removal is covered statically (same `requestRemoveApp`); the browser groups drive Digital Home only.
+7. **RC-1 — the own registry row survives when step 5 fails twice** (Architect question; pre-accepted once documented; cleanup is for 123.4). `App.deleteOwnCustomRow` tries `deleteCustomServiceRegistryRow(id)` twice. After the second failure it only logs a dev warning. The traced code differs from the question in two places, marked *correction* below.
+   - **What the user sees right away:**
+     - No error. Nothing is thrown or reverted, and `commitPendingRemoval` returns `'removed'`.
+     - The tile is gone.
+     - The vault no longer holds the selection, the profiles, the credentials or the `customServices` entry (`removeAppFromVault`).
+     - In the cloud, the `user_services` row is deleted (`removeUserServiceFromCloud`). Its `access_profiles` and `encrypted_credentials` rows go with it through the FK cascade (`supabase/migrations/20260702121500_phase101_schema.sql`: `access_profiles.user_service_id … on delete cascade`, `encrypted_credentials.access_profile_id … on delete cascade`).
+   - **Catalog, same session — *correction*:**
+     - The catalog loader reads only `service_status = 'active'` rows (`src/registry/registryLoader.ts` → `fetchRegistryRows`, `isCatalogVisibleRegistryRow`).
+     - An own row is created as `pending_review` (`src/registry/registryMapper.ts`; Step 0 also read `pending_review`), so it is not in `catalogDefinitions`.
+     - `mergeCustomDefinitions` (`App.tsx`) therefore has no registry-only copy to keep, and the vault entry is gone.
+     - So, immediately after the removal, a pending own site is **not** listed in the catalog. Only an own row that is `active` would still be listed right away (through `catalogDefinitions` → `mergeCustomDefinitions` → `allServices`).
+   - **When the row returns — *correction*: not only at the next login:**
+     - `hydrateWorkspaceFromCloud` (`persistence.ts`) reads the owner's rows (`owner_user_id = me`, `source_type = 'user'`, no status filter). A row with no local copy is added to `customServices` (the Item 0a rule). `reconcileWithRegistry` keeps it, because the row exists.
+     - Hydrate runs at the next login. It also runs on the next focus / visibility refresh, through `refreshWorkspaceFromCloud` → `applyOutboxAfterHydrate` (`...hydrated` keeps `customServices`) → `commitReconciledState`, as long as the cloud still has at least one app for this user. If the cloud is empty, the refresh stops before hydrate, so the row returns only at the next login.
+     - The site is not selected: membership comes from the cloud, or from the local selection, and neither holds the id. No tile comes back.
+   - **Catalog after that hydrate:**
+     - The site is listed under its category as not added, with the add action.
+     - Own sites are always listed: AD-123-19 (b), `catalogGateState` → `'own_site'`, `isShownInUserCatalog` in `AppCatalog`. The entry comes from vault `customServices` → `mergeCustomDefinitions` → `allServices`.
+   - **Re-add:**
+     - `addApp` → `addToSelection` → `removeAppProfiles` (arch §7): the app comes back fresh with 0 profiles.
+     - The old credentials cannot return: they were removed locally (step 3), and their cloud rows were cascaded away in step 2.
+   - **No later retry:**
+     - Nothing queues or retries the delete.
+     - The row stays until the user adds the site and removes it again (step 5 runs again, because it is still a user-created custom app), or an admin deletes it.
+     - The admin still sees the row as the user's pending submission, so it can still be approved (promoted in place) or deleted there.
+   - **Impact:** no data exposure. The row holds only the site definition, and RLS limits it to its owner and admins. The failure is rare: the delete must fail twice. Leftover `customServices` entries and orphan own rows are for 123.4.
+
+### 123.3 Owner manual steps — awaiting Owner (consolidated final run)
+Not run: no Owner session; the test credentials are not reused.
+1. Remove flow: open an app → ⋮ → «הסרת אפליקציה» → dialog (Escape / «ביטול» cancel; «הסרה» confirms) → tile disappears, toast with countdown.
+2. Undo: «ביטול» within 5 s → the tile is back with its profiles; nothing changed after a reload.
+3. Commit: wait 5 s → the app is gone after a reload, on a second device, and from the catalog as "not added"; re-adding it starts with 0 profiles.
+4. Cross-window last-app removal (KI-3): two windows. Remove the last app in window A; refocus window B → the app disappears there too.
+5. Own site: remove a user-created custom site → its registry row is gone (Owner SQL on `service_registry` by id → 0 rows). A promoted site keeps its global row.
+6. Pending re-checks from earlier rounds: D-123-6 (approve message), D-123-7 (typed URL kept; www / non-www recognised), D-123-8 (owner copy until approval; «שדות הכניסה לאתר עודכנו …» after approval with changed fields), and the live `[catalog-gate]` hidden-site count.
+
+### Changed files (123.3, vs `0dfb9de7`)
+- **Source:**
+  - `src/App.tsx`, `src/App.css`, `src/Dashboard.tsx`;
+  - `src/digitalHome/appContext.ts`, `src/digitalHome/ownSiteDefinition.ts` (Item 0a), new `src/digitalHome/RemoveAppConfirmDialog.tsx`, new `src/digitalHome/UndoToast.tsx`;
+  - `src/loginAssistance/LoginAssistancePanel.tsx`, `src/loginAssistance/messages.ts`;
+  - `src/serviceManagement/serviceSelection.ts`;
+  - `src/supabase/persistence.ts` (Item 0a + KI-3), `src/supabase/sessionSyncScope.ts`.
+- **Tests:** new `scripts/verifyPhase123RemoveApp.mjs`; modified `scripts/verifyPhase123Sync.mjs`, `scripts/verifyPhase123AppContext.mjs`, `scripts/verifyPhase123Catalog.mjs`, `scripts/verifyPhase123D8OwnSite.mjs`.
+- `src/admin`, `extension/`, `supabase/`, package files: unchanged. No commit made.
+
+Stopping for Manager → Architect review. 123.4 is not open.

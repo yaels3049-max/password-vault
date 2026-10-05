@@ -57,8 +57,16 @@ export function initialActiveProfile(profiles: AccessProfile[]): string | null {
 }
 
 /**
- * AD-123-2 — actions of the floating window for one app. `isCustom` = the app is in the vault
- * `customServices` (AD-123-14).
+ * AD-123-14 (123.3 clarification) — the single Digital Home "custom" rule: the app is in the vault
+ * `customServices` AND its runtime source is `user-created`. A vault-custom id whose runtime source
+ * is the catalog (promoted) is catalog-origin.
+ */
+export function isUserCustomApp(service: { source?: string }, inVaultCustomServices: boolean): boolean {
+  return inVaultCustomServices && service.source === 'user-created';
+}
+
+/**
+ * AD-123-2 — actions of the floating window for one app. `isCustom` = `isUserCustomApp` (AD-123-14).
  */
 export function appContextActions(
   service: { id: string },

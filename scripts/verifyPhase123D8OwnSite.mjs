@@ -16,6 +16,10 @@
  *    by the real App merge. Stubbed seams only: supabase/persistence, useServiceLogos.
  * Synthetic fixtures only; no credential value is logged.
  *
+ * KI-5 (123.3 Item 0a): the resolver and the hydrate block share one predicate,
+ * `ownSiteFollowsRegistry` (approved + category + icon); persistence.ts differs from the WIP commit
+ * 0dfb9de7 only in that block and its import.
+ *
  * H-1: every layer and every mutation run is bounded; a timeout fails the run and never counts as
  * a caught mutation.
  *
@@ -164,7 +168,7 @@ function pureEntry(overrides) {
   const merge = topLevelFunction(app, 'mergeCustomDefinitions');
   assert(isUser && merge, 'fixture: App merge functions located');
   return `
-export { resolveOwnSiteDefinition, isApprovedForUsers, hiddenCredentialFieldIds } from './src/digitalHome/ownSiteDefinition.ts';
+export { resolveOwnSiteDefinition, isApprovedForUsers, ownSiteFollowsRegistry, hiddenCredentialFieldIds } from './src/digitalHome/ownSiteDefinition.ts';
 export { registryRowToServiceDefinition } from './src/registry/registryMapper.ts';
 export { definitionToLegacyService } from './src/catalog/definitionToLegacyService.ts';
 export { resolveCredentialEntry } from './src/service/credentialSchema.ts';
@@ -235,6 +239,8 @@ function checkResolver(mod) {
   assert(same(r(copies.gone, null).definition, copies.gone) && !r(copies.gone, undefined).approved, 'D-123-8: no registry row → the vault copy');
   const noCategory = def({ ...rows.ap, category_id: null });
   assert(mod.isApprovedForUsers(noCategory) && same(r(copies.ap, noCategory).definition, copies.ap), 'D-123-8: an approved entry without category (not renderable) → the vault copy');
+  const noIcon = def({ ...rows.ap, icon: null });
+  assert(mod.isApprovedForUsers(noIcon) && same(r(copies.ap, noIcon).definition, copies.ap), 'KI-5: an approved entry without icon → the vault copy');
   const legacyOk = mod.definitionToLegacyService(r(copies.ap, noCategory).definition);
   assert(legacyOk.id === 'own-ap', 'D-123-8: the resolved definition always renders as a tile');
   const unknown = catalog.find((d) => d.id === 'own-unknown');
@@ -398,16 +404,23 @@ async function checkHydrate(mod, pure) {
   const def = (row) => pure.registryRowToServiceDefinition(row);
   const profiles = [prof('p-np', 'own-np', 'ראשי'), prof('p-ap', 'own-ap', 'ראשי'), prof('p-lost', 'own-lost', 'ראשי')];
   const credentials = { 'p-np': cred('np'), 'p-ap': cred('ap'), 'p-lost': cred('lost') };
+  const incompleteCopy = vaultCopy('own-incomplete', 'אתר שלם', 'incomplete.example.test');
   const local = {
-    selectedIds: ['own-np', 'own-ap', 'own-lost', 'own-bad'],
-    customServices: [copies.np, copies.ap, copies.lost, vaultCopy('own-bad', 'שורה פגומה', 'bad.example.test')],
+    selectedIds: ['own-np', 'own-ap', 'own-lost', 'own-bad', 'own-incomplete'],
+    customServices: [copies.np, copies.ap, copies.lost, vaultCopy('own-bad', 'שורה פגומה', 'bad.example.test'), incompleteCopy],
     accessProfiles: profiles,
     credentials,
   };
   const badRow = { ...adminRow('own-bad', { name: 'x', host: 'bad.example.test', fields: NEW_FIELDS, metadata: META.approved }), display_name: null };
   const newRow = adminRow('own-new', { name: 'אתר ממכשיר אחר', host: 'new.example.test', fields: null, metadata: {} });
-  const out = await hydrate(mod, local, [rows.np, rows.ap, rows.lost, badRow, newRow]);
+  // KI-5: approved but incomplete (no category / no icon).
+  const incompleteRow = { ...adminRow('own-incomplete', { name: 'מאושר ללא קטגוריה', host: 'incomplete-admin.example.test', fields: NEW_FIELDS, metadata: META.approved }), category_id: null };
+  const noIconNewRow = { ...adminRow('own-new-noicon', { name: 'חדש ללא סמל', host: 'new-noicon.example.test', fields: NEW_FIELDS, metadata: META.approved }), icon: null };
+  assert(pure.isApprovedForUsers(def(incompleteRow)) && !pure.ownSiteFollowsRegistry(def(incompleteRow)) && !pure.ownSiteFollowsRegistry(def(noIconNewRow)), 'fixture: KI-5 rows are approved but incomplete');
+  const out = await hydrate(mod, local, [rows.np, rows.ap, rows.lost, badRow, newRow, incompleteRow, noIconNewRow]);
   const byId = new Map(out.customServices.map((d) => [d.id, d]));
+  assert(same(byId.get('own-incomplete'), incompleteCopy), 'KI-5 hydrate: an approved but incomplete row never replaces the vault copy');
+  assert(same(byId.get('own-new-noicon'), def(noIconNewRow)), 'KI-5 hydrate: a row with no local copy is still added (today)');
   assert(same(byId.get('own-np'), copies.np), 'D-123-8 hydrate: not approved after an admin edit → the vault copy stays unchanged');
   assert(same(byId.get('own-ap'), def(rows.ap)), 'D-123-8 hydrate: approved → the vault copy is refreshed from the registry');
   assert(same(byId.get('own-lost'), copies.lost), 'D-123-8 hydrate: approval lost → the vault copy (last approved) stays');
@@ -435,8 +448,20 @@ async function checkHydrate(mod, pure) {
 }
 
 // ─── Layer 3: static ──────────────────────────────────────────────────────────
-const D8_IMPORT = "import { isApprovedForUsers } from '../digitalHome/ownSiteDefinition';\n";
+const D8_IMPORT = "import { ownSiteFollowsRegistry } from '../digitalHome/ownSiteDefinition';\n";
 const D8_HYDRATE_BLOCK = [
+  '        // D-123-8 / KI-5: the vault copy is the last version the owner may see — replaced only by',
+  '        // an approved, complete row; a row with no local copy is still added.',
+  '        if (customById.has(definition.id) && !ownSiteFollowsRegistry(definition)) {',
+  '          continue;',
+  '        }',
+  '',
+].join('\n');
+// KI-5 (123.3 Item 0a): the block as accepted in the D-123-8 round (WIP commit 0dfb9de7). The KI-5
+// change swaps only the predicate (shared helper) and the comment inside the block, and the import.
+const KI5_BASE = '0dfb9de70f50933b86b3b140c13bda28c8af523a';
+const D8_ACCEPTED_IMPORT = "import { isApprovedForUsers } from '../digitalHome/ownSiteDefinition';\n";
+const D8_ACCEPTED_BLOCK = [
   '        // D-123-8: the vault copy is the last version the owner may see — replaced only by an',
   '        // approved row; a row with no local copy is still added.',
   '        if (customById.has(definition.id) && !isApprovedForUsers(definition)) {',
@@ -445,18 +470,82 @@ const D8_HYDRATE_BLOCK = [
   '',
 ].join('\n');
 
+// KI-3 (123.3 ruling): the refresh drops apps this session saw in the cloud when the cloud is
+// empty. These are the only KI-3 edits in persistence.ts / sessionSyncScope.ts; undone exactly
+// (each once) before the D-123-8 / KI-5 identity checks below.
+const KI3_PERSISTENCE = [
+  ['  markProfileSynced,\n  noteCloudServicesRead,\n', '  markProfileSynced,\n'],
+  ['  rebaseSessionSyncScope,\n  servicesSeenInCloud,\n', '  rebaseSessionSyncScope,\n'],
+  ["import { applyOutboxAfterHydrate, dropGoneFromVault } from '../digitalHome/cloudReconcile';", "import { applyOutboxAfterHydrate } from '../digitalHome/cloudReconcile';"],
+  ['  const seenInCloud = servicesSeenInCloud(userId);\n  noteCloudServicesRead(userId, cloud.serviceIds);\n', ''],
+  [[
+    '    // D-109-25: an empty cloud does not empty-win over a populated local Home — except apps this',
+    '    // session saw in the cloud at its last successful read: they were removed elsewhere (KI-3).',
+    '    const gone = knownServices.filter((id) => seenInCloud.has(id.trim()));',
+    '    if (gone.length === 0) {',
+    '      return null;',
+    '    }',
+    '    return dropGoneFromVault(current, { goneServiceIds: gone, goneProfileIds: [] });',
+  ].join('\n'), '    // D-109-25: an empty cloud does not empty-win over a populated local Home.\n    return null;'],
+];
+const KI3_SCOPE = [
+  ["  credentialRefs: Map<string, Credential | undefined>;\n  /** KI-3 — app memberships in the cloud at this session's last successful read. */\n  cloudServiceIds: Set<string>;\n", '  credentialRefs: Map<string, Credential | undefined>;\n'],
+  ['    credentialRefs: new Map(state.accessProfiles.map((p) => [p.id, state.credentials[p.id]])),\n    cloudServiceIds: new Set(),\n', '    credentialRefs: new Map(state.accessProfiles.map((p) => [p.id, state.credentials[p.id]])),\n'],
+  ['  scope = {\n    userId: userId.trim(),\n    profileSnapshots,\n    credentialRefs,\n    cloudServiceIds: new Set([...cloud.serviceIds].map((id) => id.trim())),\n  };\n', '  scope = { userId: userId.trim(), profileSnapshots, credentialRefs };\n'],
+  [[
+    '',
+    '/** KI-3 — apps this session saw in the cloud at its last successful read (login / refresh). */',
+    'export function servicesSeenInCloud(userId: string): Set<string> {',
+    '  return new Set(scopeFor(userId)?.cloudServiceIds ?? []);',
+    '}',
+    '',
+    '/** KI-3 — a successful cloud read replaces what this session has seen. */',
+    'export function noteCloudServicesRead(userId: string, serviceIds: Set<string>): void {',
+    '  const current = scopeFor(userId);',
+    '  if (!current) return;',
+    '  current.cloudServiceIds = new Set([...serviceIds].map((id) => id.trim()));',
+    '}',
+    '',
+  ].join('\n'), ''],
+  ['    credentialRefs: new Map(),\n    cloudServiceIds: previous.cloudServiceIds,\n', '    credentialRefs: new Map(),\n'],
+];
+function withoutKi3(src, edits, rel) {
+  let out = src;
+  for (const [now, before] of edits) {
+    assert(out.split(now).length === 2, `KI-3: ${rel} has each KI-3 edit exactly once (${now.trim().split('\n')[0].slice(0, 60)})`);
+    out = out.replace(now, before);
+  }
+  return out;
+}
+
+function checkKi5SharedPredicate(overrides) {
+  const now = withoutKi3(source(overrides, PERSISTENCE), KI3_PERSISTENCE, PERSISTENCE);
+  const ki5Base = git('show', `${KI5_BASE}:${PERSISTENCE}`).replace(/\r\n/g, '\n');
+  assert(now.replace(D8_IMPORT, D8_ACCEPTED_IMPORT).replace(D8_HYDRATE_BLOCK, D8_ACCEPTED_BLOCK) === ki5Base, `KI-5: persistence.ts identical to ${KI5_BASE.slice(0, 8)} apart from the own-site block predicate / comment and its import`);
+  const own = source(overrides, OWN_SITE);
+  const helper = own.slice(own.indexOf('export function ownSiteFollowsRegistry('), own.indexOf('export function resolveOwnSiteDefinition('));
+  assert(/return Boolean\(entry\?\.category && entry\.icon\) && isApprovedForUsers\(entry\);/.test(helper), 'KI-5: ownSiteFollowsRegistry = complete (category + icon) AND approved');
+  const resolver = own.slice(own.indexOf('export function resolveOwnSiteDefinition('), own.indexOf('export function hiddenCredentialFieldIds('));
+  assert(/if \(registryEntry && ownSiteFollowsRegistry\(registryEntry\)\) \{/.test(resolver) && !/isApprovedForUsers|\.category|\.icon/.test(resolver), 'KI-5: the resolver decides only through the shared ownSiteFollowsRegistry');
+  assert(D8_HYDRATE_BLOCK.includes('!ownSiteFollowsRegistry(definition)') && now.includes(D8_HYDRATE_BLOCK), 'KI-5: the hydrate block decides through the same shared helper');
+  return `KI-5: one shared predicate (approved + category + icon) for the resolver and the hydrate block; persistence.ts vs ${KI5_BASE.slice(0, 8)} = that block + import only`;
+}
+
 function checkHydrateScope(overrides) {
-  const now = source(overrides, PERSISTENCE);
+  const now = withoutKi3(source(overrides, PERSISTENCE), KI3_PERSISTENCE, PERSISTENCE);
   assert(now.split(D8_IMPORT).length === 2 && now.split(D8_HYDRATE_BLOCK).length === 2, 'N-2: persistence.ts has the D-123-8 import and own-site block exactly once');
   const hydrateNow = topLevelFunction(now, 'hydrateWorkspaceFromCloud') ?? '';
   assert(hydrateNow.includes(D8_HYDRATE_BLOCK), 'N-2: the D-123-8 block sits inside hydrateWorkspaceFromCloud');
   assert(hydrateNow.indexOf(D8_HYDRATE_BLOCK) > hydrateNow.indexOf("for (const row of (customRows ?? []) as ServiceRegistryRow[])"), 'N-2: the block is in the own-site (customRows) merge');
   assert(now.replace(D8_IMPORT, '').replace(D8_HYDRATE_BLOCK, '') === baseSource(PERSISTENCE), `N-2: persistence.ts identical to ${BASE.slice(0, 8)} apart from the D-123-8 import + own-site block`);
-  const others = ['src/vault/crypto.ts', 'src/vault/vault.ts', 'src/supabase/registryPersistence.ts', 'src/registry/registryMapper.ts', 'src/supabase/sessionSyncScope.ts', 'src/digitalHome/cloudReconcile.ts', 'supabase'];
+  // Superseded by the KI-3 ruling (was: sessionSyncScope.ts unchanged): only the KI-3 edits.
+  const scopeRel = 'src/supabase/sessionSyncScope.ts';
+  assert(withoutKi3(source(overrides, scopeRel), KI3_SCOPE, scopeRel) === baseSource(scopeRel), `N-2: ${scopeRel} identical to ${BASE.slice(0, 8)} apart from the KI-3 seen-in-cloud set`);
+  const others = ['src/vault/crypto.ts', 'src/vault/vault.ts', 'src/supabase/registryPersistence.ts', 'src/registry/registryMapper.ts', 'src/digitalHome/cloudReconcile.ts', 'supabase'];
   for (const rel of others) assert(git('diff', '--name-only', BASE, '--', rel).trim() === '' && git('ls-files', '--others', '--exclude-standard', '--', rel).trim() === '', `N-2: ${rel} unchanged vs ${BASE.slice(0, 8)}`);
   const admin = git('diff', '--name-only', BASE, '--', 'src/admin').split('\n').filter(Boolean);
   assert(admin.every((p) => p === 'src/admin/ApprovalQueue.tsx'), `N-2: src/admin unchanged apart from the D-123-6 line (${admin.join(', ')})`);
-  return `N-2: persistence.ts vs ${BASE.slice(0, 8)} = D-123-8 import + own-site block only; crypto / vault / registry / mapper / sync scope / reconcile / supabase / src/admin unchanged`;
+  return `N-2: persistence.ts vs ${BASE.slice(0, 8)} = D-123-8 import + own-site block (+ KI-3 refresh rule) only; sync scope = KI-3 set only; crypto / vault / registry / mapper / reconcile / supabase / src/admin unchanged`;
 }
 
 function checkAppRule(overrides) {
@@ -497,7 +586,7 @@ function checkNoBranchesNoWrites(overrides) {
   return 'D-123-8 static: resolver reads only; no site / hostname / serviceId branches; Hebrew copy exact; no browser dialogs';
 }
 
-const STATIC_GROUPS = [checkHydrateScope, checkAppRule, checkNoBranchesNoWrites];
+const STATIC_GROUPS = [checkHydrateScope, checkKi5SharedPredicate, checkAppRule, checkNoBranchesNoWrites];
 
 // ─── Layer 4: browser ─────────────────────────────────────────────────────────
 function persistenceStub() {
@@ -698,9 +787,9 @@ async function runAll(overrides, print) {
 
 const m = (label, rel, from, to) => [label, rel, from, to];
 const MUTATIONS = [
-  m('M1 registry definition used while not approved', OWN_SITE, '  if (registryEntry?.category && registryEntry.icon && isApprovedForUsers(registryEntry)) {', '  if (registryEntry?.category && registryEntry.icon) {'),
-  m('M17 approved entry without category used (tile render crash)', OWN_SITE, '  if (registryEntry?.category && registryEntry.icon && isApprovedForUsers(registryEntry)) {', '  if (registryEntry && isApprovedForUsers(registryEntry)) {'),
-  m('M2 vault copy not refreshed while approved (hydrate skips approved rows)', PERSISTENCE, '        if (customById.has(definition.id) && !isApprovedForUsers(definition)) {', '        if (customById.has(definition.id)) {'),
+  m('M1 registry definition used while not approved', OWN_SITE, '  return Boolean(entry?.category && entry.icon) && isApprovedForUsers(entry);', '  return Boolean(entry?.category && entry.icon);'),
+  m('M17 approved entry without category used (tile render crash)', OWN_SITE, '  return Boolean(entry?.category && entry.icon) && isApprovedForUsers(entry);', '  return isApprovedForUsers(entry);'),
+  m('M2 vault copy not refreshed while approved (hydrate skips approved rows)', PERSISTENCE, '        if (customById.has(definition.id) && !ownSiteFollowsRegistry(definition)) {', '        if (customById.has(definition.id)) {'),
   m('M3 registry not applied while approved', OWN_SITE, '    return { definition: registryEntry, approved: true };', '    return { definition: vaultCopy, approved: true };'),
   m('M4 approval lost shows the newer unapproved edits', OWN_SITE, "=== 'approved';", "!== 'no_mapping';"),
   m('M5 approval lost flips back to the original (approved refresh never stored)', PERSISTENCE, '        customById.set(definition.id, definition);\n      } catch {', '        customById.set(definition.id, customById.get(definition.id) ?? definition);\n      } catch {'),
@@ -725,7 +814,15 @@ const MUTATIONS = [
     '    byId.set(vaultCopy.id, resolved.approved ? resolved.definition : { ...resolved.definition, loginFields: catalogById.get(vaultCopy.id)?.loginFields ?? resolved.definition.loginFields });',
   ),
   m('M14 App merge does not report approved own ids', APP, '      approvedOwnIds.add(vaultCopy.id);\n', ''),
-  m('M15 hydrate drops a new own row that has no local copy', PERSISTENCE, '        if (customById.has(definition.id) && !isApprovedForUsers(definition)) {', '        if (!isApprovedForUsers(definition)) {'),
+  m('M15 hydrate drops a new own row that has no local copy', PERSISTENCE, '        if (customById.has(definition.id) && !ownSiteFollowsRegistry(definition)) {', '        if (!ownSiteFollowsRegistry(definition)) {'),
+  m(
+    'M18 KI-5 approved but incomplete row replaces the copy at hydrate',
+    PERSISTENCE,
+    '        if (customById.has(definition.id) && !ownSiteFollowsRegistry(definition)) {',
+    "        if (customById.has(definition.id) && !ownSiteFollowsRegistry({ ...definition, category: definition.category ?? 'x', icon: definition.icon ?? 'x' })) {",
+  ),
+  m('M19 KI-5 resolver and hydrate use different predicates (helper not shared)', OWN_SITE, '  if (registryEntry && ownSiteFollowsRegistry(registryEntry)) {', '  if (registryEntry?.category && isApprovedForUsers(registryEntry)) {'),
+  m('M20 KI-5 hydrate change outside the own-site block', PERSISTENCE, '    const credentials: Record<string, Credential> = { ...local.credentials };', '    const credentials: Record<string, Credential> = {};'),
   m('M16 promoted-in-place global listed twice', APP, 'builtinDefinitions.filter((definition) => !customServiceIds.has(definition.id.trim()))', 'builtinDefinitions.filter(() => true)'),
 ];
 

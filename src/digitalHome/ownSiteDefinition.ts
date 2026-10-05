@@ -19,15 +19,25 @@ export function isApprovedForUsers(
 }
 
 /**
- * The single effective definition of an own site: the registry entry when approved, else the
- * vault copy as stored (the last version the owner may see), never a mix of the two. An entry
- * without category / icon cannot be rendered as a tile and also keeps the vault copy.
+ * Whether an own site follows this registry entry: approved for users AND complete (category +
+ * icon, so it renders as a tile). Shared by the resolver and the hydrate refresh (KI-5).
+ */
+export function ownSiteFollowsRegistry(
+  entry: Pick<ServiceDefinition, 'metadata' | 'loginFields' | 'category' | 'icon'> | null | undefined,
+): boolean {
+  return Boolean(entry?.category && entry.icon) && isApprovedForUsers(entry);
+}
+
+/**
+ * The single effective definition of an own site: the registry entry when it is followed
+ * (`ownSiteFollowsRegistry`), else the vault copy as stored (the last version the owner may see),
+ * never a mix of the two.
  */
 export function resolveOwnSiteDefinition(
   vaultCopy: ServiceDefinition,
   registryEntry: ServiceDefinition | null | undefined,
 ): { definition: ServiceDefinition; approved: boolean } {
-  if (registryEntry?.category && registryEntry.icon && isApprovedForUsers(registryEntry)) {
+  if (registryEntry && ownSiteFollowsRegistry(registryEntry)) {
     return { definition: registryEntry, approved: true };
   }
   return { definition: vaultCopy, approved: false };

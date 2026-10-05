@@ -357,9 +357,10 @@ function checkPanelStatic(overrides) {
   assert(!/launchKind === 'credentials'|showCredentialUi/.test(chips[1]), `AD-123-2: switcher condition does not depend on credentials (${chips[1].trim()})`);
   assert(/actions\.switcher/.test(chips[1]), 'AD-123-2: switcher = appContextActions(...).switcher');
   assert(!/preselectedProfileId|localStorage|sessionStorage/.test(panel), 'AD-123-7: panel reads no persisted / last-used profile');
-  // AD-123-14 / AD-123-17: slice 123.2 adds «עריכת פרטי האתר» to the app-actions menu; «הסרת אפליקציה» is 123.3.
-  assert(!/menu\.remove_app|הסרת אפליקציה/.test(panel), 'scope: no remove-app menu entry before 123.3');
-  return 'panel: switcher independent of credentials; no persisted active profile; no remove-app entry yet (123.3)';
+  // Superseded by AD-123-11 (was: no remove-app menu entry before 123.3): the entry is
+  // appContextActions(...).menu.remove_app; its flow is checked by verifyPhase123RemoveApp.
+  assert(/const showRemoveApp = actions\.menu\.remove_app && Boolean\(onRemoveApp\);/.test(panel), 'AD-123-11: «הסרת אפליקציה» = menu.remove_app');
+  return 'panel: switcher independent of credentials; no persisted active profile; «הסרת אפליקציה» = menu.remove_app (AD-123-11)';
 }
 
 function checkDashboardDot(overrides) {
@@ -426,11 +427,12 @@ function checkPersistenceScope(overrides) {
   const now = source(overrides, rel);
   const head = headSource(rel);
   // D-123-8 (N-2 exception, Architect 2026-10-05): hydrate may differ from BASE only by the own-site
-  // merge block below — content / behaviour checked by verifyPhase123D8OwnSite.
+  // merge block below — content / behaviour checked by verifyPhase123D8OwnSite. KI-5 (123.3 Item 0a):
+  // the block's predicate is the shared ownSiteFollowsRegistry (approved + complete).
   const D8_HYDRATE_BLOCK = [
-    '        // D-123-8: the vault copy is the last version the owner may see — replaced only by an',
-    '        // approved row; a row with no local copy is still added.',
-    '        if (customById.has(definition.id) && !isApprovedForUsers(definition)) {',
+    '        // D-123-8 / KI-5: the vault copy is the last version the owner may see — replaced only by',
+    '        // an approved, complete row; a row with no local copy is still added.',
+    '        if (customById.has(definition.id) && !ownSiteFollowsRegistry(definition)) {',
     '          continue;',
     '        }',
     '',
@@ -556,6 +558,8 @@ const AD_123_18_IMPORTS = {
  * reconcile commit, and (amendment A) the outbox clear after a confirmed insert.
  */
 const AD_123_18_APP_PERSIST_CALLS = 3;
+/** AD-123-11 — remove-app step 3 / 4 failure restores the previous vault (local-only, skipCloudSync). */
+const AD_123_11_APP_PERSIST_CALLS = 1;
 function supabaseImports(src) {
   const names = new Set();
   for (const m of src.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*['"][./]+supabase\/[^'"]+['"]/g)) {
@@ -576,8 +580,8 @@ function checkNoNewWriteSites(overrides) {
   const app = source(overrides, 'src/App.tsx');
   const count = (s) => (s.match(/persistVault\s*\(/g) ?? []).length;
   assert(
-    count(app) <= count(headSource('src/App.tsx')) + AD_123_18_APP_PERSIST_CALLS,
-    'N-3: no new persistVault call site in App.tsx beyond the AD-123-18 reconcile commits',
+    count(app) <= count(headSource('src/App.tsx')) + AD_123_18_APP_PERSIST_CALLS + AD_123_11_APP_PERSIST_CALLS,
+    'N-3: no new persistVault call site in App.tsx beyond the AD-123-18 reconcile commits and the AD-123-11 local restore',
   );
   const cloudWriting = (s) => (s.match(/persistVault\s*\((?![^)]*skipCloudSync: true)/g) ?? []).length;
   assert(

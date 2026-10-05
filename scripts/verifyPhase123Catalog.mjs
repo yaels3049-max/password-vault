@@ -421,6 +421,8 @@ function withoutD1235(body) {
       /\n {4}\/\/ D-123-5: the tile already comes from vault `customServices`; the catalog refresh runs in\n {4}\/\/ the background instead of holding the form on «שומר…»\.\n {4}void refreshCatalogAfterCustomSave\(timing\);|\n {4}void refreshCatalogAfterCustomSave\(timing\);/,
       HEAD_CATALOG_RELOAD,
     )
+    // AD-123-12 (123.3): a pending removal of the same site commits before the add.
+    .replace('\n    await commitPendingRemovalForUrl(normalizedUrl);', '')
     // AD-123-18 amendment A: the new custom site's membership enters the outbox.
     .replace(
       '\n    noteDeliberateAdd(definition.id);\n    const nextState = recordLocalCreations(persistBase, {\n      ...persistBase,\n      customServices: [...persistBase.customServices, definition],\n      selectedIds: [...new Set([...persistBase.selectedIds, definition.id])],\n    });',
@@ -476,8 +478,12 @@ function checkMenuOutsideProfileGate(overrides) {
   const ret = panel.lastIndexOf('return (', panel.indexOf('<header className="la-panel-header">'));
   assert(!/profileUi|showCredentialUi|launchKind ===/.test(panel.slice(ret, panel.indexOf('<header className="la-panel-header">'))), 'AD-123-17: the header is not inside a profile / launch-kind condition');
   assert(/const profileUi = launchKindOffersProfileUi\(launchKind\);/.test(panel), 'profile UI keeps its gating (launchKindOffersProfileUi)');
-  assert(!/menu\.remove_app|הסרת אפליקציה/.test(panel), 'scope: no remove-app entry before 123.3');
-  return 'AD-123-17: app menu in the panel header, gated only by its entries (edit_site_details), not by launch kind / profile UI; profile UI gating unchanged; no remove-app yet';
+  // Superseded by AD-123-11 (was: no remove-app entry before 123.3): «הסרת אפליקציה» =
+  // menu.remove_app, gated only by its entry like «עריכת פרטי האתר».
+  const remove = panel.match(/const showRemoveApp = ([^;]+);/);
+  assert(remove && /actions\.menu\.remove_app/.test(remove[1]) && !gate.test(remove[1]), 'AD-123-11: «הסרת אפליקציה» = appContextActions(...).menu.remove_app, not gated by launch kind / profile UI');
+  assert(/showEditSiteDetails/.test(def[1]) && /showRemoveApp/.test(def[1]), 'AD-123-11: showAppMenu = edit_site_details || remove_app');
+  return 'AD-123-17: app menu in the panel header, gated only by its entries (edit_site_details / remove_app), not by launch kind / profile UI; profile UI gating unchanged';
 }
 
 function checkNoBrowserDialogsNew(overrides) {
@@ -516,7 +522,8 @@ function checkProtectedUnchanged() {
     // persistence.ts: AD-123-18 (scope checked by verifyPhase123AppContext / verifyPhase123Sync).
     // AddSiteModal.tsx: D-123-3 / D-123-4 (checked by the browser layer below).
     'src/supabase/registryPersistence.ts',
-    'src/serviceManagement/serviceSelection.ts',
+    // serviceSelection.ts: superseded by AD-123-11 / arch §7 (was: unchanged) — removeAppFromVault
+    // and the re-add leftover cleanup (checked by verifyPhase123RemoveApp).
     'src/execution',
     'extension',
     ...manifests,
@@ -622,6 +629,7 @@ function Harness({ initial }) {
         onOpenProfileManagement={(req) => window.__pvSeq.push({ kind: 'openProfile', req })}
         onOpenCatalog={() => setCatalogOpen(true)}
         onEditSiteDetails={(service) => openSiteEdit(service.id)}
+        onRemoveApp={(service) => window.__pvSeq.push({ kind: 'removeApp', id: service.id })}
       />
       {catalogOpen ? (
         <AppCatalogModal
@@ -968,14 +976,25 @@ async function checkAppMenuAllKinds(url) {
     assert((await menuBtn.count()) === 1, `AD-123-17: app-actions menu shown for a custom app with launch kind ${kind}`);
     assert((await menuBtn.getAttribute('aria-label')) === HE.appActions, 'menu button label in Hebrew');
     await menuBtn.click();
+    assert((await panel(s).locator('[role="menuitem"][data-action="remove-app"]').count()) === 1, `AD-123-11: «הסרת אפליקציה» in the menu for ${kind}`);
     const entry = panel(s).locator('[role="menuitem"][data-action="edit-site-details"]');
+    const userCreated = FIXTURE.services.find((x) => x.id === id).source === 'user-created';
+    if (!userCreated) {
+      // Superseded by the AD-123-14 123.3 clarification (was: «עריכת פרטי האתר» for every vault
+      // custom): a promoted (catalog-runtime) vault-custom id is catalog-origin — no edit entry.
+      assert((await entry.count()) === 0, `AD-123-14: no «עריכת פרטי האתר» for a promoted vault-custom app (${kind})`);
+      await s.page.keyboard.press('Escape');
+      await panel(s).waitFor({ state: 'detached', timeout: 5000 });
+      continue;
+    }
     assert((await entry.textContent()) === HE.editSite, `AD-123-17: «עריכת פרטי האתר» reachable for ${kind}`);
     await entry.click();
     await panel(s).waitFor({ state: 'detached', timeout: 5000 });
     await siteModal(s).waitFor({ state: 'visible', timeout: 5000 });
     const name = FIXTURE.services.find((x) => x.id === id).name;
     assert((await siteModal(s).locator('input[type="text"]').nth(0).inputValue()) === name, `edit-site prefilled with the site name (${kind})`);
-    if (kind === 'not-configured') {
+    // AD-123-14 clarification: the save path moved from the promoted not-configured app to a user-created one.
+    if (kind === 'missing-user-credentials') {
       await siteModal(s).locator('input[type="text"]').nth(0).fill('אתר מעודכן');
       await siteModal(s).locator('button[type="submit"]').click();
       await siteModal(s).waitFor({ state: 'detached', timeout: 5000 });
@@ -988,12 +1007,16 @@ async function checkAppMenuAllKinds(url) {
     }
   }
   await openTile(s, 'svc-home-bank');
-  assert((await panel(s).locator('[data-app-menu]').count()) === 0, 'AD-123-14: no app menu for a built-in app (no entries yet)');
+  // Superseded by AD-123-11 (was: no app menu for a built-in app): the menu holds «הסרת אפליקציה» only.
+  const builtInMenu = panel(s).locator('[data-app-menu] button[aria-haspopup="menu"]');
+  assert((await builtInMenu.count()) === 1, 'AD-123-11: app menu shown for a built-in app («הסרת אפליקציה»)');
+  await builtInMenu.click();
+  assert((await panel(s).locator('[role="menuitem"]').count()) === 1 && (await panel(s).locator('[role="menuitem"][data-action="remove-app"]').count()) === 1, 'AD-123-11: built-in menu = «הסרת אפליקציה» only');
   assert(!(await panel(s).textContent()).includes(HE.editSite), 'AD-123-14: no «עריכת פרטי האתר» for a built-in app');
   assert((await ofKind(s, 'openSiteEdit')).every((e) => FIXTURE.customIds.includes(e.id)), 'edit-site requested only for custom apps');
   assert((await ofKind(s, 'write')).length === 0, 'edit-site writes nothing locally (delegated to updateCustomService)');
   await closePage(s);
-  return 'browser: AD-123-17 app menu + «עריכת פרטי האתר» for a custom app in all four launch kinds (credentials / missing / no-stored / not-configured); opens the AddSiteModal edit flow, save → updateCustomService; none for built-in; profile UI gating unchanged';
+  return 'browser: AD-123-17 app menu in all four launch kinds; «עריכת פרטי האתר» for user-created customs only (AD-123-14 clarification: none for promoted / built-in); opens the AddSiteModal edit flow, save → updateCustomService; «הסרת אפליקציה» everywhere (AD-123-11); profile UI gating unchanged';
 }
 
 async function checkCatalogFixedHeight(url) {
@@ -1238,7 +1261,8 @@ const MUTATIONS = [
   })],
   ['M4 app menu gated on the profile UI / launch kind (AD-123-17)', (o) => ({
     'src/loginAssistance/LoginAssistancePanel.tsx': replaceOnce(read('src/loginAssistance/LoginAssistancePanel.tsx'),
-      'const showAppMenu = showEditSiteDetails;', 'const showAppMenu = profileUi && showEditSiteDetails;', o),
+      // AD-123-11: the anchor gained «הסרת אפליקציה» (was: `= showEditSiteDetails;`).
+      'const showAppMenu = showEditSiteDetails || showRemoveApp;', 'const showAppMenu = profileUi && (showEditSiteDetails || showRemoveApp);', o),
   })],
   ['M5 catalog imports from src/admin (N-8)', (o) => ({
     'src/digitalHome/AppCatalog.tsx': replaceOnce(read('src/digitalHome/AppCatalog.tsx'),

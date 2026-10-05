@@ -55,7 +55,7 @@ import {
 
 import {
   addToSelection,
-  removeFromSelection,
+  removeAppFromVault,
   SELECTION_PERSIST_FAILED_MESSAGE,
   SELECTION_REMOVE_CLOUD_FAILED_MESSAGE,
   shouldForcePersistFailure,
@@ -110,10 +110,12 @@ import { ProfileResolution } from './profile';
 import { AppVaultShell } from './trust';
 import DigitalHomeCredentialModal from './loginAssistance/DigitalHomeCredentialModal';
 import { offersCredentialManagementPanel } from './service/credentialSchema';
-import type { ProfileManagementRequest } from './digitalHome/appContext';
+import { isUserCustomApp, type ProfileManagementRequest } from './digitalHome/appContext';
 import { userFacingCategories, type AddOutcome } from './digitalHome/catalogModel';
 import AppCatalogModal from './digitalHome/AppCatalogModal';
 import EditSiteDetailsModal from './digitalHome/EditSiteDetailsModal';
+import RemoveAppConfirmDialog from './digitalHome/RemoveAppConfirmDialog';
+import UndoToast, { UNDO_WINDOW_MS } from './digitalHome/UndoToast';
 
 import './App.css';
 
@@ -123,6 +125,19 @@ export { isAdminRoute, ADMIN_ROUTE_HASH } from './admin/adminRoutes';
 
 
 type Screen = 'manage' | 'dashboard';
+
+/** AD-123-11 / PQ-123-1 — a removal waiting for its Undo window; memory only, never persisted. */
+interface PendingRemoval {
+  serviceId: string;
+  serviceName: string;
+  url: string;
+  /** Step 5 runs for user-created custom apps only (AD-123-14), decided when the removal begins. */
+  deleteOwnRow: boolean;
+  deadline: number;
+  committing: boolean;
+}
+
+type RemovalResult = 'removed' | 'failed' | 'none';
 
 const CUSTOM_SERVICE_DUPLICATE_MESSAGE = CUSTOM_SERVICE_ALREADY_EXISTS_MESSAGE;
 
@@ -279,6 +294,22 @@ function App() {
   const [selectionError, setSelectionError] = useState<string | null>(null);
 
   const selectionLockRef = useRef<Set<string>>(new Set());
+
+  const [removeRequestId, setRemoveRequestId] = useState<string | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const pendingRemovalRef = useRef<PendingRemoval | null>(null);
+  const removalTimerRef = useRef<number | null>(null);
+  const removalCommitRef = useRef<Promise<RemovalResult> | null>(null);
+
+  // AD-123-11: the pending (or committing) app is hidden by UI state only; the vault still has it.
+  const hiddenRemovalId = pendingRemoval?.serviceId ?? null;
+  const visibleSelectedIds = useMemo(() => {
+    if (!hiddenRemovalId) return selectedIds;
+    const visible = new Set(selectedIds);
+    visible.delete(hiddenRemovalId);
+    return visible;
+  }, [selectedIds, hiddenRemovalId]);
 
   const customServiceIds = useMemo(
     () => new Set(customServices.map((service) => service.id.trim())),
@@ -701,6 +732,10 @@ function App() {
     setPendingIds(new Set());
     setSelectionError(null);
     selectionLockRef.current = new Set();
+    clearRemovalTimer();
+    setPending(null);
+    setRemoveRequestId(null);
+    setRemoveError(null);
     pruneInactiveRef.current = false;
     clearRegistryCatalogCache();
   }
@@ -708,6 +743,10 @@ function App() {
   /** Vault lock and logout are the same path (AC-109-24): clear session + vault → Login. */
   async function handleLogout() {
     const email = accountProfile?.email ?? '';
+    // AD-123-12: a pending removal commits before the workspace is cleared.
+    if (pendingRemovalRef.current) {
+      await commitPendingRemoval();
+    }
     clearWorkspaceMemory();
     await signOutAccount();
     setAccountProfile(null);
@@ -827,10 +866,12 @@ function App() {
 
   // Idempotent, persist-first selection change (D-104-4, D-104-5, D-104-14).
   // Digital Home reflects the change only after persistVault succeeds (AC-104-15).
-  // Remove: cloud user_services delete must succeed before UI success (D-113-29 / AC-113-51).
+  // Remove = AD-123-11 commit (supersedes AC-104-16): cloud membership delete, local removal of
+  // the app with its profiles / credentials, re-verify, then the own custom registry row.
   async function changeSelection(
     id: string,
     mode: 'add' | 'remove',
+    options?: { deleteOwnRow?: boolean },
   ): Promise<boolean | undefined> {
     if (selectionLockRef.current.has(id)) {
       return;
@@ -854,9 +895,12 @@ function App() {
       if (mode === 'add') {
         noteDeliberateAdd(id);
       }
+      // The latest committed state: a removal commits from the Undo timer, after other edits.
+      const vaultState = vaultStateRef.current;
+      // A removal adds nothing to the outbox and drops the app's ids from it (arch ruling 3).
       const next = recordLocalCreations(
         vaultState,
-        mode === 'add' ? addToSelection(vaultState, id) : removeFromSelection(vaultState, id),
+        mode === 'add' ? addToSelection(vaultState, id) : removeAppFromVault(vaultState, id),
       );
 
       if (mode === 'remove') {
@@ -883,6 +927,7 @@ function App() {
           if (import.meta.env.DEV) {
             console.warn('[serviceManagement] local persist after cloud remove failed:', error);
           }
+          await restoreLocalAfterFailedRemove(vaultState);
           setSelectionError(SELECTION_REMOVE_CLOUD_FAILED_MESSAGE);
           return;
         }
@@ -897,11 +942,16 @@ function App() {
           if (import.meta.env.DEV) {
             console.warn('[vault] cloud remove re-verify failed:', error);
           }
+          await restoreLocalAfterFailedRemove(vaultState);
           setSelectionError(SELECTION_REMOVE_CLOUD_FAILED_MESSAGE);
           return;
         }
+        if (options?.deleteOwnRow) {
+          await deleteOwnCustomRow(id);
+        }
       }
 
+      vaultStateRef.current = next;
       setVaultState(next);
       return true;
     } catch (error) {
@@ -925,6 +975,11 @@ function App() {
 
   /** AD-123-8 / FR-18 — catalog add = addService → changeSelection(id, 'add'); no profile. */
   async function addApp(id: string): Promise<AddOutcome> {
+    // AD-123-12: re-adding the app of a pending removal commits the removal first; the app is
+    // then added fresh.
+    if (pendingRemovalRef.current?.serviceId === id && (await commitPendingRemoval()) === 'failed') {
+      return { status: 'failed', message: SELECTION_REMOVE_CLOUD_FAILED_MESSAGE };
+    }
     if (vaultStateRef.current.selectedIds.includes(id)) {
       return { status: 'already_added' };
     }
@@ -934,8 +989,134 @@ function App() {
       : { status: 'failed', message: SELECTION_PERSIST_FAILED_MESSAGE };
   }
 
+  /** ManageServices «הסר אתר» = the same confirm + Undo flow as Digital Home (AD-123-11). */
   async function removeService(id: string): Promise<void> {
-    await changeSelection(id, 'remove');
+    await requestRemoveApp(id);
+  }
+
+  /** AD-123-11 — a failed removal leaves local as it was, also after the local write (steps 3–4). */
+  async function restoreLocalAfterFailedRemove(previous: VaultState) {
+    try {
+      await persistVault(previous, { skipCloudSync: true });
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('[vault] restoring local after a failed remove failed:', error);
+      }
+    }
+  }
+
+  /** AD-123-11 step 5 — the app already counts as removed: one retry, then a dev warning only. */
+  async function deleteOwnCustomRow(id: string) {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        await deleteCustomServiceRegistryRow(id);
+        return;
+      } catch (error) {
+        if (attempt === 2 && import.meta.env.DEV) {
+          console.warn('[vault] own custom registry row delete failed:', error);
+        }
+      }
+    }
+  }
+
+  function setPending(next: PendingRemoval | null) {
+    pendingRemovalRef.current = next;
+    setPendingRemoval(next);
+  }
+
+  function clearRemovalTimer() {
+    if (removalTimerRef.current !== null) {
+      window.clearTimeout(removalTimerRef.current);
+      removalTimerRef.current = null;
+    }
+  }
+
+  /** «הסרת אפליקציה» — opens the confirm. Another pending removal commits now (AD-123-12). */
+  async function requestRemoveApp(serviceId: string): Promise<void> {
+    const pending = pendingRemovalRef.current;
+    if (pending?.serviceId === serviceId) {
+      return;
+    }
+    if (pending) {
+      await commitPendingRemoval();
+    }
+    if (!vaultStateRef.current.selectedIds.includes(serviceId)) {
+      return;
+    }
+    setRemoveError(null);
+    setRemoveRequestId(serviceId);
+  }
+
+  /** Confirmed: hide the tile and start the Undo window. Nothing is written yet. */
+  function beginPendingRemoval(serviceId: string) {
+    setRemoveRequestId(null);
+    const service = allServices.find((item) => item.id === serviceId);
+    if (!service || pendingRemovalRef.current || removalCommitRef.current) {
+      return;
+    }
+    setPending({
+      serviceId,
+      serviceName: service.name,
+      url: service.url,
+      deleteOwnRow: isUserCustomApp(service, customServiceIds.has(serviceId.trim())),
+      deadline: Date.now() + UNDO_WINDOW_MS,
+      committing: false,
+    });
+    clearRemovalTimer();
+    removalTimerRef.current = window.setTimeout(() => {
+      removalTimerRef.current = null;
+      void commitPendingRemoval();
+    }, UNDO_WINDOW_MS);
+  }
+
+  /** «ביטול» in the Undo window — zero writes. */
+  function undoPendingRemoval() {
+    if (removalCommitRef.current) {
+      return;
+    }
+    clearRemovalTimer();
+    setPending(null);
+  }
+
+  /**
+   * AD-123-11 — commits the pending removal under the selection lock. On failure the tile comes
+   * back and local stays as it was. 'none' = nothing was pending.
+   */
+  function commitPendingRemoval(): Promise<RemovalResult> {
+    if (removalCommitRef.current) {
+      return removalCommitRef.current;
+    }
+    const pending = pendingRemovalRef.current;
+    if (!pending) {
+      return Promise.resolve('none');
+    }
+    clearRemovalTimer();
+    setPending({ ...pending, committing: true });
+    const run = (async (): Promise<RemovalResult> => {
+      try {
+        const ok = await changeSelection(pending.serviceId, 'remove', {
+          deleteOwnRow: pending.deleteOwnRow,
+        });
+        if (ok === true) {
+          return 'removed';
+        }
+        setRemoveError(SELECTION_REMOVE_CLOUD_FAILED_MESSAGE);
+        return 'failed';
+      } finally {
+        setPending(null);
+        removalCommitRef.current = null;
+      }
+    })();
+    removalCommitRef.current = run;
+    return run;
+  }
+
+  /** AD-123-12 — a custom site added with the URL of the pending removal commits it first. */
+  async function commitPendingRemovalForUrl(rawUrl: string) {
+    const pending = pendingRemovalRef.current;
+    if (pending && serviceUrlIdentityKey(pending.url) === serviceUrlIdentityKey(rawUrl)) {
+      await commitPendingRemoval();
+    }
   }
 
 
@@ -994,6 +1175,7 @@ function App() {
 
   async function addCustomService(definition: ServiceDefinition): Promise<AddCustomServiceResult> {
     const normalizedUrl = normalizeCustomServiceUrl(definition.url);
+    await commitPendingRemovalForUrl(normalizedUrl);
     const catalogSnapshot = await snapshotCatalogForCustomAdd();
     const latestVault = vaultStateRef.current;
     const classified = classifyAddCustomService({
@@ -1213,7 +1395,7 @@ function App() {
     <AppCatalogModal
       services={allServices}
       categories={userFacingCategories()}
-      selectedIds={selectedIds}
+      selectedIds={visibleSelectedIds}
       pendingIds={pendingIds}
       catalogError={catalogError}
       onRetryCatalog={() => void retryCatalogLoad({ inline: true })}
@@ -1237,13 +1419,49 @@ function App() {
     />
   ) : null;
 
-  /** AD-123-14 — only apps in the vault `customServices` can be edited. */
+  /** AD-123-14 — only user-created apps in the vault `customServices` can be edited. */
   function openSiteDetailsEdit(serviceId: string) {
     if (!customServiceIds.has(serviceId)) {
       return;
     }
+    const service = allServices.find((item) => item.id === serviceId);
+    if (!service || !isUserCustomApp(service, true)) {
+      return;
+    }
     setSiteEditServiceId(serviceId);
   }
+
+  const removeRequestService = removeRequestId
+    ? allServices.find((item) => item.id === removeRequestId) ?? null
+    : null;
+
+  // AD-123-11 — user-side confirm, Undo window and failure notice (both screens; N-4).
+  const removeAppHosts = (
+    <>
+      {removeRequestService && (
+        <RemoveAppConfirmDialog
+          serviceName={removeRequestService.name}
+          onConfirm={() => beginPendingRemoval(removeRequestService.id)}
+          onCancel={() => setRemoveRequestId(null)}
+        />
+      )}
+      {pendingRemoval && !pendingRemoval.committing && (
+        <UndoToast
+          serviceName={pendingRemoval.serviceName}
+          deadline={pendingRemoval.deadline}
+          onUndo={undoPendingRemoval}
+        />
+      )}
+      {removeError && screen === 'dashboard' && (
+        <div className="dh-remove-error" role="alert" dir="rtl" data-remove-error="true">
+          <span>{removeError}</span>
+          <button type="button" className="la-icon-btn" aria-label="סגירה" onClick={() => setRemoveError(null)}>
+            ×
+          </button>
+        </div>
+      )}
+    </>
+  );
 
 
 
@@ -1302,7 +1520,7 @@ function App() {
             <>
             <Dashboard
 
-              services={selectedServices}
+              services={hiddenRemovalId ? selectedServices.filter((s) => s.id !== hiddenRemovalId) : selectedServices}
 
               credentialsByProfileId={vaultState.credentials}
 
@@ -1344,6 +1562,8 @@ function App() {
 
               onEditSiteDetails={(service) => openSiteDetailsEdit(service.id)}
 
+              onRemoveApp={(service) => void requestRemoveApp(service.id)}
+
               cloudReconcile={homeReconcile}
 
             />
@@ -1351,6 +1571,7 @@ function App() {
             {profileHost}
             {catalogHost}
             {siteEditHost}
+            {removeAppHosts}
             </>
           )}
 
@@ -1370,7 +1591,7 @@ function App() {
 
       <ManageServices
         allServices={allServices}
-        selectedIds={selectedIds}
+        selectedIds={visibleSelectedIds}
         isFirstRun={manageIsFirstRun}
         vaultState={vaultState}
         pendingIds={pendingIds}
@@ -1393,6 +1614,7 @@ function App() {
       />
 
       {profileHost}
+      {removeAppHosts}
 
     </AppVaultShell>
 

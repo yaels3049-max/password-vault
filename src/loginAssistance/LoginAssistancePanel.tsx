@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AccessProfile } from '../profile';
 import { profilesForService } from '../profile';
 import type { Credential } from '../credentials';
-import { appContextActions, initialActiveProfile } from '../digitalHome/appContext';
+import { appContextActions, initialActiveProfile, isUserCustomApp } from '../digitalHome/appContext';
 import { hiddenCredentialFieldIds } from '../digitalHome/ownSiteDefinition';
 import type { Service } from '../mockServices';
 import { isFieldMasked, resolveCredentialEntry } from '../service/credentialSchema';
@@ -31,6 +31,7 @@ import {
   LABEL_EDIT_PROFILE,
   LABEL_EDIT_SITE_DETAILS,
   LABEL_HIDE_PASSWORD,
+  LABEL_REMOVE_APP,
   LABEL_OPEN_SITE,
   LABEL_SHOW_PASSWORD,
   LABEL_TRY_AUTO,
@@ -71,8 +72,10 @@ export interface LoginAssistancePanelProps {
   onEditProfile?: (service: Service, profileId: string) => void;
   /** «הוספת פרופיל» / «הוסף פרופיל» — open the profile host in add mode. */
   onAddProfile?: (service: Service) => void;
-  /** App-actions menu «עריכת פרטי האתר» — custom sites only (AD-123-14). */
+  /** App-actions menu «עריכת פרטי האתר» — user-created custom sites only (AD-123-14). */
   onEditSiteDetails?: (service: Service) => void;
+  /** App-actions menu «הסרת אפליקציה» — every app (AD-123-11). */
+  onRemoveApp?: (service: Service) => void;
 }
 
 export default function LoginAssistancePanel({
@@ -88,6 +91,7 @@ export default function LoginAssistancePanel({
   onEditProfile,
   onAddProfile,
   onEditSiteDetails,
+  onRemoveApp,
 }: LoginAssistancePanelProps) {
   const profiles = profilesForService(accessProfiles, service.id);
   const level = resolveLoginAssistanceLevel(service);
@@ -101,12 +105,13 @@ export default function LoginAssistancePanel({
   const loginFields = launchKind === 'credentials' && entry.kind === 'form' ? entry.fields : [];
   const showCredentialUi = launchKind === 'credentials';
   const profileUi = launchKindOffersProfileUi(launchKind);
-  const actions = appContextActions(service, profiles, isCustom);
+  const actions = appContextActions(service, profiles, isUserCustomApp(service, isCustom));
   const showProfileChips = profileUi && actions.switcher;
   const showEmptyState = profileUi && actions.empty_state;
   // AD-123-17: the app-actions menu depends only on its entries — never on the launch kind / profile UI.
   const showEditSiteDetails = actions.menu.edit_site_details && Boolean(onEditSiteDetails);
-  const showAppMenu = showEditSiteDetails;
+  const showRemoveApp = actions.menu.remove_app && Boolean(onRemoveApp);
+  const showAppMenu = showEditSiteDetails || showRemoveApp;
   const profileIdsKey = profiles.map((profile) => profile.id).join('|');
 
   const panelRef = useRef<HTMLElement | null>(null);
@@ -356,6 +361,20 @@ export default function LoginAssistancePanel({
                     }}
                   >
                     {LABEL_EDIT_SITE_DETAILS}
+                  </button>
+                )}
+                {showRemoveApp && onRemoveApp && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="la-app-menu-item la-app-menu-item--danger"
+                    data-action="remove-app"
+                    onClick={() => {
+                      setAppMenuOpen(false);
+                      onRemoveApp(service);
+                    }}
+                  >
+                    {LABEL_REMOVE_APP}
                   </button>
                 )}
               </div>
