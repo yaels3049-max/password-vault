@@ -4,7 +4,7 @@
 PHASE=123 (from `team-Yuri/PHASE.md`).
 
 ## Status
-READY_FOR_ARCHITECT_REVIEW — joint resubmission (fix round D-123-1…5 + AD-123-18 + amendment A + H-1 + Known Issue 5, and slice 123.2b / AD-123-19) Manager APPROVED round 2 on frozen tree sha256=c06950a5…ff1c21 (2026-10-04). 123.3 is not opened.
+READY_FOR_DEVELOPER — slice 123.3 OPEN (2026-10-05). Fix round D-123-6…8 is Architect PASS (frozen tree `1de67427…e387`). Gate change (Owner preference): the Owner re-checks (D-123-6…8, `[catalog-gate]` count, and all 123.3 manual steps) move into ONE consolidated Owner run at the end of the phase (after 123.4 + END OF ROUND). Precondition: Sarah's WIP commit of the approved tree = the 123.3 fingerprint baseline. Baseline: WIP `af881f6b` on `wip/phase123-recovered` (no push / merge). The joint resubmission is Architect PASS (conditional); Owner items 1–3 PASS, item 4 pending (may run in parallel). 123.3 is not opened.
 - History: slice 123.2 + R-123-1 Architect PASS; 123.1 reopened by D-123-1.
 - Slice 123.1: Manager APPROVED (round 2); Architect PASS (conditional). It closes only when C-123.1-1 (the Owner's manual run) is recorded.
 - Slices 123.3 → 123.4 are each opened only after the Architect reviews the previous slice (see Slice Authorization).
@@ -76,8 +76,9 @@ The «ניהול אתרים» screen (`ManageServices`) is removed at the end. T
 |---|---|---|---|
 | 123.1 | App context + profile rules + single modal host + green dot | DONE: Manager APPROVED (round 2), Architect PASS (conditional, 2026-10-04). CLOSED only after C-123.1-1 is recorded | C-123.1-1 recorded in `dev-phase123.md` before 123.3 opens |
 | 123.2 | Catalog modal + custom add + «עריכת פרטי האתר» (+ AD-123-17 menu rule) + R-123-1 (test-only) | DONE: Manager APPROVED (round 1, 2026-10-04); awaiting Architect review | Manager Review PASS → Architect review PASS; Owner's combined manual run (123.1 seven steps + 123.2 steps) recorded |
-| Fix round + 123.2b | D-123-1…5 + AD-123-18 + amendment A; 123.2b catalog gate (AD-123-19) | YES (Architect ruling 2026-10-04); Manager APPROVED round 2 (frozen tree c06950a5…ff1c21) → awaiting Architect review | H-1 met → Manager Review PASS → Architect review PASS; Owner re-runs (123.1 step 6, 123.2 steps 5–6, 123.2b manual) recorded |
-| 123.3 | Remove app (confirm, Undo, deferred full deletion) | Owner-authorized; opened only after the 123.2 gate, the fix round + 123.2b gate, **and** C-123.1-1 is recorded. **Hard sub-gate:** AD-123-16 verification first, then STOP and report before any migration | Manager Review PASS → Architect review PASS |
+| Fix round + 123.2b | D-123-1…5 + AD-123-18 + amendment A; 123.2b catalog gate (AD-123-19) | DONE: Manager APPROVED round 2 (frozen tree c06950a5…ff1c21); Architect PASS (conditional), standing after the incident recovery (WIP `af881f6b`). Owner items 1–3 PASS, item 4 pending | Owner item 4 recorded |
+| Fix round D-123-6…8 | D-123-6 admin copy (N-1 copy exception), D-123-7 URL scheme-only, D-123-8 REVISED (vault copy until approved; Step 1 root cause, then user-side fix) | YES (Architect ruling 2026-10-04; D-123-8 revised by the Owner; re-added 2026-10-05). D-123-6 / D-123-7 accepted at Architect level; D-123-8 released 2026-10-05 with the narrow N-2 exception (own-site hydrate merge + App catalog merge only). DONE: Manager APPROVED round 1 (frozen tree `1de67427…e387`); Architect PASS (2026-10-05) | Owner re-check moved to the consolidated Owner run at the end of the phase (no longer gates 123.3) |
+| 123.3 | Remove app (confirm, Undo, deferred full deletion) | **YES, OPEN (2026-10-05)** after Architect PASS on fix round D-123-6…8; Owner re-checks deferred to the consolidated end-of-phase run (Owner preference). C-123.1-1 (two windows) was recorded PASS as Owner item 1. Precondition: WIP commit of the approved tree. **Order:** Item 0a (KI-5) → Step 0 (AD-123-16, MC-3), a hard sub-gate: STOP and report before any migration / product code → rest of 123.3 | Manager Review PASS → Architect review PASS |
 | 123.4 | Navigation unification + ManageServices deletion + admin aggregate + END OF ROUND | Owner-authorized; opened only after the 123.3 gate | Manager Review PASS → Architect review PASS → phase close |
 
 Each slice is one Developer round. It writes or updates `team-Yuri/dev-phase123.md` with a section per slice, then STOPS.
@@ -401,9 +402,164 @@ Authorized by the Architect (AD-123-19), handed over by the Owner, and added to 
     - admin logic changed instead of re-exported.
 - **Manual (Owner):** the catalog shows only approved / no-stored-credential sites; the admin still sees all; an existing home app of a non-approved site stays.
 
-### Slice 123.3 — Remove app (AD-123-10, -11, -12, -16; PQ-123-1)
+### Fix round D-123-6…8 (Architect ruling 2026-10-04; D-123-8 as REVISED by the Owner; re-added 2026-10-05 after the incident)
+Context:
+- The joint resubmission (fix round D-123-1…5 + 123.2b) is Architect PASS (conditional). Owner items 1–3 PASS. Item 4 (123.2b visibility + `[catalog-gate]` count) is pending and may run in parallel with this round.
+- Normative: arch Review Notes, entry "Owner manual run … partial" (D-123-6, D-123-7, and D-123-8 REVISED, which supersedes the original rules (i)–(iii)), and entry "Incident …" (recovery ACCEPTED).
+- **Baseline:** WIP commit `af881f6b` on local branch `wip/phase123-recovered` = the frozen joint-resubmission tree. Work continues on that branch; no push / merge.
+- **Fingerprint:** computed against `af881f6b`, excluding `team-Yuri/` (both casings).
+- One Developer round. It writes the section "Fix round D-123-6…8" in `dev-phase123.md`, then STOPS. D-123-8 has an internal STOP after Step 1 (below).
+- **Update 2026-10-05 (arch Review Notes "D-123-8 rulings after Step 1"):**
+  - Sarah's Step 1 BLOCK was correct; its facts are accepted.
+  - D-123-6 and D-123-7 are accepted at Architect level (final review together with D-123-8): DONE, no further work. The 10 other admin id messages stay as they are (cosmetic backlog).
+  - The test-only re-pin of the three Phase 123 verifies to `909cc8b` is accepted.
+  - D-123-8 is released for implementation under the rulings below.
+  - The earlier double concurrent T-1 run is not acceptable as final evidence.
 
-**Step 0 — AD-123-16 verification. Hard gate: no product code and no migration before the report is accepted.**
+**D-123-6: admin approval message shows an internal id: DONE (accepted at Architect level 2026-10-05; final review with D-123-8)**
+- **N-1 exception (Architect-authorized):** copy only, only in `src/admin/ApprovalQueue.tsx`.
+  - The success message `אושר כאתר גלובלי (${globalId}).` becomes «"<display name>" אושר כאתר גלובלי.», with no id.
+  - The name comes from data the component already holds. No new query, no logic / flow / state change.
+- **Superseded admin assertion (Architect addition):** if an existing admin verify asserts the old copy, update only that assertion, with a comment naming D-123-6, and list it in a superseded-assertions table. No other admin verify change.
+- **Inventory, report only:** every other admin-visible message in `src/admin/**` that prints an internal id (`custom-…`, uuids, global ids), with file, line and copy.
+  - Do NOT change them; changes need Architect approval.
+- **Evidence:**
+  - the `ApprovalQueue.tsx` diff is the copy line only;
+  - a static check (no id interpolated, display name used);
+  - the superseded-assertion table;
+  - Phase 122 admin verifies pass.
+
+**D-123-7: custom-site URL gets `www.`: DONE (accepted at Architect level 2026-10-05: scheme only, identity unchanged, new verify 6 groups / 9 mutations; final review with D-123-8)**
+- `validateCustomPrimaryUrl` (`src/catalog/customService.ts`) only completes the scheme:
+  - no scheme → `https://`;
+  - `http://` → `https://`.
+- It never adds `www.` and never changes the host, path or query the user typed. This applies on create and edit; an edit stores the typed URL (scheme-completed).
+- Existing stored URLs are not migrated; the user fixes them by edit.
+- **Identity must not regress:** Phase 116 identity / offer matching (`catalog_service_available`, «already in home») keeps working for www / non-www variants. Proof: `verifyPhase116CustomAddIdentity` passes, with the www / non-www cases shown.
+- **Identity fixes on the user side only (Architect addition):** if www / non-www matching needs a fix, keep it in the user-side classifier / identity helpers. No registry, mapper or admin change. If that isn't enough, STOP and report.
+- **Verify** (new script, or a new group in a Phase 123 verify; bounded per H-1). It checks:
+  - `wolt.com/he/discovery` → `https://wolt.com/he/discovery`;
+  - an existing `www.` host is kept;
+  - path and query are preserved;
+  - `http://` → `https://`;
+  - an edit round-trip keeps the typed URL.
+- **Mutations, at least:**
+  - `www.` re-added for apex hosts;
+  - path / query changed;
+  - edit overwrites the typed URL;
+  - www / non-www identity broken (caught by the identity proof).
+
+**D-123-8: custom-site credentials disappear after an admin change. REVISED by the Owner (supersedes rules (i)–(iii) of the original ruling)**
+- **Owner rule:** an admin change to a user's own custom site has NO effect on that user's environment until the site's mapping is complete and its status is «מאושר למשתמשים» (`userApprovalState = approved`), exactly like a global site.
+  - Until then, the owner keeps seeing the site as they created it (name, URL, category, login fields) with their saved credentials.
+  - Saving credentials before mapping stays allowed; nothing is deleted.
+- **Once the site is approved for users,** the admin definition applies:
+  - stored values under unchanged field ids are shown;
+  - values under other ids are kept (never deleted by any admin change, sync, hydrate or load) until the user saves that profile;
+  - the window shows «שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.» with «עריכת פרופיל» (Hebrew RTL, inside the floating window, no browser dialog).
+- **Architect direction (to be confirmed by Step 1): user side only.** For an app in vault `customServices`, the effective definition is the vault copy unless the registry entry is `approved`, in which case it is the registry definition. No `src/admin` / registry / mapper change.
+- **Step 1, read-only root-cause report (no code change), in `dev-phase123.md`:**
+  - where the effective definition / field ids of an own custom site switch from the vault copy to the admin-changed registry entry (file, function, read path), for a rename / category / URL / promotion / mapping change;
+  - **whether the vault `customServices` copy holds everything the window needs** (name, URL, category, login fields / field ids, launch kind) to keep showing the site as created;
+  - whether any path really drops stored values (sync, hydrate, load, save), or whether they only become invisible (`serviceHasUsableCredentials` reads only current field ids);
+  - whether the existing profile-modal save drops values under missing ids (allowed by the ruling only when the user saves that profile);
+  - **notice scope (Architect addition):** the notice rule is generic (no site / source branches), so it also applies to global sites whose fields an admin changed. Report which stored-key patterns would raise the notice on global / built-in sites (e.g. legacy keys vs current mapping ids), so the Architect can judge whether existing users would see it unexpectedly;
+  - the proposed user-side fix, and anything that would need more than the user side.
+- **Reproduction (Architect addition, as relayed by the Owner 2026-10-05):**
+  - Allowed: a live reproduction with the Owner's account, in the TEST environment, through the app UI. Read-only DB queries are allowed.
+  - No passwords or credential values in files, logs, screenshots or evidence; report field ids / key names / counts only.
+  - The harness verify with the real code paths (registry mapper, `credentialsGate`, profile modal) is still required.
+- **STOP for Architect approval** if the fix needs anything outside the user side: `src/admin/**`, registry persistence, the mapper, sync, hydrate, `src/vault/crypto.ts` or `persistVault`. Implement nothing there; report and wait.
+- **Step 1 result (2026-10-05):** BLOCKED correctly. The Architect accepted these facts:
+  - hydrate (`persistence.ts` ≈ 983–995) overwrites the vault copy of an own site with the registry row on every unlock;
+  - the App catalog merge takes login fields from the registry;
+  - in-place promotion makes the global version win;
+  - stored values are only hidden, never deleted (except by the user's own profile save).
+  The superseded "Implementation after Step 1" is replaced by the rulings below.
+
+**D-123-8 implementation (Architect rulings after Step 1, 2026-10-05; normative: arch Review Notes "D-123-8 rulings after Step 1", items 1–5)**
+1. **Scope (Owner): own custom sites only, permanently.**
+   - "Own custom site" = an app in the owner's vault `customServices`.
+   - Global sites keep today's behaviour: admin edits apply immediately; approval gates catalog listing and autofill only. No draft / publish model for globals.
+2. **Vault copy = the last version the owner may see.** For an own custom site, the effective definition (name, URL, category, login URL, login fields, launch kind) is:
+   - **registry `approved`** (`userApprovalState` from `src/service/userApproval.ts`): the registry definition applies, and hydrate refreshes the vault copy from it;
+   - **registry not approved** (any other state): the vault copy, resolved as a user-created site, i.e. the default custom form it had at creation;
+   - **approval lost after a re-edit:** the vault copy (the last approved version). Never the newer unapproved edits, and never a flip back to the original;
+   - **unknown / unreadable approval or registry row:** the vault copy (fail-closed).
+   - ONE resolved definition feeds the window, launch kind, login URL, execution and managed autofill. Execution / autofill code is unchanged; only its input definition is resolved.
+3. **N-2 exception (Architect-APPROVED, narrow):**
+   - **`hydrateWorkspaceFromCloud`:** only the own-site merge changes. It replaces the vault copy with the registry row only when that row is `approved` (same `userApprovalState` helper); otherwise the vault copy is kept unchanged.
+   - **App catalog merge:** it stops taking registry login fields for non-approved own sites.
+   - Nothing else changes in hydrate / sync / crypto / `persistVault` / RLS / schema / registry / mapper / `src/admin`.
+   - **Evidence:** the hydrate diff quoted IN FULL in `dev-phase123.md`, plus a static check that the rest of `hydrateWorkspaceFromCloud` / `persistence.ts` is unchanged against `af881f6b`.
+4. **Promotion under a different global id:** no automatic move.
+   - The owner keeps their own site, with profiles and credentials untouched.
+   - The global site appears in their catalog once approved (Phase 116 offer / «already in home» as today).
+5. **After approval with changed fields:**
+   - same-field-id values are shown;
+   - other values are kept until the user saves that profile;
+   - the floating window shows «שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.» with «עריכת פרופיל» (Hebrew RTL, no browser dialog).
+   - **Notice scope: own sites only.** Global sites are unchanged (no notice).
+- **Rules:**
+  - The fix never writes, renames or deletes stored credential values, except through the user's own profile save.
+  - No site / hostname / serviceId branches. The own-site test is "in vault `customServices`", not an id pattern.
+- **Verify** (new or extended Phase 123 verify; bounded per H-1). It checks:
+  - own site, registry NOT approved after an admin rename / category / URL / login-URL / field change: window, launch kind, login URL and the autofill input use the vault copy with the stored values; no notice; hydrate leaves the vault copy unchanged;
+  - own site, registry `approved`: the registry definition applies; hydrate refreshes the vault copy; with changed fields, same-id values are shown, other-id values are still in the vault, and the notice + «עריכת פרופיל» appear;
+  - approved, then a re-edit drops approval: the last approved version is shown (not the new edits, not the original);
+  - unknown / unreadable approval: the vault copy is shown;
+  - promotion under a new global id: the own site and its credentials are untouched, and the global site is offered in the catalog once approved;
+  - global site with admin field changes: today's behaviour, no notice;
+  - approved and nothing hidden: no notice;
+  - static: hydrate diff limited to the own-site merge; App catalog merge rule; no site / serviceId branches.
+- **Mutations, at least:**
+  - registry definition used while not approved;
+  - vault copy not refreshed while approved;
+  - approval lost shows the newer unapproved edits;
+  - approval lost flips back to the original;
+  - unknown approval uses the registry;
+  - hydrate change outside the own-site merge;
+  - notice shown on a global site;
+  - values under missing ids deleted;
+  - display keyed by position (or label) instead of field id;
+  - notice missing after approval with changed fields;
+  - registry login fields used in the App catalog merge for a non-approved own site.
+
+**Rules for the whole fix round:**
+- T-1: `--no-mutations` plus the new / touched mutations, the directly touched verifies (incl. `verifyPhase116CustomAddIdentity`, the D-123-7 verify, `verifyPhase123Sync` because hydrate is touched, and the Phase 123 floating-window / catalog verifies), the Phase 122 admin verifies, `tsc` and build.
+- **Final evidence = ONE clean sequential T-1 run on a single frozen tree.** No concurrent runs. The fingerprint (vs `af881f6b`, excluding `team-Yuri/`) is taken immediately before and after the run and must be identical. Partial or concurrent runs are not evidence.
+- H-1 bounds in every new browser group / mutation.
+- Frozen tree with a fingerprint against `af881f6b`, excluding `team-Yuri/`.
+- No site / hostname / serviceId branches, no browser dialogs, Hebrew RTL, no credential values or secrets in logs.
+- No env / secrets access. Live DB: only the read-only queries of the D-123-8 reproduction.
+- Non-Negotiables N-1…N-8 apply, except the D-123-6 copy exception.
+- **Owner re-check (moved 2026-10-05 into the consolidated Owner run at the end of the phase; no longer gates 123.3):** item 4 (if not already recorded), D-123-7 (create / edit `wolt.com/he/discovery` keeps the URL) and D-123-8:
+  - an admin change to an own unapproved site has no effect for the owner;
+  - after approval, the admin definition applies; with changed fields, the notice + «עריכת פרופיל» appear and same-id values are shown;
+  - a re-edit that drops approval keeps the last approved version.
+
+### Slice 123.3 — Remove app (AD-123-10, -11, -12, -16; PQ-123-1)
+**Opened 2026-10-05** (fix round D-123-6…8 Architect PASS; gate change per arch Review Notes "Owner re-check deferred"). Bindings added from arch Review Notes: Item 0a (KI-5), the KI-3 ruling, the AD-123-14 clarification, `showAppMenu`, and MC-3.
+
+**Precondition: WIP commit of the approved tree (before any 123.3 change)**
+- Sarah commits the Architect-approved tree (fingerprint `1de67427…e387`, scope `-- src scripts supabase` vs `af881f6b`) on local branch `wip/phase123-recovered`.
+- Same rules as `af881f6b`: explicit paths only (no `git add -A` / `.`); team docs only under lowercase `team-yuri/` (no `team-Yuri/` second-casing paths in the commit); no push, merge, `--no-verify` or amend; no other history change.
+- Before committing, recompute the fingerprint and confirm `1de67427…e387`. After committing, `git diff <hash> -- src scripts supabase` is empty and there are no untracked files under those paths.
+- Report the hash in `dev-phase123.md` (123.3). **That commit is the 123.3 fingerprint baseline** (scope `-- src scripts supabase`).
+
+**Item 0a — KI-5 hydrate completeness (first product change; Architect binding)**
+- The hydrate own-site block in `hydrateWorkspaceFromCloud` refreshes the vault copy only when the row is approved AND passes the same completeness predicate the resolver uses (category + icon).
+  - One shared helper in `src/digitalHome/ownSiteDefinition.ts`, used by both `resolveOwnSiteDefinition` and the hydrate block.
+  - The change stays inside the same block; a row with no local copy is still added (today).
+- No other hydrate / `persistence.ts` change. Static check: `persistence.ts` equals the baseline commit apart from that block (and its import); the `verifyPhase123AppContext` / `verifyPhase123D8OwnSite` block pins are updated narrowly, with a comment naming KI-5.
+- **Mutations, at least:**
+  - an approved but incomplete row replaces the copy;
+  - resolver and hydrate use different predicates (helper not shared);
+  - hydrate change outside the block.
+- `verifyPhase123D8OwnSite` keeps all 17 existing mutations.
+
+**Step 0 — AD-123-16 verification. Hard gate: no product code and no migration before the report is accepted.** (Item 0a is the only change allowed before the Step 0 report; it is not part of the removal feature.)
+- **MC-3 (Architect):** if the Developer has no admin / service-role read, she prepares the row and the call and gives the Owner a read-only SQL query to run (no secrets, no credential values). The Owner's result is the proof. This is the only Owner action inside 123.3.
 1. With a real signed-in test user, create an own custom site through the existing custom add so its `service_registry` row is `source_type='user'`, `status='pending_review'`, `owner_user_id = user`.
 2. Call the existing `deleteCustomServiceRegistryRow(id)` as that user.
 3. Prove the outcome independently of the function. The function does not detect a 0-row delete, so "no error" is not proof.
@@ -458,6 +614,29 @@ Authorized by the Architect (AD-123-19), handed over by the Owner, and added to 
   - dialog / toast ARIA roles and Escape;
   - N-checks.
 - **Mutations, at least:** step order swapped (local before cloud); Undo writes; failure keeps the tile hidden; step-5 failure reverts the user removal; pending persisted to storage; re-add keeps old profiles; `removeAppFromVault` keeps credentials; confirm uses `window.confirm`.
+
+**Bindings added at opening (2026-10-05; arch Review Notes):**
+- **AD-123-14 clarification:**
+  - «עריכת פרטי האתר» requires BOTH: the app is in vault `customServices`, AND its runtime source is `user-created`.
+  - A vault-custom id whose runtime source is the catalog (promoted) is catalog-origin: no edit entry, and removal deletes the membership only (step 5 matches no row).
+  - Digital Home uses this single "custom" rule.
+- **`showAppMenu` = any menu entry** (`edit_site_details || remove_app`). Since `remove_app` is always true, the menu shows for every app and every launch kind (AD-123-17).
+  - The 123.2 AD-123-17 fixture changes: the every-launch-kind proof uses «הסרת אפליקציה» on built-in apps in all four launch kinds (`credentials`, `missing-user-credentials`, `no-stored-credentials`, `not-configured`).
+  - Mutations: menu hidden for one launch kind; edit entry shown for a promoted (catalog-runtime) vault-custom id.
+- **KI-3 ruling (removal of the last app seen from another window):**
+  - An empty cloud membership stays "cannot verify" in general (D-109-25), EXCEPT for apps this session saw in the cloud at its last successful baseline read (login baseline / focus refresh). Those are reported gone and dropped like any other removed app.
+  - Apps never seen in the cloud this session are kept.
+  - Uses the existing in-memory baseline (`sessionSyncScope`); no schema / RPC change; fail-closed on read errors (a failed read changes nothing).
+  - Any change in sync / hydrate needed for this must stay within that rule. If it needs more, STOP and report.
+  - Verify (in `verifyPhase123Sync` or the 123.3 verify): last app removed in window A → window B, empty cloud on refresh, drops it; a never-seen app on an empty cloud is kept; a read error keeps everything.
+  - Mutations, at least: an app seen in the cloud stays after removal elsewhere; a never-seen app is dropped on an empty cloud; a read error drops apps.
+- **Already in this plan, restated as binding:** AD-123-11 commit order; AD-123-12 Undo edge rules; PQ-123-1 (page closed / reloaded during Undo = not removed, no persisted pending state).
+- **Rules:**
+  - T-1 per slice (`--no-mutations` + new / touched mutations, touched verifies incl. `verifyPhase123Sync`, `verifyPhase123D8OwnSite`, `verifyPhase123AppContext`, `verifyPhase123Catalog`, the Phase 122 admin verifies, `tsc`, build).
+  - H-1 bounds.
+  - **Final evidence = ONE clean sequential T-1 run on one frozen tree,** fingerprint vs the WIP commit (scope `-- src scripts supabase`) identical immediately before and after; no concurrent runs.
+  - No site / hostname / serviceId branches; no browser dialogs; Hebrew RTL; no credential values or secrets in logs; no env / secrets access (Step 0 per MC-3).
+- **Owner manual steps for 123.3** (remove flow, Undo, cross-window last-app removal, own-site registry row gone): go into the consolidated Owner run at the end of the phase. Mark them "awaiting Owner".
 
 ### Slice 123.4 — Navigation unification (AD-123-1, -9, -15) + END OF ROUND
 - **`App.tsx`:**
@@ -596,9 +775,97 @@ Authorized by the Architect (AD-123-19), handed over by the Owner, and added to 
 - **Manager note:** non-form credential entries (`resolveCredentialEntry(...).kind !== 'form'`) keep today's gating of profile UI. If PRD FRs require profile UI for them, apply the stop rule.
 
 ## Manager Review
-MANAGER_REVIEW_STATUS: APPROVED (round 2) — joint resubmission: fix round D-123-1…5 + AD-123-18 + amendment A + H-1 + Known Issue 5, and slice 123.2b (AD-123-19 + addenda (a)/(b)), frozen tree sha256=c06950a50486cfef9fcfd041622aebbd3e5dfaa7a3d85e99038d9dff93ff1c21. Handed to the Architect. Owner items are carried as conditions. (Earlier: fix round round 1 BLOCKED; slice 123.2 + R-123-1 APPROVED round 1; slice 123.1 APPROVED round 2.)
+MANAGER_REVIEW_STATUS: AWAITING SUBMISSION — slice 123.3 (opened 2026-10-05; WIP commit → Item 0a → Step 0 report STOP). Previous: fix round D-123-6…8 APPROVED (round 1), Architect PASS (2026-10-05), frozen tree sha256=1de67427489e2d49eb5d6a8ff377c2ab17572e420e316d8a738bd4b6af49e387; Owner re-check moved to the consolidated end-of-phase run. Previous: APPROVED (round 2), Architect PASS (conditional) — joint resubmission: fix round D-123-1…5 + AD-123-18 + amendment A + H-1 + Known Issue 5, and slice 123.2b (AD-123-19 + addenda (a)/(b)), frozen tree sha256=c06950a50486cfef9fcfd041622aebbd3e5dfaa7a3d85e99038d9dff93ff1c21. Handed to the Architect. Owner items are carried as conditions. (Earlier: fix round round 1 BLOCKED; slice 123.2 + R-123-1 APPROVED round 1; slice 123.1 APPROVED round 2.)
 
 ### Review Notes
+2026-10-05: **fix round D-123-6…8 Architect PASS** (arch Review Notes "Fix round D-123-6…8 Architect review (2026-10-05): PASS").
+- Accepted: D-123-6, D-123-7, D-123-8 per rulings 1–5, the two additions, and Known Issues 1–4 (KI-1 → backlog, Owner decision before 123.4).
+- Flag 1 (KI-5) accepted for this round and made the binding first item of 123.3. Flag 2 (notice trigger) accepted and checked in the consolidated Owner run.
+- **Gate change (Owner preference):** the Owner re-check of D-123-6…8 and the `[catalog-gate]` count move into ONE consolidated Owner run at the end of the phase (after 123.4 + END OF ROUND). 123.3 opens now. Accepted risk (Architect): a live-only D-123-8 / hydrate defect may surface late; mitigated by the automated verifies.
+- **Slice 123.3 opened** with these bindings:
+  - precondition: WIP commit of the approved tree (it becomes the fingerprint baseline);
+  - Item 0a (KI-5: shared completeness predicate in the hydrate block);
+  - Step 0 per MC-3;
+  - the KI-3 ruling (empty cloud: drop only apps seen in the cloud at the last successful baseline read);
+  - the AD-123-14 clarification and `showAppMenu` = any entry (proven with «הסרת אפליקציה» on built-ins in all four launch kinds);
+  - AD-123-11 / AD-123-12 / PQ-123-1;
+  - one clean sequential T-1 run.
+- The 123.3 Owner manual steps go into the consolidated run.
+
+Fix round D-123-6…8, Manager review round 1 (2026-10-05) — **APPROVED → Architect review.**
+- **Frozen tree:**
+  - Branch `wip/phase123-recovered`, HEAD `af881f6b`.
+  - The fingerprint (`$env:TEMP\pv-fingerprint-d8.mjs`, scope `-- src scripts supabase` vs `af881f6b`; team docs outside the scope) was recomputed before and after all Manager runs: `1de67427…e387` both times. It matches the evidence (tracked_changed=12, untracked=3).
+- **Hydrate, N-2 exception:**
+  - `git diff af881f6b -- src/supabase/persistence.ts` = exactly the `isApprovedForUsers` import + the 5-line own-site block inside the `customRows` loop of `hydrateWorkspaceFromCloud`. It matches the full diff quoted in the evidence.
+  - The rest of the file is byte-identical to `af881f6b` (asserted by `verifyPhase123D8OwnSite`, mutation M7 caught).
+  - A row with no local copy is still added; an unreadable row falls into the existing `catch`.
+  - No diff vs `af881f6b` in `src/vault`, `src/service`, `src/registry`, `src/execution`, `src/supabase/registryPersistence.ts`, `supabase/` or `extension/`. `src/admin` = only the D-123-6 line.
+- **One resolved definition (item 2):**
+  - `resolveOwnSiteDefinition` returns the registry entry whole when approved (fail-closed `isApprovedForUsers`: no entry / throw → false), else the vault copy whole. No mixing.
+  - `mergeCustomDefinitions` keys every vault copy through it; the old overlay that took registry `loginFields` / `metadata` is removed (App catalog merge rule).
+  - The result feeds `legacyCustomServices`, i.e. the one `Service` used by the window, launch kind, login URL, execution and managed autofill.
+  - No execution / autofill file changed; `verifyPhase117ManagedAutofill` and `verifyPhase103Execution` pass.
+  - `legacyBuiltinServices` drops ids in `customServiceIds`, so an in-place-promoted global is represented only by the resolved own entry.
+- **Notice (item 5):**
+  - Shown only when `isCustom && ownSiteApproved` + profile UI + active profile + form entry + a non-blank stored key the form doesn't show.
+  - Hebrew copy exact, `role="status"`, no browser dialog. Exactly one «עריכת פרופיל» (the bar button is hidden while the notice shows).
+  - Display by field id; no write path added.
+- **Verify `verifyPhase123D8OwnSite`:**
+  - 9 groups / 17 mutations. M1–M13 cover the 11 required mutations: M10 + M11 for position / label, M4 + M5 for the two approval-lost variants, M12 + M13 for notice missing and catalog login fields. M14–M17 are extra.
+  - The v0 → v1 → v2 hydrate sequence proves "last approved version, never the newer edits, never the original".
+- **Superseded AppContext assertion:** narrow. `hydrateWorkspaceFromCloud` must equal BASE `909cc8b` after removing the exact D-123-8 block, which must occur exactly once; the other 8 pinned functions stay byte-identical. The test-only re-pin `HEAD` → `909cc8b` is as accepted by the Architect.
+- **The two additions beyond the ruling:**
+  - *Resolver fallback for an approved entry without category / icon:* fail-closed toward the vault copy (crash guard for tile rendering), in the same direction as the ruling. No new behaviour outside D-123-8. It is not mirrored in hydrate; see flag 1.
+  - *Panel reposition:* only adds `showFieldsUpdated` to the existing `useLayoutEffect` dependency list, so the panel repositions when the notice changes its height. No new behaviour.
+- **Manager re-runs on the frozen tree (sequential, all exit 0):**
+  - `verifyPhase123D8OwnSite` (full) PASS 9 / 17;
+  - `verifyPhase123FixD6D8` (full) PASS 6 / 9;
+  - `verifyPhase123Sync` (full) PASS 14 / 30;
+  - `verifyPhase123AppContext --mutations=M3,M8,M10..M15` PASS 23 / 8;
+  - `verifyPhase116CustomAddIdentity` PASS (R1–R12);
+  - `verifyPhase123CatalogGate --no-mutations`, `verifyPhase117ManagedAutofill`, `verifyPhase103Execution` PASS;
+  - admin sample: `verifyPhase121DeleteService` (43 mutations), `verifyPhase122AdminWorkspace --no-mutations` (32 groups), `verifyPhase122AdminNotes` (8 mutations), `verifyPhase121IframeSurface` PASS;
+  - `npx tsc -b` exit 0.
+  - The full 68-job sequential run and the build are accepted from the evidence: one run, with the same fingerprint before and after.
+- **Known Issues 1–4:** pre-accepted by the Architect. KI-1 (owner edit overwrites a pending admin draft) is a backlog Owner decision before 123.4.
+- **Flags for the Architect (not blocking at Manager level):**
+  1. **KI-5, resolver vs hydrate asymmetry:** hydrate refreshes on approval alone, while the resolver also requires a category / icon. For an approved row without category / icon, the next unlock replaces the vault copy with that row. The resolver then shows it whole as "not approved", so no notice appears. It was possible before and is rare; please confirm, or rule that hydrate should mirror the guard (that would widen the N-2 diff).
+  2. **Notice trigger:** any non-blank stored key not in the current form raises it (own approved sites only). If a credential can hold non-field keys for a custom site, the notice could show without a field change. The verify's "nothing hidden → no notice" case uses clean fixtures. Please confirm, or have the Owner re-check cover it.
+  3. **No live reproduction:** the evidence says there were no Owner credentials and env / DB were kept off-limits. The harness verify covers the rulings; the Owner re-check is the live confirmation.
+  4. **Owner re-check pending:**
+     - item 4 (if still open);
+     - D-123-6 approve message;
+     - D-123-7 (create / edit keep the typed URL, www / non-www recognised);
+     - D-123-8 (an admin edit has no effect until approval; after approval with changed fields, the notice + «עריכת פרופיל» appear; a re-edit that drops approval keeps the last approved version; globals as today).
+- **Gate:** 123.3 stays closed until Architect PASS on D-123-6…8 and the Owner re-check is recorded.
+
+2026-10-05, Architect rulings after Sarah's D-123-8 Step 1 BLOCK (arch Review Notes "D-123-8 rulings after Step 1"):
+- The BLOCK was correct. Step 1 facts are accepted: hydrate overwrites the own-site vault copy on every unlock; the App catalog merge takes registry login fields; values are hidden, not deleted.
+- **D-123-6 / D-123-7:** accepted at Architect level, final review with D-123-8. They're marked DONE in the plan. The test-only re-pin of the three Phase 123 verifies to `909cc8b` is accepted.
+- **D-123-8 is released**:
+  - own custom sites only, permanently; globals unchanged;
+  - the vault copy is the last version the owner may see;
+  - the registry applies only while `approved` (hydrate then refreshes the vault copy); a loss of approval keeps the last approved version; unknown approval keeps the vault copy;
+  - one definition for window / launch kind / login URL / execution / autofill;
+  - no automatic move on promotion under a new global id;
+  - the notice applies to own sites only.
+- **N-2 exception approved, narrow:** the own-site merge in `hydrateWorkspaceFromCloud` (replace the vault copy only when approved) and the App catalog merge (no registry login fields for non-approved own sites). Nothing else.
+- The plan's D-123-8 section is updated: implementation rules, verify, and 11 mutations (incl. the 8 named by the Owner); the hydrate diff must be quoted in full.
+- **Final evidence:** ONE clean sequential T-1 run on one frozen tree, with the fingerprint vs `af881f6b` (excluding `team-Yuri/`) identical before and after. The earlier concurrent double run doesn't count.
+- 123.3 stays closed.
+
+2026-10-05, after the incident:
+- The Owner's checkpoint restore undid the D-123-6…8 section first written on 2026-10-04. Recovery is ACCEPTED by the Architect (arch Review Notes "Incident …"): the tree is the frozen joint resubmission, committed as WIP `af881f6b` on local branch `wip/phase123-recovered`. The Manager confirmed the branch and commit.
+- The joint-resubmission Architect PASS (conditional) stands.
+- The section "Fix round D-123-6…8" is re-added, with D-123-8 as REVISED by the Owner (vault copy until the registry entry is approved) and the four Architect additions:
+  1. live reproduction allowed in TEST via the app UI, with read-only DB queries, no credential values, and the harness still required;
+  2. a notice-scope report for global sites;
+  3. the D-123-6 superseded admin assertion;
+  4. D-123-7 identity fixes on the user side only.
+- **Manager note for the Architect:** the earlier addition said "no live DB, no real account" for the D-123-8 reproduction. The Owner relayed the revised rule (live, TEST environment, read-only queries) on 2026-10-05; it is not yet in `arch-phase123.md` Review Notes. Please record it at review.
+- Status: awaiting submission. 123.3 stays closed.
+
 Joint resubmission, Manager review round 2 (2026-10-04) — **APPROVED → Architect review.**
 - **Frozen tree:**
   - The fingerprint was recomputed with `$env:TEMP\pv-fingerprint.mjs` before and after all Manager runs, with `team-Yuri/` included: identical both times, `c06950a5…ff1c21` (diff_bytes=229284, tracked_changed=30, untracked_in_scope=19).
@@ -755,6 +1022,10 @@ Slice 123.1, round 1:
 - **Known Issue 1 (BLOCKED, Architect):** profile UI stays gated on form credential entries, with behaviour unchanged. This is the stop rule applied correctly. For the Architect at review: does AD-123-2 apply to `no-stored-credentials` / `not-configured` apps?
 
 ### Required Corrections
+Slice 123.3: none yet (awaiting submission).
+
+Fix round D-123-6…8, round 1: none. The Owner re-check is a condition carried to the Architect review, not a Developer correction.
+
 Joint resubmission, round 2: none. The Owner items (Review Notes, flag 6) are conditions carried to the Architect review, not Developer corrections.
 
 Fix round D-123-1…5, Manager round 1 (BLOCKED):

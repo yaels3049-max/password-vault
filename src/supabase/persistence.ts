@@ -29,6 +29,7 @@ import {
 } from './sessionSyncScope';
 import { outboxOf, type ConfirmedInserts } from '../vault/syncOutbox';
 import { applyOutboxAfterHydrate } from '../digitalHome/cloudReconcile';
+import { isApprovedForUsers } from '../digitalHome/ownSiteDefinition';
 import {
   dropServicesMissingFromRegistry,
   fetchRegistryPresence,
@@ -986,6 +987,11 @@ export async function hydrateWorkspaceFromCloud(
     for (const row of (customRows ?? []) as ServiceRegistryRow[]) {
       try {
         const definition = registryRowToServiceDefinition(row);
+        // D-123-8: the vault copy is the last version the owner may see — replaced only by an
+        // approved row; a row with no local copy is still added.
+        if (customById.has(definition.id) && !isApprovedForUsers(definition)) {
+          continue;
+        }
         customById.set(definition.id, definition);
       } catch {
         if (isDevBuild()) {

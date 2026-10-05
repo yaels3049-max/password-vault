@@ -37,9 +37,12 @@ function replaceOnce(src, from, to, label) {
 const MUTATION_ARGS = parseMutationArgs();
 const STARTED = Date.now();
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+// Pre-Phase-123 tree (Phase 122 commit). HEAD can no longer be the baseline: the WIP commit
+// af881f6b on wip/phase123-recovered already contains the Phase 123 changes.
+const BASE = '909cc8bcceedd3b74d2e6fdbcc1ecac291a7b570';
 const headSource = (rel) => {
   try {
-    return git('show', `HEAD:${rel}`).replace(/\r\n/g, '\n');
+    return git('show', `${BASE}:${rel}`).replace(/\r\n/g, '\n');
   } catch {
     return '';
   }
@@ -254,8 +257,9 @@ function checkSharedLogicUnchanged(overrides) {
 }
 
 function checkAdminReexportOnly(overrides) {
-  const changed = git('diff', '--name-only', 'HEAD', '--', 'src/admin').split('\n').filter(Boolean);
-  assert(changed.length <= 1 && changed.every((p) => p === 'src/admin/userApproval.ts'), `N-1 / AD-123-19: only src/admin/userApproval.ts changes under src/admin (${changed.join(', ')})`);
+  // D-123-6 (N-1 copy exception): ApprovalQueue.tsx success line — content checked by verifyPhase123FixD6D8.
+  const changed = git('diff', '--name-only', BASE, '--', 'src/admin').split('\n').filter(Boolean);
+  assert(changed.length <= 2 && changed.every((p) => p === 'src/admin/userApproval.ts' || p === 'src/admin/ApprovalQueue.tsx'), `N-1 / AD-123-19: only src/admin/userApproval.ts (+ D-123-6 ApprovalQueue.tsx) changes under src/admin (${changed.join(', ')})`);
   assert(git('ls-files', '--others', '--exclude-standard', '--', 'src/admin').trim() === '', 'N-1: no new files under src/admin');
   const admin = source(overrides, 'src/admin/userApproval.ts');
   const head = headSource('src/admin/userApproval.ts');
@@ -298,7 +302,7 @@ function checkHomeNotGated(overrides) {
     assert(!/isListedInUserCatalog|catalogGateState|catalogVisibility/.test(source(overrides, rel)), `AD-123-19: ${rel} is not gated`);
   }
   for (const rel of ['src/registry/registryLoader.ts', 'src/catalog/catalogLoader.ts', 'src/registry/registryMapper.ts', 'src/execution']) {
-    assert(git('diff', '--name-only', 'HEAD', '--', rel).trim() === '', `AD-123-19: ${rel} unchanged vs HEAD (runtime loading of existing tiles)`);
+    assert(git('diff', '--name-only', BASE, '--', rel).trim() === '', `AD-123-19: ${rel} unchanged vs HEAD (runtime loading of existing tiles)`);
   }
   assert(/<AppCatalog\s+services=\{allServices\}/.test(source(overrides, 'src/ManageServices.tsx')), 'ManageServices renders the same gated AppCatalog');
   const summary = source(overrides, 'src/dev/catalogGateSummary.ts');

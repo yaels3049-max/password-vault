@@ -25,22 +25,10 @@ export type CustomPrimaryUrlValidationResult =
   | { valid: true; normalizedUrl: string }
   | { valid: false; message: string };
 
-/** Apex hosts like example.com / example.co.il — safe to prefix www. */
-function isLikelyApexHostname(hostname: string): boolean {
-  const labels = hostname.toLowerCase().split('.').filter(Boolean);
-  if (labels.length === 2) return true;
-  if (
-    labels.length === 3 &&
-    ['co', 'ac', 'org', 'gov', 'com', 'net', 'idf'].includes(labels[1] ?? '')
-  ) {
-    return true;
-  }
-  return false;
-}
-
 /**
  * Custom services require a valid HTTPS primary URL (Iteration 3.3a).
- * Completes bare hosts: `example.co.il` → `https://www.example.co.il`.
+ * Only the scheme is completed (none → `https://`, `http://` → `https://`); the host, path
+ * and query stay as typed — `www.` is never added (D-123-7).
  */
 export function validateCustomPrimaryUrl(url: string): CustomPrimaryUrlValidationResult {
   const trimmed = url.trim().replace(/\s+/g, '');
@@ -64,13 +52,6 @@ export function validateCustomPrimaryUrl(url: string): CustomPrimaryUrlValidatio
 
     if (!parsed.hostname || !parsed.hostname.includes('.')) {
       return { valid: false, message: 'כתובת האתר אינה תקינה' };
-    }
-
-    if (
-      !parsed.hostname.toLowerCase().startsWith('www.') &&
-      isLikelyApexHostname(parsed.hostname)
-    ) {
-      parsed.hostname = `www.${parsed.hostname}`;
     }
 
     return { valid: true, normalizedUrl: parsed.href };

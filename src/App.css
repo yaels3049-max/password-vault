@@ -513,6 +513,15 @@
   gap: 0.6rem;
 }
 
+/* D-123-8 — «שדות הכניסה לאתר עודכנו» notice with «עריכת פרופיל». */
+.la-fields-updated {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
 /* Phase 123.2 — app-actions menu in the floating window (AD-123-14 / AD-123-17). */
 .la-app-menu {
   position: relative;

@@ -186,7 +186,7 @@ export default function ApprovalQueue() {
           loginUrlSource: 'admin',
         },
       });
-      setSuccess(`אושר כאתר גלובלי (${globalId}).`);
+      setSuccess(`"${selected.display_name}" אושר כאתר גלובלי.`);
       setSelectedId(null);
       setGlobalIdOverride('');
       setShowMoreDetails(false);

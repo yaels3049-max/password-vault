@@ -3,6 +3,7 @@ import type { AccessProfile } from '../profile';
 import { profilesForService } from '../profile';
 import type { Credential } from '../credentials';
 import { appContextActions, initialActiveProfile } from '../digitalHome/appContext';
+import { hiddenCredentialFieldIds } from '../digitalHome/ownSiteDefinition';
 import type { Service } from '../mockServices';
 import { isFieldMasked, resolveCredentialEntry } from '../service/credentialSchema';
 import {
@@ -35,6 +36,7 @@ import {
   LABEL_TRY_AUTO,
   MSG_COPIED,
   MSG_COPY_FAILED,
+  MSG_LOGIN_FIELDS_UPDATED,
   MSG_MANUAL_ONLY,
   MSG_MISSING_USER_CREDENTIALS_LAUNCH,
   MSG_NO_PROFILES,
@@ -63,6 +65,8 @@ export interface LoginAssistancePanelProps {
   onStatus?: (message: string, tone?: 'info' | 'warn' | 'success') => void;
   /** App is in the vault `customServices` (AD-123-14). */
   isCustom?: boolean;
+  /** D-123-8 — own site following its approved registry entry (fields may have changed). */
+  ownSiteApproved?: boolean;
   /** «עריכת פרופיל» — open the profile host on this profile (AD-123-3). */
   onEditProfile?: (service: Service, profileId: string) => void;
   /** «הוספת פרופיל» / «הוסף פרופיל» — open the profile host in add mode. */
@@ -80,6 +84,7 @@ export default function LoginAssistancePanel({
   onClose,
   onStatus,
   isCustom = false,
+  ownSiteApproved = false,
   onEditProfile,
   onAddProfile,
   onEditSiteDetails,
@@ -146,6 +151,17 @@ export default function LoginAssistancePanel({
     setLogoFailed(false);
   }, [logoSrc]);
 
+  const activeCredential: Credential =
+    (activeProfileId && credentialsByProfileId[activeProfileId]) || {};
+  // D-123-8: own sites only; values under other field ids stay in the vault until the profile is saved.
+  const showFieldsUpdated =
+    isCustom &&
+    ownSiteApproved &&
+    profileUi &&
+    activeProfileId !== null &&
+    entry.kind === 'form' &&
+    hiddenCredentialFieldIds(activeCredential, entry.fields.map((field) => field.id)).length > 0;
+
   useLayoutEffect(() => {
     function liveAnchor(): DOMRect {
       const tile = document.querySelector(
@@ -172,7 +188,7 @@ export default function LoginAssistancePanel({
       window.removeEventListener('resize', reposition);
       window.removeEventListener('scroll', reposition, true);
     };
-  }, [anchorRect, service.id, showProfileChips, showEmptyState, panelStatus, passwordVisible, launchKind, appMenuOpen]);
+  }, [anchorRect, service.id, showProfileChips, showEmptyState, panelStatus, passwordVisible, launchKind, appMenuOpen, showFieldsUpdated]);
 
   // Close on Escape; click-outside closes without blocking copy/open.
   useEffect(() => {
@@ -197,9 +213,6 @@ export default function LoginAssistancePanel({
       document.removeEventListener('mousedown', onPointer);
     };
   }, [onClose, service.id]);
-
-  const activeCredential: Credential =
-    (activeProfileId && credentialsByProfileId[activeProfileId]) || {};
 
   function showPanelStatus(message: string) {
     setPanelStatus(message);
@@ -386,6 +399,22 @@ export default function LoginAssistancePanel({
         </div>
       )}
 
+      {showFieldsUpdated && (
+        <div className="la-fields-updated" role="status" data-notice="login-fields-updated">
+          <p className="la-empty la-empty--notice">{MSG_LOGIN_FIELDS_UPDATED}</p>
+          {onEditProfile && activeProfileId && (
+            <button
+              type="button"
+              className="la-secondary-btn"
+              data-action="edit-profile"
+              onClick={() => onEditProfile(service, activeProfileId)}
+            >
+              {LABEL_EDIT_PROFILE}
+            </button>
+          )}
+        </div>
+      )}
+
       {launchKind === 'not-configured' ? (
         <div className="la-fields" role="status">
           <p className="la-empty la-empty--notice">{MSG_NOT_CONFIGURED_LAUNCH}</p>
@@ -471,7 +500,7 @@ export default function LoginAssistancePanel({
         <button type="button" className="la-primary-btn" onClick={handleOpenSite}>
           {LABEL_OPEN_SITE}
         </button>
-        {profileUi && actions.edit_profile && activeProfileId && onEditProfile && (
+        {profileUi && actions.edit_profile && activeProfileId && onEditProfile && !showFieldsUpdated && (
           <button
             type="button"
             className="la-secondary-btn"

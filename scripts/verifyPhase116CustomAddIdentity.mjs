@@ -44,7 +44,16 @@ async function loadModules() {
   const outcomeOut = join(dir, 'outcome.mjs');
   const failureOut = join(dir, 'failure.mjs');
   const mapperOut = join(dir, 'mapper.mjs');
+  const customServiceOut = join(dir, 'customService.mjs');
 
+  await build({
+    entryPoints: [join(root, 'src/catalog/customService.ts')],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    outfile: customServiceOut,
+    define: { 'import.meta.env.DEV': 'false' },
+  });
   await build({
     entryPoints: [join(root, 'src/supabase/registryPersistence.ts')],
     bundle: true,
@@ -81,6 +90,7 @@ async function loadModules() {
     outcome: await import(pathToFileURL(outcomeOut).href),
     failure: await import(pathToFileURL(failureOut).href),
     mapper: await import(pathToFileURL(mapperOut).href),
+    customService: await import(pathToFileURL(customServiceOut).href),
   };
 }
 
@@ -401,6 +411,55 @@ async function mainRuntime(mods) {
     })?.existingServiceId === 'clalit',
     'R2/Clalit: registered loginUrl converges',
   );
+
+  // R12 (D-123-7) — the validator no longer adds `www.`; identity still converges www ⇄ non-www
+  // for the catalog offer, «already in home» and same-user duplicate.
+  const { validateCustomPrimaryUrl } = mods.customService;
+  const typed = (raw) => {
+    const result = validateCustomPrimaryUrl(raw);
+    assert(result.valid, `R12: ${raw} is valid`);
+    return result.normalizedUrl;
+  };
+  const catalogWww = def({ id: 'cat-www', displayName: 'W', url: 'https://www.shop.example/' });
+  const catalogApex = def({ id: 'cat-apex', displayName: 'A', url: 'https://shop2.example/' });
+  const userWww = def({
+    id: 'custom-www',
+    displayName: 'U',
+    url: 'https://www.mine.example/',
+    source: 'user-created',
+  });
+  const r12Cases = [
+    ['shop.example', catalogWww, 'offer', 'catalog_service_available', 'https://shop.example/'],
+    ['shop.example', catalogWww, 'home', 'already_in_user_home', 'https://shop.example/'],
+    ['www.shop2.example', catalogApex, 'offer', 'catalog_service_available', 'https://www.shop2.example/'],
+    ['www.shop2.example', catalogApex, 'home', 'already_in_user_home', 'https://www.shop2.example/'],
+  ];
+  for (const [raw, entry, mode, expected, expectedUrl] of r12Cases) {
+    const normalizedUrl = typed(raw);
+    assert(normalizedUrl === expectedUrl, `R12: ${raw} → ${expectedUrl} (got ${normalizedUrl})`);
+    const outcome = classifyAddCustomService({
+      normalizedUrl,
+      definitions: [entry],
+      selectedIds: new Set(mode === 'home' ? [entry.id] : []),
+      localCustomServices: [],
+    });
+    assert(
+      outcome?.status === expected && outcome.existingServiceId === entry.id,
+      `R12: ${raw} vs ${entry.url} (${mode}) → ${expected}`,
+    );
+    console.log(`  R12 PASS: typed ${raw} → ${normalizedUrl} vs ${entry.url} [${mode}] → ${expected}`);
+  }
+  const mineNormalized = typed('mine.example');
+  assert(
+    classifyAddCustomService({
+      normalizedUrl: mineNormalized,
+      definitions: [],
+      selectedIds: new Set(),
+      localCustomServices: [userWww],
+    })?.status === 'same_user_custom_duplicate',
+    'R12: non-www typed vs own www custom → same-user duplicate',
+  );
+  console.log(`  R12 PASS: typed mine.example → ${mineNormalized} vs own ${userWww.url} → same_user_custom_duplicate`);
 }
 
 function runPhase117Regression() {
@@ -427,7 +486,7 @@ async function main() {
   const mods = await loadModules();
   await mainRuntime(mods);
   runPhase117Regression();
-  console.log('verifyPhase116CustomAddIdentity: PASS (S0–S4 static + R1–R11)');
+  console.log('verifyPhase116CustomAddIdentity: PASS (S0–S4 static + R1–R12)');
 }
 
 await main();

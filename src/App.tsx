@@ -33,6 +33,7 @@ import { clearRegistryCatalogCache } from './registry/registryLoader';
 import { loadRegistryCategories } from './registry/categoryCatalog';
 
 import type { ServiceDefinition } from './service/serviceModel';
+import { resolveOwnSiteDefinition } from './digitalHome/ownSiteDefinition';
 
 import { formatErrorChain } from './formatErrorChain';
 
@@ -138,38 +139,34 @@ function isUserCreatedDefinition(definition: ServiceDefinition): boolean {
 
 
 
+/**
+ * D-123-8 — every app in the vault `customServices` resolves to ONE definition: its registry
+ * entry (own row, or the global it was promoted to in place) when approved for users, else the
+ * vault copy as stored. Registry-only own rows (no vault copy yet) are kept as before.
+ */
 function mergeCustomDefinitions(
   vaultCustom: ServiceDefinition[],
-  registryCustom: ServiceDefinition[],
-): ServiceDefinition[] {
+  catalog: ServiceDefinition[],
+): { definitions: ServiceDefinition[]; approvedOwnIds: Set<string> } {
   const byId = new Map<string, ServiceDefinition>();
-
-  // Registry first, then vault — vault discovery enrichment must not be wiped
-  // when the registry row still has a null login_url (persist lag / RLS miss).
-  for (const definition of registryCustom) {
-    byId.set(definition.id, definition);
-  }
-
-  for (const definition of vaultCustom) {
-    const existing = byId.get(definition.id);
-    if (!existing) {
+  const catalogById = new Map<string, ServiceDefinition>();
+  for (const definition of catalog) {
+    catalogById.set(definition.id, definition);
+    if (isUserCreatedDefinition(definition)) {
       byId.set(definition.id, definition);
-      continue;
     }
-
-    byId.set(definition.id, {
-      ...existing,
-      ...definition,
-      loginUrl: definition.loginUrl ?? existing.loginUrl,
-      loginFields: definition.loginFields ?? existing.loginFields,
-      metadata: {
-        ...(existing.metadata ?? {}),
-        ...(definition.metadata ?? {}),
-      },
-    });
   }
 
-  return [...byId.values()];
+  const approvedOwnIds = new Set<string>();
+  for (const vaultCopy of vaultCustom) {
+    const resolved = resolveOwnSiteDefinition(vaultCopy, catalogById.get(vaultCopy.id));
+    if (resolved.approved) {
+      approvedOwnIds.add(vaultCopy.id);
+    }
+    byId.set(vaultCopy.id, resolved.definition);
+  }
+
+  return { definitions: [...byId.values()], approvedOwnIds };
 }
 
 /**
@@ -300,31 +297,25 @@ function App() {
 
 
 
-  const registryCustomDefinitions = useMemo(
+  const ownSites = useMemo(
 
-    () => catalogDefinitions.filter((definition) => isUserCreatedDefinition(definition)),
+    () => mergeCustomDefinitions(customServices, catalogDefinitions),
 
-    [catalogDefinitions],
-
-  );
-
-
-
-  const mergedCustomDefinitions = useMemo(
-
-    () => mergeCustomDefinitions(customServices, registryCustomDefinitions),
-
-    [customServices, registryCustomDefinitions],
+    [customServices, catalogDefinitions],
 
   );
 
 
 
+  // D-123-8: a global that is an own site (promoted in place) is represented by its resolved entry.
   const legacyBuiltinServices = useMemo(
 
-    () => definitionsToLegacyServices(builtinDefinitions),
+    () =>
+      definitionsToLegacyServices(
+        builtinDefinitions.filter((definition) => !customServiceIds.has(definition.id.trim())),
+      ),
 
-    [builtinDefinitions],
+    [builtinDefinitions, customServiceIds],
 
   );
 
@@ -332,9 +323,9 @@ function App() {
 
   const legacyCustomServices = useMemo(
 
-    () => definitionsToLegacyServices(mergedCustomDefinitions),
+    () => definitionsToLegacyServices(ownSites.definitions),
 
-    [mergedCustomDefinitions],
+    [ownSites],
 
   );
 
@@ -1344,6 +1335,8 @@ function App() {
               }}
 
               customServiceIds={customServiceIds}
+
+              approvedOwnSiteIds={ownSites.approvedOwnIds}
 
               onOpenProfileManagement={openProfileManagement}
 

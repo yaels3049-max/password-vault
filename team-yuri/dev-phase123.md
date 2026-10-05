@@ -14,6 +14,7 @@ PHASE=123
   - Known Issue 5: the login repair writes only rows that differ from the cloud as read, and logs a dev-only `[timing] login` line;
   - AD-123-19 (a) and (b) implemented.
 - B-1 (re-frozen): the tree was frozen again after these changes. Fingerprint `c06950a50486cfef9fcfd041622aebbd3e5dfaa7a3d85e99038d9dff93ff1c21` (command and scope: section "Frozen-tree fingerprint" at the end). Every result marked "frozen tree" below ran on that tree; no source, test or config file was edited after it. Submitted together for Manager → Architect review.
+- Fix round D-123-6…8: COMPLETE — D-123-6, D-123-7 and D-123-8 implemented; one clean sequential T-1 run (68 jobs) + `tsc` + build PASS on frozen tree `1de67427…e387`. Owner re-check: awaiting Owner (after the Architect review). 123.3 not open. See section "Fix round D-123-6…8".
 
 ## Source References
 - `team-Yuri/manager-phase123.md` — sections "Slice 123.1", "Slice 123.2", "Task R-123-1", N-1…N-8, Test Policy (T-1).
@@ -1133,3 +1134,490 @@ The live hidden count and the Owner visibility check: not run — awaiting Owner
 - An earlier freeze (`72fdd69c…`) was abandoned before its run finished: I added the keep-or-drop assertion to `checkDeletedElsewhereRemovedAtLogin` so that M6 is caught by the login check itself. Its partial results are not used.
 
 Stopping for Manager review → Architect review (fix round and 123.2b together).
+
+---
+
+## Recovery 2026-10-04
+
+At 2026-10-04 21:07:21 the files of the frozen tree `c06950a5…ff1c21` were truncated (0 or 2 bytes) or rewritten. `src/App.tsx` was later reset to HEAD by an inline Undo. The Architect approved this recovery plan. No feature work was done; no code was re-implemented.
+
+### Source
+- **Cursor's local agent data**, read-only, on a copy (`%TEMP%\pv-recovery`). The Owner authorized this for this recovery only.
+  - Each agent edit records `afterContentId = composer.content.<sha256>`, a full snapshot of the file after that edit.
+  - For every affected file I took the snapshot of the last edit in this chat. The SHA-256 of each blob matched its key.
+  - The last `src/` / `scripts/` edit was before the final freeze; after it, only this file was edited.
+- **Sources that could not be used:**
+  - Cursor local History: newest entry 2026-09-15.
+  - Chat checkpoints: they do not cover the Phase 123 files.
+- **Line endings:**
+  - Tracked files: as at the freeze, taken from git's LF→CRLF warnings at the first freeze (18 LF, 10 CRLF).
+  - Untracked files: CRLF (proved by the fingerprint below).
+- **Proof:** a scratch tree (outside the repo; separate work tree and a copied index) with the recovered files and the frozen versions of `team-yuri/PLAN.md` / `arch-phase123.md` reproduced the original value exactly: `sha256=c06950a50486cfef9fcfd041622aebbd3e5dfaa7a3d85e99038d9dff93ff1c21` (`diff_bytes=229284 tracked_changed=30 untracked_in_scope=19`). Those frozen team-doc versions also came from the agent data; they were used only in the scratch tree.
+
+### Files (49; all found)
+"same" = the file kept its content at 21:07 and was already byte-identical, so nothing was written.
+
+| File | Bytes | Before |
+|---|---|---|
+| scripts/lib/withTimeout.mjs | 1816 | 2 |
+| scripts/verifyPhase102CredentialSchema.mjs | 19922 | 0 |
+| scripts/verifyPhase104ServiceManagement.mjs | 23237 | 0 |
+| scripts/verifyPhase109Accounts.mjs | 19129 | same |
+| scripts/verifyPhase113LoginAssistance.mjs | 24978 | 0 |
+| scripts/verifyPhase116CustomAddIdentity.mjs | 14624 | 0 |
+| scripts/verifyPhase121DeleteService.mjs | 61915 | 0 |
+| scripts/verifyPhase121IframeSurface.mjs | 85664 | 0 |
+| scripts/verifyPhase121InspectReadinessEligible.mjs | 22408 | 0 |
+| scripts/verifyPhase121PartialOcclusionPick.mjs | 19327 | 0 |
+| scripts/verifyPhase122AdminWorkspace.mjs | 189421 | 0 |
+| scripts/verifyPhase123AppContext.mjs | 71654 | same |
+| scripts/verifyPhase123Catalog.mjs | 84337 | 2 |
+| scripts/verifyPhase123CatalogGate.mjs | 28566 | same |
+| scripts/verifyPhase123Sync.mjs | 69748 | 2 |
+| src/AddSiteModal.tsx | 8055 | same |
+| src/App.css | 53987 | 0 |
+| src/App.tsx | 43151 | 33736 (HEAD) |
+| src/CredentialModal.tsx | 6457 | 0 |
+| src/Dashboard.tsx | 10609 | 0 |
+| src/ManageServices.tsx | 16203 | same |
+| src/ServiceProfileManagementModal.tsx | 34661 | same |
+| src/admin/userApproval.ts | 427 | 0 |
+| src/catalog/addCustomServiceOutcome.ts | 3200 | 0 |
+| src/catalog/catalogVisibility.ts | 2065 | 2 |
+| src/dev/catalogGateSummary.ts | 1136 | 2 |
+| src/dev/saveTiming.ts | 736 | 2 |
+| src/digitalHome/AppCatalog.tsx | 15375 | same |
+| src/digitalHome/AppCatalogModal.tsx | 3530 | 2 |
+| src/digitalHome/EditSiteDetailsModal.tsx | 2249 | 2 |
+| src/digitalHome/appContext.ts | 3798 | 2 |
+| src/digitalHome/cloudReconcile.ts | 5771 | 2 |
+| src/digitalHome/customSiteForm.ts | 752 | same |
+| src/digitalHome/dialogDismiss.ts | 1781 | same |
+| src/loginAssistance/DigitalHomeCredentialModal.tsx | 5661 | 0 |
+| src/loginAssistance/LoginAssistancePanel.tsx | 17953 | same |
+| src/loginAssistance/credentialsGate.ts | 3317 | 0 |
+| src/loginAssistance/messages.ts | 3436 | 0 |
+| src/profile/ProfileChooserModal.tsx | 2527 | same |
+| src/service/userApproval.ts | 2327 | 2 |
+| src/supabase/persistence.ts | 34883 | same |
+| src/supabase/sessionSyncScope.ts | 6356 | same |
+| src/vault/crypto.ts | 6888 | 0 |
+| src/vault/profileManagement.ts | 8815 | same |
+| src/vault/syncOutbox.ts | 6278 | same |
+| src/vault/vault.ts | 6082 | 0 |
+| %TEMP%\pv-fingerprint.mjs | 1117 | 2 |
+| %TEMP%\pv-t1-freeze.ps1 | 2494 | 2 |
+| %TEMP%\pv-t1-freeze2.ps1 | 2626 | 2 |
+
+- `src/digitalHome/catalogModel.ts` (part of the frozen tree) was not touched at 21:07 (last written 08:34); no recovery was needed.
+- **Write and backup:** 34 files written, 15 already identical, 0 hash mismatches after writing. A backup of the 49 files is in `%TEMP%\pv-recovery-files-backup` (kept until the Architect accepts).
+
+### New fingerprint (excluding team docs)
+- **Command:** `node "$env:TEMP\pv-fingerprint-noteam.mjs" C:\password-vault`. This is the same formula as `pv-fingerprint.mjs`, limited to `-- src scripts supabase`:
+  - the bytes of `git diff HEAD --binary -- src scripts supabase`;
+  - then every untracked file under those paths, sorted (`<path>\0`, bytes, `\0`).
+- **Value:** `sha256=8cf4427a35707527f41161aae489ec2c02b7a0ec36e4b76bced6145947251ef1` (`diff_bytes=155189 tracked_changed=28 untracked_in_scope=19`).
+  - Computed right after the restore and again after the T-1 run, `tsc` and `build`: identical. No file changed in between.
+  - Measured against HEAD `909cc8b`, before the WIP commit below. After the commit the same command measures against the new HEAD and no longer gives this value.
+- For reference, the original formula (`pv-fingerprint.mjs`, with the current team docs) now gives `4c216dda…0e216` (`diff_bytes=237050`). It differs from `c06950a5` only because `team-yuri/PLAN.md` / `arch-phase123.md` changed after the freeze.
+
+### Diff checks
+- `git diff HEAD -- src/vault/crypto.ts src/vault/vault.ts` gives exactly the 3 + 3 added lines quoted in Amendment A (blobs `f87f6bf..cd05aa9`, `9c5f4fd..2f24646`).
+- `git diff --stat HEAD -- src/admin` gives `src/admin/userApproval.ts | 46 ++------…`, 1 file, 2 insertions(+), 44 deletions(-) (the re-export only).
+
+### T-1 re-run (restored tree, 2026-10-04 22:58 → 23:08; `%TEMP%\pv-t1-recovery.ps1`, results in `%TEMP%\pv-t1-recovery-results.txt`)
+
+| Run | Result | Recorded |
+|---|---|---|
+| `verifyPhase123Sync` (full) | PASS: 14 check groups, 30 mutations caught | same |
+| `verifyPhase123CatalogGate` (full) | PASS: 8 check groups, 20 mutations caught | same |
+| `verifyPhase123AppContext --mutations=M3,M8,M10,M11,M12,M13,M14,M15` | PASS: 23 check groups, 8 caught | same |
+| `verifyPhase123Catalog --mutations=M1,…,M18` (one run) | PASS: 19 check groups, 18 caught | 13 + 5 caught (two runs) |
+| 14 touched verifies | 14/14 PASS (exit 0) | same |
+| 43 admin verifies (`verifyPhase12[12]*`, AdminWorkspace `--no-mutations`) | 43/43 PASS. DeleteService: 4 groups, 43 mutations. AdminWorkspace: 32 groups | same |
+| `npx tsc -b` | exit 0 | same |
+| `npm run build` | exit 0 (existing chunk-size warning) | same |
+
+The build left `extension/`, `package*.json` and `supabase/` unchanged.
+
+### WIP commit (Owner decision 2026-10-04)
+- **Branch:** `wip/phase123-recovered`, created from HEAD `909cc8b` with the working tree kept.
+- **Commit:** `af881f6b6d891894f4109aea3bf3f27bdd670b19`, "WIP Phase 123: joint resubmission frozen tree (recovered 2026-10-04), not reviewed for merge". 51 files: 28 modified + 19 new under `src/` / `scripts/`, plus 4 team docs.
+- **No** push, merge, amend or `--no-verify`. No `node_modules/.tmp`, `%TEMP%` or env / secret files.
+- **Case paths:**
+  - All 98 tracked team files are recorded as `team-yuri/` (`core.ignorecase=true`); the folder on disk is `team-Yuri`.
+  - A dry run showed git would record the two new docs as `team-Yuri/…`, a second casing. I reported this.
+  - The Owner chose lowercase. They are committed as `team-yuri/dev-phase123.md` and `team-yuri/manager-phase123.md`. The commit has 0 `team-Yuri/` paths.
+- **After the commit:**
+  - `git status --short` was clean.
+  - All 49 recovered files were still byte-identical to the backup.
+- This section was written after the commit, so `team-yuri/dev-phase123.md` now shows as modified.
+
+### What truncated the files
+Probable cause: Cursor itself, after a hang and restart. It is not proven, and no agent command was involved.
+- **Before the restart** (previous log session):
+  - at 21:06:40 the agent window was blocked for ~15.6 s;
+  - the extension hosts then exited.
+- **Restart:** Cursor started a new session at 21:06:55.
+- **The writes:** all between 21:07:21.46 and 21:07:21.98, during startup of this workspace's window. No tool call of mine was running then; my last one was hours earlier.
+- **Pattern:**
+  - Only files edited by this chat were affected, including the `%TEMP%` helpers. `catalogModel.ts` and other files were untouched.
+  - Each file kept its line endings: LF files became 0 bytes, CRLF files 2 bytes, and 15 were rewritten with unchanged content.
+  - This fits Cursor restoring its saved state of this chat's pending agent changes, with part of the content loading empty.
+- The logs do not name the writer.
+
+### Pending
+- `%TEMP%\pv-recovery` (database copy, ~8.7 GB) will be deleted only after the Architect accepts.
+- `%TEMP%\pv-recovery-files-backup` is kept until then.
+
+Stopping for Manager + Architect check of the recovery.
+
+---
+
+## Fix round D-123-6…8 (2026-10-05)
+
+Detected phase: 123
+Selected state: Fix round D-123-6…8 — CONTINUATION: D-123-8 implementation (Architect "D-123-8 rulings after Step 1 (2026-10-05)" items 1–5 + additions; Manager "D-123-8 implementation")
+Status: COMPLETE — D-123-8 implemented within the approved N-2 exception. One clean sequential T-1 run (68 jobs, all exit 0), `tsc` and build PASS on frozen tree `1de67427…e387` (identical before and after). D-123-6 / D-123-7 unchanged since their acceptance. Owner re-check: awaiting Owner. 123.3 not open.
+
+### Baseline and frozen tree
+- Branch `wip/phase123-recovered`, HEAD `af881f6b`. No push, merge, amend, checkout, reset, stash or `--no-verify`.
+- **Fingerprint for D-123-8** (Architect 2026-10-05; `%TEMP%\pv-fingerprint-d8.mjs`, read-only helper outside the repo): SHA-256 over `git diff af881f6b --binary -- src scripts supabase`, then every untracked, non-ignored file under those paths (sorted; `<path>\0`, bytes, `\0`). Team docs are outside the scope, so the `team-Yuri` / `team-yuri` casing cannot affect the value.
+  - Frozen tree: `sha256=1de67427489e2d49eb5d6a8ff377c2ab17572e420e316d8a738bd4b6af49e387` (`diff_bytes=29186 tracked_changed=12 untracked=3`).
+  - Taken at 08:58:50 (immediately before T-1) and at 09:13:48 (after T-1, `tsc` and build): identical.
+- Earlier, for D-123-6 / D-123-7 only (old helper `%TEMP%\pv-fingerprint-af881.mjs`, scope `-- . ':(exclude,icase)team-yuri'`): `7c63e915…503a`. Its T-1 ran twice concurrently and is superseded by the single run below.
+
+### Files changed (vs `af881f6b`)
+| File | Item |
+|---|---|
+| `src/admin/ApprovalQueue.tsx` | D-123-6: one copy line |
+| `src/catalog/customService.ts` | D-123-7: `www.` completion and the `isLikelyApexHostname` helper removed; doc comment |
+| `src/digitalHome/ownSiteDefinition.ts` (new) | D-123-8: `isApprovedForUsers`, `resolveOwnSiteDefinition`, `hiddenCredentialFieldIds` (read-only helpers) |
+| `src/supabase/persistence.ts` | D-123-8 (N-2 exception): one import + the own-site merge block in `hydrateWorkspaceFromCloud` (full diff below) |
+| `src/App.tsx` | D-123-8: `mergeCustomDefinitions` → one resolved definition per own site; own ids left out of the builtin list; `approvedOwnSiteIds` to Dashboard |
+| `src/Dashboard.tsx` | D-123-8: `approvedOwnSiteIds` prop → `ownSiteApproved` for the open window |
+| `src/loginAssistance/LoginAssistancePanel.tsx` | D-123-8: notice + «עריכת פרופיל»; the bar's edit button is hidden while the notice shows; notice in the position-effect deps |
+| `src/loginAssistance/messages.ts` | D-123-8: `MSG_LOGIN_FIELDS_UPDATED` |
+| `src/App.css` | D-123-8: `.la-fields-updated` layout |
+| `scripts/verifyPhase123FixD6D8.mjs` (new) | D-123-6 / D-123-7 bounded verify + 9 mutations |
+| `scripts/verifyPhase123D8OwnSite.mjs` (new) | D-123-8 bounded verify: 9 groups + 17 mutations |
+| `scripts/verifyPhase116CustomAddIdentity.mjs` | D-123-7: new group R12 (www / non-www through the real validator + classifier) |
+| `scripts/verifyPhase123AppContext.mjs` | verify baseline `HEAD` → `909cc8b`; N-1 allows the D-123-6 line; D-123-8: hydrate pin = BASE apart from the own-site block |
+| `scripts/verifyPhase123Catalog.mjs`, `verifyPhase123CatalogGate.mjs` | verify baseline `HEAD` → `909cc8b`; N-1 allows the D-123-6 line |
+
+Dependencies: none added (`package.json` / `package-lock.json` unchanged). Docs: this section and one Status line at the top of this file.
+
+### D-123-6 — approve success copy
+Admin-exception diff (`git diff -U0 af881f6b -- src/admin`, the whole admin diff):
+```
+@@ -189 +189 @@ export default function ApprovalQueue() {
+-      setSuccess(`אושר כאתר גלובלי (${globalId}).`);
++      setSuccess(`"${selected.display_name}" אושר כאתר גלובלי.`);
+```
+- `selected` is the submission row the component already holds. No logic, query or state change; `globalId` is still used for `updateGlobalRegistryRow`.
+- **Static check** (`verifyPhase123FixD6D8`):
+  - exactly one success line, equal to the new copy, with no `globalId` / `.id` / `owner_user_id`;
+  - `src/admin` differs from `af881f6b` only in `ApprovalQueue.tsx`, by this one line (1−/1+).
+  - Mutations M8 (id back) and M9 (id appended to the name) are caught.
+
+**Superseded assertions:** none needed for the copy itself. No verify asserted «אושר כאתר גלובלי» (search over the whole repo: matches only in the source and team docs). The scope assertions that D-123-6 supersedes are listed under "Verify baseline" below.
+
+**Other admin-visible messages that print an internal id (reported, not changed):**
+| File:line | Shown |
+|---|---|
+| `ApprovalQueue.tsx:339–343` | input «מזהה גלובלי (אופציונלי)», `placeholder={row.id}` (submission id `custom-…`) |
+| `ApprovalQueue.tsx:413–414` | «מזהה» → `selected.id` |
+| `ApprovalQueue.tsx:421–422` | «owner_user_id» → `selected.owner_user_id` (uuid) |
+| `RegistryAdmin.tsx:1306–1307` | «מזהה גלובלי» → `selectedRow.id` (under «פרטים נוספים») |
+| `IntegrationStatusPanel.tsx:34–35` | «מזהה אתר» → `row.id` |
+| `CategoriesAdmin.tsx:123` | success `הקטגוריה נוצרה (קוד: ${id}).` |
+| `CategoriesAdmin.tsx:315` | «קוד מערכת:» chip → `category.id` |
+| `specialApproveReadback.ts:50` | `writer=${writerUserId.slice(0, 8)}` in the reason shown under «פרטים טכניים» (`SpecialLoginDraftEditor.tsx:619`) |
+| `SpecialTestResultView.tsx:57` | `צילום ${outcome.snapshotId}` |
+| `adminRegistryApi.ts:119` | `${fallback} (${message})`: raw DB error text, may contain ids |
+
+Borderline (login field ids, not site / user ids): `<code>{field.id}</code>` in `AdminFillTestGrid.tsx:366` and `AutofillProfileEditor.tsx:663`.
+
+### D-123-7 — scheme-only URL completion
+- `validateCustomPrimaryUrl` now only completes the scheme: none → `https://`, `http://` → `https://`. It never adds `www.`; host, path and query stay as typed.
+  - `new URL(...).href` still lowercases the host and turns an empty path into `/` (unchanged behaviour).
+- **Create and edit** both use it: `AddSiteModal.normalizeUrlField` on blur and on submit → `buildCustomSiteDefinition` → `createCustomServiceDefinition`. Edit opens on the stored `service.url` and saves the typed value. Stored URLs are not migrated.
+- **Identity:** no change needed. `serviceUrlIdentityKey` already ignores `www.`. `verifyPhase116CustomAddIdentity` R12 shows it through the real validator and classifier:
+  ```
+  R12 PASS: typed shop.example → https://shop.example/ vs https://www.shop.example/ [offer] → catalog_service_available
+  R12 PASS: typed shop.example → https://shop.example/ vs https://www.shop.example/ [home] → already_in_user_home
+  R12 PASS: typed www.shop2.example → https://www.shop2.example/ vs https://shop2.example/ [offer] → catalog_service_available
+  R12 PASS: typed www.shop2.example → https://www.shop2.example/ vs https://shop2.example/ [home] → already_in_user_home
+  R12 PASS: typed mine.example → https://mine.example/ vs own https://www.mine.example/ → same_user_custom_duplicate
+  verifyPhase116CustomAddIdentity: PASS (S0–S4 static + R1–R12)
+  ```
+- No verify asserted the old `www.` behaviour (104 / 108 M1 / 113 / 116 pass without changes to their assertions).
+- **`verifyPhase123FixD6D8` groups:**
+  - 10 URL cases, including `wolt.com/he/discovery` → `https://wolt.com/he/discovery`, existing `www.` kept, path / query / fragment kept, `http` → `https`; each is stable on re-validation (blur, then submit). 4 invalid cases.
+  - Create stores the typed URL (`url`, `faviconSiteUrl`, same-as-website `loginUrl`). Edit stores the typed URL and keeps the id. An edit round-trip of a stored `www.` URL or a path URL leaves it unchanged.
+  - www ⇄ non-www identity: catalog offer, «already in home», same-user duplicate.
+  - Static: no `www` in the validator code, create / edit wired through it, no site / hostname / id branches.
+  - Mutations M1–M7, all caught: `www.` re-added, path / query dropped, query dropped, `www.` stripped, `http` kept, edit overwrites the typed URL with the stored one, identity broken.
+
+```
+PASS — Phase 123 fix round D-123-6…8: 6 check groups, 9 mutations caught — 2s
+```
+
+### Verify baseline (three Phase 123 verifies)
+On the first freeze, `verifyPhase123AppContext`, `verifyPhase123Catalog` and `verifyPhase123CatalogGate` failed:
+- «crypto.ts differs from HEAD by more than the outbox field»;
+- «addCustomService unchanged vs HEAD apart from timing…»;
+- «fixture: HEAD admin helper found».
+
+**Cause:** these verifies compare against `HEAD`, meaning the pre-Phase-123 tree. Since the WIP commit, HEAD is `af881f6b`, which already contains the Phase 123 edits to `App.tsx`, `crypto.ts` and `userApproval.ts`. None of the failing checks look at a file this round touched.
+
+**Fix (test-only):**
+- A constant `BASE = 909cc8b…` (the Phase 122 commit, parent of `af881f6b`) replaces `HEAD` in `git show` / `git diff`. This keeps their original meaning.
+- The N-1 `src/admin` scope assertions now also allow `src/admin/ApprovalQueue.tsx`, with a comment naming D-123-6. The line's content is checked by `verifyPhase123FixD6D8`.
+
+| Superseded assertion (D-123-6) | Was | Now |
+|---|---|---|
+| `verifyPhase123AppContext` N-1 | `src/admin` diff = `userApproval.ts` only | + `ApprovalQueue.tsx` |
+| `verifyPhase123Catalog` N-1 | same | same |
+| `verifyPhase123CatalogGate` `checkAdminReexportOnly` | ≤ 1 file, `userApproval.ts` | ≤ 2 files, + `ApprovalQueue.tsx` |
+
+### D-123-8 Step 1 (read-only; no code change)
+
+**Method:**
+- Read the code paths listed below.
+- Ran a scratch probe (`%TEMP%\pv-d8-step1\probe.mjs`) that bundles the real `registryMapper`, `definitionToLegacyService`, `credentialsGate`, `userApproval` and `catalogVisibility`. It uses placeholder values; output is field ids, kinds and key names only.
+- **Live reproduction: not done.** I cannot sign in as the Owner (the exposed password must not be reused), and DB access would need env / secrets, which stay off-limits. The Owner can reproduce through the app UI.
+
+**1. Where the definition switches from the user's copy to the admin-changed registry entry.** There are three paths, all in user-side code that already exists.
+- **(i) Catalog merge** (`App.tsx` `mergeCustomDefinitions`, lines 141–173; used at 313–319). For an own row (`source_type='user'`, mapped `user-created`) the code builds `{...registry, ...vault, loginFields: vault ?? registry, metadata: {...registry, ...vault}}`.
+  - Name, URL and category: the vault value wins.
+  - Login fields: the registry value wins, because the vault copy has none (`createCustomServiceDefinition` never sets `loginFields`).
+  - Admin metadata keys (`credentialMode`, `autofillProfile`, …) are not in the vault copy, so the registry values apply.
+- **(ii) Hydrate overwrites the vault copy** (`persistence.ts` `hydrateWorkspaceFromCloud`, lines 983–995). Each owned registry row replaces the vault `customServices` entry wholesale (`customById.set(definition.id, registryRowToServiceDefinition(row))`). The result is persisted to IndexedDB on every unlock (`App.tsx:777`, `persistVault(hydrated, { skipCloudSync: true })`).
+  - So after the next unlock, admin rename / category / URL / login fields / mapping changes **are** the vault copy.
+  - The user's own definition is not kept anywhere.
+- **(iii) Promotion.** The default `promote_user_submission` converts the row in place: same id, `owner_user_id=null`, `built_in`. The row becomes a global, the hydrate query (`source_type='user'`) stops returning it, and the vault copy stays as it was.
+  - `dedupeServicesByPrimaryUrl` (`App.tsx:192–229`) keeps the catalog / global row over the user-created copy (same id, both selected).
+  - So the global definition applies whatever its approval state.
+  - With an alternate global id, the user's own row stays (stamped `approvalStatus: approved`, `promotedGlobalId`), and nothing changes for the user.
+
+Probe output (stored keys = `username`, `password`, as saved before mapping):
+
+| Case | Approval | Effective fields | Launch kind | Hidden keys |
+|---|---|---|---|---|
+| Vault copy only | — (own site) | `username,password` | credentials | — |
+| Own row, admin fields, no mapping | `no_mapping` | `idNumber,password` | credentials | `username` |
+| Own row, admin fields + mapping | `not_approved` | `idNumber,password` | credentials | `username` |
+| Own row, admin fields + validated | `approved` | `idNumber,password` | credentials | `username` |
+| Promoted in place, no fields | `no_mapping` | none (admin name) | not-configured | `username,password` |
+| Promoted in place, fields, not validated | `not_approved` | `idNumber,password` (admin name) | credentials | `username` |
+
+Admin fields reach the owner before approval, which is the Owner's report. After hydrate, the name / category / URL become the admin's as well.
+
+**2. Does the vault copy hold everything the window needs?**
+- *As created* it holds name, URL, category, `loginUrl` / `loginEntryType` (explicit login entry) and `faviconSiteUrl`.
+- It holds no `loginFields`. `resolveCredentialEntry` renders `CUSTOM_DEFAULT_LOGIN_FIELDS` (`username`, `password`) for `user-created`, which is what the user saved against. The launch kind for `user-created` is always a form (`credentials` / `missing-user-credentials`).
+- **But** (ii) replaces the copy with the registry row on every unlock. Once an admin has changed the own row, the user's original definition is gone from the vault. Restoring "the site as the user created it" therefore needs hydrate to stop overwriting, or a separate user copy. Both are `persistence.ts` / hydrate changes.
+
+**3. Are values dropped or only hidden?** Only hidden on load / hydrate / sync / prune:
+- Credentials are stored per profile as whole objects (`Record<fieldId, string>`). Hydrate, the outbox and the profile scope keep or drop whole profiles, never individual field keys.
+- `vaultMigration` moves legacy service-id keys to profile ids without touching field keys.
+- The App prune spares vault `customServices` ids.
+- `serviceHasUsableCredentials` / `hasCompleteCredentials` read only the current field ids, so other keys become invisible.
+
+**4. Does the profile-modal save drop values under missing ids?**
+- Yes, on the user's own save only. `ServiceProfileManagementModal.handleSaveCredentials` → `serializeCredentialValues(loginFields, values)` writes only the current field ids. `saveCredentialForProfile` then replaces the profile's credential object.
+- This matches the rule ("kept until the user saves that profile").
+
+**5. Notice scope.** Credential objects contain only field-id keys, so a generic "stored keys not among the current field ids" test would raise the notice on a global / built-in site when:
+- (a) values were saved under the custom-default `username` / `password` and the site was later promoted to a global with other ids (e.g. seed patterns `idNumber,userCode,password` or `email,password`);
+- (b) an admin changed a global's login field ids after users saved.
+
+Legacy service-key credentials are not a separate pattern (migrated to profile ids, field keys unchanged). Proposal: raise the notice only on the approved switch of an app in the vault `customServices`, unless the Architect wants it on globals too.
+
+**6. Architect additions.**
+- **(a) Global sites today:**
+  - An admin change to the name, URL, category, login URL or login fields of a global reaches every user who has it in the home on the next catalog load, with no re-approval.
+  - AD-123-19 (a) keeps home tiles ungated, and the floating window, launch kind and login URL follow the registry row.
+  - Approval gates only managed autofill (`userApprovalState` / validated profile) and catalog listing for new adds.
+  - So global sites do **not** behave "no effect until approved". **Conflict:** "like a global site" does not describe what globals do today.
+- **(b) Re-editing an approved site:**
+  - A security-relevant mapping change sets a validated profile to `unsupported` (`validatedProfile.ts:509–525`), so the state becomes `not_approved`.
+  - A login-field change the mappings no longer cover gives `blocked` (`mappingsCoverRequiredSchema`).
+  - Name, primary URL, category and login URL edits (`updateGlobalRegistryRow`, `admin_update_login_url`) do not touch the profile, so the site stays `approved`.
+  - **Conflict:** under the rule as written, name / URL / category / login URL edits would reach the owner immediately (still approved). A mapping / field edit would flip the owner back to the vault copy, which is stale and, after (ii), already admin-overwritten; values saved after approval under the new ids would be hidden again. The rule does not say what applies once approval is lost.
+
+**7. Proposed fix, for the Architect's ruling.** Not implemented.
+1. Keep the user's own definition. Hydrate must not overwrite vault `customServices` entries from the registry, or it must store the registry row separately. This is `src/supabase/persistence.ts` (hydrate), a stop-rule item.
+2. In `App.tsx`, make one effective definition per vault `customServices` id: the registry entry (own row, or the in-place promoted global with the same id) when `userApprovalState === 'approved'`, otherwise the vault copy whole (no field / URL mixing). Replace the overlay in `mergeCustomDefinitions` and the same-id preference in `dedupeServicesByPrimaryUrl`. Execution and managed autofill read only the runtime `Service` (`serviceExecution.ts:70–72,143,237`), so this one choice drives window, launch, login URL, execution and autofill. Execution / autofill code stays unchanged.
+3. In `LoginAssistancePanel`: when approved and the profile has non-empty values under ids outside the effective fields, show «שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.» with «עריכת פרופיל» (floating window, RTL, no browser dialog). Nothing is written except by the user's own profile save.
+
+**Questions for the Architect:**
+- Q1 (a): does the rule apply to own sites only? Gating globals too would change AD-123-19 (a) and need an admin "pending changes" model.
+- Q2 (b): when an approved own site loses approval after a re-edit, should the owner fall back to their own copy, or keep the last-approved definition? Keeping it needs a stored snapshot, i.e. a registry / persistence change.
+- Q3: is the hydrate change in item 1 approved?
+- Q4: with an alternate-id promotion the owner keeps their own row. Should the owner move to the global id after approval? The rule does not say.
+
+### T-1 for D-123-6 / D-123-7 (frozen tree `7c63e915`, 2026-10-05 07:14 → 07:27) — superseded
+Not accepted as evidence (two concurrent runs). Kept for the record; the single clean run is "T-1 — D-123-8 final" below.
+
+| Run | Result |
+|---|---|
+| `verifyPhase123FixD6D8 --no-mutations` / full | PASS: 6 check groups / 9 mutations caught |
+| `verifyPhase123AppContext --no-mutations` / `--mutations=M3,M8,M10–M15` | PASS: 23 groups / 8 caught |
+| `verifyPhase123Catalog --no-mutations` / `--mutations=M1–M18` | PASS: 19 groups / 18 caught |
+| `verifyPhase123CatalogGate --no-mutations` / full | PASS: 8 groups / 20 caught |
+| `verifyPhase123Sync --no-mutations` | PASS: 14 groups |
+| Touched: 116 (R1–R12), 104, 108 M1, 108 ModalAudience, 113, 117, ServiceSourceOwnership | 7/7 PASS |
+| Admin: 40 × `verifyPhase121*`, `verifyPhase122AdminNotes`, `verifyPhase122SubmitterProfiles`, `verifyPhase122AdminWorkspace --no-mutations` | 43/43 PASS (AdminWorkspace 32 groups; DeleteService 43 mutations) |
+| `npx tsc -b` | exit 0 |
+| `npm run build` | exit 0 (existing chunk-size warning); `extension/`, `package*.json`, `supabase/` unchanged |
+
+- Results: `%TEMP%\pv-t1-d6d8-results.txt`; logs: `%TEMP%\pv-t1-d6d8-logs`.
+- The set ran twice, concurrently. A runner call reported as rejected had in fact started, and I then started the same job list inline.
+  - The second start reset the shared results file, so it holds 115 job lines (59 + 56): one complete run plus the remainder of the other. All 115 have exit 0.
+  - The concurrent runs did not interfere: no failure, and the fingerprint was unchanged afterwards.
+- H-1: the new verify bounds the bundle step and each mutation with `withTimeout`; a timeout fails the run via `failRun` and is never counted as caught. It opens no pages or servers.
+
+### D-123-8 — implementation (rulings of 2026-10-05, items 1–5)
+
+**Rule as implemented.** "Own site" = an app whose id is in the vault `customServices`; nothing else (no site / hostname / serviceId branch). Global sites are unchanged: admin edits apply immediately, approval gates listing and autofill only.
+
+**One resolved definition** (`src/digitalHome/ownSiteDefinition.ts`):
+- `isApprovedForUsers(entry)` = `userApprovalState({ metadata, login_fields }) === 'approved'` (the shared helper from `src/service/userApproval.ts`). A missing entry or any throw → `false` (fail-closed).
+- `resolveOwnSiteDefinition(vaultCopy, registryEntry)`:
+  - approved (and the entry has a category and an icon, so it renders as a tile) → the registry entry, whole;
+  - anything else (not approved, blocked, no mapping, approval lost, no row, unreadable approval) → the vault copy, whole. No field mixing.
+- `hiddenCredentialFieldIds(credential, currentFieldIds)` = stored keys with a non-blank value that the current form does not show. Read-only.
+
+**App** (`App.tsx`):
+- `mergeCustomDefinitions(vaultCustom, catalog)` now looks up each vault copy's registry entry among all catalog definitions by id (the own row, or the global it was promoted to in place) and keeps `resolveOwnSiteDefinition(...).definition`. It returns `{ definitions, approvedOwnIds }`. The old overlay `{...registry, ...vault, loginFields: vault ?? registry, metadata: {...registry, ...vault}}` is gone, so **the App catalog merge no longer takes registry login fields (or metadata) for a non-approved own site**.
+- Own-row registry entries with no vault copy are still listed as before.
+- `legacyBuiltinServices` leaves out ids that are in `customServiceIds`. A global promoted in place (same id) is shown through the resolved own entry, so the old `dedupeServicesByPrimaryUrl` preference for the global row no longer applies to it.
+- The window, launch kind, login URL, execution and managed autofill all read that one legacy `Service`. Execution / autofill code is unchanged.
+- `approvedOwnSiteIds={ownSites.approvedOwnIds}` → Dashboard → `ownSiteApproved` on the floating window.
+
+**Notice** (`LoginAssistancePanel.tsx`): shown when `isCustom && ownSiteApproved`, the window offers profile UI, there is an active profile, the entry is a form, and the active profile has a non-blank value under a field id the form does not show.
+- Copy: «שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.» with «עריכת פרופיל» (opens the existing single profile host on the active profile). Inline in the floating window, `role="status"`, RTL; no browser dialog.
+- While the notice shows, the action bar's own «עריכת פרופיל» is hidden, so the window has exactly one.
+- Values are shown by field id only: same-id values appear, new ids are empty, other values stay in the vault until the user saves that profile (the existing `serializeCredentialValues` save). Nothing else writes, renames or deletes credential values.
+
+**Promotion under a different global id (item 4):** no automatic move. The own site, its profiles and credentials stay; the global is listed / offered through Phase 116 once approved («already in home» before that, through the own site).
+
+**Hydrate — the N-2 exception, full diff** (`git diff af881f6b -- src/supabase/persistence.ts`, the whole file diff):
+```diff
+@@ -29,6 +29,7 @@ import {
+ } from './sessionSyncScope';
+ import { outboxOf, type ConfirmedInserts } from '../vault/syncOutbox';
+ import { applyOutboxAfterHydrate } from '../digitalHome/cloudReconcile';
++import { isApprovedForUsers } from '../digitalHome/ownSiteDefinition';
+ import {
+   dropServicesMissingFromRegistry,
+   fetchRegistryPresence,
+@@ -986,6 +987,11 @@ export async function hydrateWorkspaceFromCloud(
+     for (const row of (customRows ?? []) as ServiceRegistryRow[]) {
+       try {
+         const definition = registryRowToServiceDefinition(row);
++        // D-123-8: the vault copy is the last version the owner may see — replaced only by an
++        // approved row; a row with no local copy is still added.
++        if (customById.has(definition.id) && !isApprovedForUsers(definition)) {
++          continue;
++        }
+         customById.set(definition.id, definition);
+       } catch {
+         if (isDevBuild()) {
+```
+- Effect: an approved own row replaces the vault copy (refresh); a non-approved row leaves it unchanged, so after an approval is lost the copy is the last approved version (never the newer edits, never the original). An unreadable row already fell into the existing `catch` and keeps the copy.
+- **Static check that the rest of `persistence.ts` is unchanged:** `verifyPhase123D8OwnSite` removes exactly that import line and that block (each must occur once, the block inside the `customRows` loop of `hydrateWorkspaceFromCloud`) and asserts the remainder is byte-identical to `git show af881f6b:src/supabase/persistence.ts`. It also asserts no diff / no new files vs `af881f6b` in `src/vault/crypto.ts`, `src/vault/vault.ts`, `src/supabase/registryPersistence.ts`, `src/registry/registryMapper.ts`, `src/supabase/sessionSyncScope.ts`, `src/digitalHome/cloudReconcile.ts`, `supabase/`, and nothing under `src/admin` apart from the D-123-6 line. No change to sync, crypto, `persistVault`, RLS, schema, registry, mapper or `src/admin`.
+
+**Superseded assertion (D-123-8):**
+| Verify | Was | Now |
+|---|---|---|
+| `verifyPhase123AppContext` `checkPersistenceScope` | `hydrateWorkspaceFromCloud` byte-identical to BASE `909cc8b` | identical to BASE once the exact D-123-8 own-site block is removed; the block must occur exactly once (comment names D-123-8). The other 8 pinned functions stay byte-identical. |
+
+### D-123-8 — verify (`scripts/verifyPhase123D8OwnSite.mjs`)
+Real sources, mutations in memory, synthetic fixtures; no credential value is logged.
+- **Pure** (Node bundle): the real resolver, `registryMapper`, `definitionToLegacyService`, `credentialSchema`, `credentialsGate`, `catalogVisibility`, `addCustomServiceOutcome`, `managedAutofill` payload builder / eligibility, and the App's own `mergeCustomDefinitions` + `isUserCreatedDefinition`, extracted from `App.tsx` as written.
+  - Not approved after an admin rename / category / URL / login-URL / field change → the vault copy: name, URL, category, login URL, form = `username,password`, launch kind `credentials` with the stored values, no managed autofill from the unapproved mapping.
+  - Approved → the registry entry; form = registry fields; the autofill payload holds same-field-id values only; managed autofill only after the profile has the new field (execution unchanged); the other-id key is reported hidden; stored values never change.
+  - Approval lost → the vault copy (last approved version). No row / unreadable approval (metadata that throws on read) → the vault copy. An approved entry without a category → the vault copy, and the result always renders as a tile.
+  - App merge: each own site → exactly the vault-copy object or the registry entry; `own-np.loginFields` stays undefined (no registry login fields); `approvedOwnIds` = the approved ones only; globals are not touched; a registry-only own row is still listed.
+  - Promotion under a new global id: the own site stays its vault copy and is not "approved"; the approved global is listed and Phase 116 answers `catalog_service_available` for it; an unapproved global is not listed, and the own site answers «already in home».
+- **Hydrate** (Node bundle of the real `persistence.ts` over an in-memory Supabase fake; stubs: client, auth, crypto, devMode, a message constant):
+  - not approved / approval lost / unreadable row → the copy stays unchanged; approved → refreshed from the registry; an own row with no local copy is added (today);
+  - credentials and profiles are untouched (other-id values still in the vault);
+  - sequence v0 (created) → v1 (approved, copy refreshed) → v2 (admin re-edit, approval lost) keeps v1: not v2 (newer edits) and not v0 (original); the App merge then shows v1.
+- **Static:** the hydrate scope above; App merge rule (resolver call, no `loginFields` / `loginUrl` / `metadata` in the merge); promoted-in-place dedupe; Dashboard wiring; the Owner edit (`updateCustomService`) byte-identical to `af881f6b`; the resolver writes nothing; no site / hostname / serviceId branch in the resolver, the merge, the panel or Dashboard; Hebrew copy exact; no browser dialogs.
+- **Browser** (Edge via Playwright, real Dashboard + floating window, services resolved by the real App merge; stubs: persistence, logos; `<html lang="he" dir="rtl">`):
+  - not approved: vault-copy fields, stored values shown, no notice, the admin's name not shown;
+  - approved with changed fields: registry fields, the same-id value shown, the new id empty, notice text + RTL, exactly one «עריכת פרופיל», which opens the profile host on the active profile (`edit`);
+  - approved with nothing hidden: values shown, no notice, the bar keeps its button;
+  - global site with changed fields: admin fields (today), no notice;
+  - no page errors, no native dialogs.
+
+Mutations (all caught on the frozen tree):
+| # | Mutation | Caught by |
+|---|---|---|
+| M1 | registry definition used while not approved | resolver: «not approved → the vault copy» |
+| M2 | vault copy not refreshed while approved (hydrate skips approved rows) | hydrate: «approved → refreshed» |
+| M3 | registry not applied while approved | resolver: «approved → the registry definition» |
+| M4 | approval lost shows the newer unapproved edits (any mapped state counts as approved) | resolver |
+| M5 | approval lost flips back to the original (approved refresh never stored) | hydrate |
+| M6 | unknown approval uses the registry | resolver: «unreadable approval → not approved» |
+| M7 | hydrate change outside the own-site merge | static: persistence.ts identical apart from the block |
+| M8 | notice on a global site | browser: «global: no notice» |
+| M9 | missing-id values deleted on approval | hydrate: «credential values untouched» |
+| M10 | display keyed by position | browser: «new field id shows no value» |
+| M11 | display keyed by label | browser: «stored values shown» |
+| M12 | notice missing after approval with changed fields | static: Dashboard wiring |
+| M13 | registry login fields in the App catalog merge for a non-approved own site | App merge |
+| M14 | App merge does not report approved own ids | App merge |
+| M15 | hydrate drops a new own row that has no local copy | hydrate |
+| M16 | promoted-in-place global listed twice | static |
+| M17 | approved entry without category used (tile render crash) | resolver |
+
+```
+PASS — Phase 123 fix round D-123-8: 9 check groups, 17 mutations caught — 18s
+```
+
+H-1: the pure / hydrate bundles, the hydrate scenarios, the browser bundle and the browser group each run under `withTimeout` (90 s); each mutation run under 240 s. A timeout fails the run via `failRun` and is never counted as caught. The browser context and the local server are closed in `finally`.
+
+### T-1 — D-123-8 final (frozen tree `1de67427…e387`, 2026-10-05 08:59:01 → 09:12:15)
+- **One** sequential run: a single inline PowerShell loop, 68 jobs one after another. Before it, `Get-CimInstance Win32_Process` showed no `pv-t1` / `scripts/verifyPhase` process; after it, none either. No other runner was started.
+- Results: `%TEMP%\pv-t1-d8-results.txt` (68 job lines, `nonzero=0`); one log per job in `%TEMP%\pv-t1-d8-logs`.
+
+| Run | Result |
+|---|---|
+| `verifyPhase123D8OwnSite --no-mutations` / full | PASS: 9 groups / 17 mutations caught |
+| `verifyPhase123FixD6D8 --no-mutations` / full | PASS: 6 groups / 9 mutations caught |
+| `verifyPhase116CustomAddIdentity` | PASS (S0–S4 static + R1–R12) |
+| `verifyPhase123Sync --no-mutations` / full (hydrate is touched) | PASS: 14 groups / 30 mutations caught |
+| `verifyPhase123AppContext --no-mutations` / `--mutations=M3,M8,M10,M11,M12,M13,M14,M15` | PASS: 23 groups / 8 caught |
+| `verifyPhase123Catalog --no-mutations` / `--mutations=M1…M18` | PASS: 19 groups / 18 caught |
+| `verifyPhase123CatalogGate --no-mutations` / full | PASS: 8 groups / 20 caught |
+| Touched (every verify reading a touched file, + 108 ModalAudience as before): 102 CredentialSchema, 103 Execution, 104 ServiceManagement, 108 BrowserIntegration, 108 KnownServiceBootstrap, 108 M1, 108 ModalAudience, 109 Accounts, 111 Assets, 113 LoginAssistance, 117 ManagedAutofill, ServiceSourceOwnership | 12/12 PASS |
+| Admin: 40 × `verifyPhase121*`, `verifyPhase122AdminNotes`, `verifyPhase122SubmitterProfiles`, `verifyPhase122AdminWorkspace --no-mutations` | 43/43 PASS (DeleteService 4 groups / 43 mutations, it calls hydrate; AdminWorkspace 32 groups) |
+| `npx tsc -b` (separate plain command) | exit 0 |
+| `npm run build` (separate plain command) | exit 0 (existing chunk-size warning); `extension/`, `package*.json`, `supabase/` unchanged |
+| Fingerprint before (08:58:50) / after T-1 + `tsc` + build (09:13:48) | `1de67427…e387` both times |
+
+Not run, per T-1 / standing rules: full mutation sweeps of AppContext / AdminWorkspace (END OF ROUND), `runOfflineRegression`, live-only `verifyPhase101Supabase` / `verifyPhase102Registry`. No live reproduction: no Owner credentials, and env / secrets / DB stay off-limits.
+
+### Known Issues
+1. **Owner edit of a non-approved own site («עריכת פרטי האתר», AD-123-14) and pending admin edits — unchanged, reported.** `updateCustomService` (byte-identical to `af881f6b`) calls `upsertCustomServiceRegistryRow(definition)`, which upserts the whole owner row (`onConflict: 'id'`) from `serviceDefinitionToRegistryInsert`, then writes the definition into the vault copy.
+   - The form opens on the resolved site (for a non-approved site: the vault copy) and builds the definition from the form values + the vault copy's metadata (`EditSiteDetailsModal` → `buildCustomSiteDefinition` → `createCustomServiceDefinition`, which sets no `loginFields`).
+   - So the upsert overwrites any pending admin edits on that row: name, URL, category, login URL; `login_fields` → `null`; `metadata` → the vault copy's metadata (the admin's pending mapping / `autofillProfile` draft is dropped); `service_status` → `pending_review`. The admin's unapproved work on that row is lost without a notice to either side.
+   - If the vault copy came from an approved version, its metadata still holds that validated `autofillProfile`; written back with `login_fields: null`, the row is not `approved` (no credential fields), so the owner keeps seeing the own copy.
+   - After an approved own site is edited by its owner, the same upsert applies; the row then loses approval and the owner sees the edited copy.
+2. **In-place promotion and hydrate.** After `promote_user_submission` converts the row in place (`built_in`, `owner_user_id=null`), hydrate no longer returns it (`source_type='user'` query), so the vault copy is not refreshed from the global. The App still shows the approved global (resolved by id from the catalog). If that global later loses approval, the owner falls back to the vault copy = the last approved **own-row** version, not the last approved global version.
+3. **No migration.** Vault copies already overwritten by the pre-fix hydrate (admin edits copied in before approval) stay as they are; the original owner definition cannot be restored.
+4. **New device / empty local vault.** An own row with no local copy is still added as is (today's behaviour), so on a fresh device the current, possibly unapproved, row becomes the copy.
+5. **Approved row without category / icon.** The resolver keeps the vault copy for such an entry, but hydrate refreshes on approval alone (the N-2 rule as written), so such a row would replace the copy. This was already possible before (the old hydrate and the old merge did the same); not changed, to keep the N-2 diff to the approved rule.
+6. Admin icon uploads (registry metadata / icon) are not shown for a non-approved own site, because the vault copy is used whole.
+7. `Dashboard` keeps `assistance.service` as a click-time snapshot (pre-existing): if approval changes while the window is open, the window updates on the next open.
+8. The admin id-display messages listed under D-123-6 are reported, not changed.
+
+### Owner re-check
+Awaiting Owner, after the Architect review: item 4 if still open; D-123-7 (create / edit keep the typed URL; www / non-www recognised); D-123-6 (approve message); D-123-8 (an own site edited by an admin stays as the owner's copy until approved; after approval with changed fields the window shows «שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.» with «עריכת פרופיל»; global sites behave as today). 123.3 is not open.
+
+Stopping for the Manager / Architect review of D-123-8.

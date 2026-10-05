@@ -32,6 +32,8 @@ export const LABEL_ADD_CREDENTIALS = 'הוסף פרטי כניסה';
 
 /** Phase 123.1 — app context (AD-123-2). */
 export const LABEL_EDIT_PROFILE = 'עריכת פרופיל';
+/** D-123-8 — own site approved with changed login fields; the profile still holds other values. */
+export const MSG_LOGIN_FIELDS_UPDATED = 'שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.';
 export const LABEL_ADD_PROFILE = 'הוספת פרופיל';
 export const LABEL_ADD_FIRST_PROFILE = 'הוסף פרופיל';
 export const MSG_NO_PROFILES = 'עדיין אין פרופיל לאתר זה.';

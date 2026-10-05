@@ -40,6 +40,8 @@ interface DashboardProps {
   onLockVault?: () => void;
   /** Ids of apps in the vault `customServices` (AD-123-14). */
   customServiceIds?: ReadonlySet<string>;
+  /** D-123-8 — own sites currently following their approved registry entry. */
+  approvedOwnSiteIds?: ReadonlySet<string>;
   /** AD-123-3 — open the single profile-management host. */
   onOpenProfileManagement?: (request: ProfileManagementRequest) => void;
   /** AD-123-8 — «+ הוספת אפליקציה» opens the catalog modal hosted in App. */
@@ -80,6 +82,7 @@ export default function Dashboard({
   vaultUnlocked = true,
   onLockVault,
   customServiceIds,
+  approvedOwnSiteIds,
   onOpenProfileManagement,
   onOpenCatalog,
   onEditSiteDetails,
@@ -275,6 +278,7 @@ export default function Dashboard({
           onClose={() => setAssistance(null)}
           onStatus={clearStatusSoon}
           isCustom={customServiceIds?.has(assistance.service.id) ?? false}
+          ownSiteApproved={approvedOwnSiteIds?.has(assistance.service.id) ?? false}
           onEditProfile={
             onOpenProfileManagement
               ? (service, profileId) => {

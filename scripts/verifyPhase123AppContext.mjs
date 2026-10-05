@@ -311,9 +311,12 @@ const source = (overrides, rel) => overrides[rel] ?? read(rel);
 const userSrc = () => srcFiles().filter((rel) => !rel.startsWith('src/admin/'));
 const git = (...args) =>
   execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+// Pre-Phase-123 tree (Phase 122 commit). HEAD can no longer be the baseline: the WIP commit
+// af881f6b on wip/phase123-recovered already contains the Phase 123 changes.
+const BASE = '909cc8bcceedd3b74d2e6fdbcc1ecac291a7b570';
 const headSource = (rel) => {
   try {
-    return git('show', `HEAD:${rel}`).replace(/\r\n/g, '\n');
+    return git('show', `${BASE}:${rel}`).replace(/\r\n/g, '\n');
   } catch {
     return '';
   }
@@ -396,13 +399,14 @@ function checkProtectedUnchanged() {
   assert(manifests.length >= 1, 'N-2: at least one tracked manifest file found');
   for (const p of protectedPaths) {
     assert(existsSync(join(root, p)), `N-2: protected path exists (${p})`);
-    assert(git('diff', '--name-only', 'HEAD', '--', p).trim() === '', `N-2: ${p} unchanged vs HEAD`);
+    assert(git('diff', '--name-only', BASE, '--', p).trim() === '', `N-2: ${p} unchanged vs HEAD`);
     assert(git('ls-files', '--others', '--exclude-standard', '--', p).trim() === '', `N-2: no new files under ${p}`);
   }
   // AD-123-19 (was: src/admin diff empty): src/admin/userApproval.ts becomes a re-export of the
-  // shared helper — content checked by verifyPhase123CatalogGate.
-  const adminChanged = git('diff', '--name-only', 'HEAD', '--', 'src/admin').split('\n').filter(Boolean);
-  assert(adminChanged.every((p) => p === 'src/admin/userApproval.ts'), `N-1: only the AD-123-19 re-export changes under src/admin (${adminChanged.join(', ')})`);
+  // shared helper — content checked by verifyPhase123CatalogGate. D-123-6 (N-1 copy exception):
+  // ApprovalQueue.tsx success line — content checked by verifyPhase123FixD6D8.
+  const adminChanged = git('diff', '--name-only', BASE, '--', 'src/admin').split('\n').filter(Boolean);
+  assert(adminChanged.every((p) => p === 'src/admin/userApproval.ts' || p === 'src/admin/ApprovalQueue.tsx'), `N-1: only the AD-123-19 re-export (+ D-123-6 copy line) changes under src/admin (${adminChanged.join(', ')})`);
   assert(git('ls-files', '--others', '--exclude-standard', '--', 'src/admin').trim() === '', 'N-1: no new files under src/admin');
   return `N-1 / N-2: src/admin (apart from the AD-123-19 re-export) and ${protectedPaths.length} protected paths unchanged vs HEAD (${protectedPaths.join(', ')})`;
 }
@@ -421,8 +425,20 @@ function checkPersistenceScope(overrides) {
   const rel = 'src/supabase/persistence.ts';
   const now = source(overrides, rel);
   const head = headSource(rel);
+  // D-123-8 (N-2 exception, Architect 2026-10-05): hydrate may differ from BASE only by the own-site
+  // merge block below — content / behaviour checked by verifyPhase123D8OwnSite.
+  const D8_HYDRATE_BLOCK = [
+    '        // D-123-8: the vault copy is the last version the owner may see — replaced only by an',
+    '        // approved row; a row with no local copy is still added.',
+    '        if (customById.has(definition.id) && !isApprovedForUsers(definition)) {',
+    '          continue;',
+    '        }',
+    '',
+  ].join('\n');
+  const hydrateNow = topLevelFunction(now, 'hydrateWorkspaceFromCloud') ?? '';
+  assert(hydrateNow.split(D8_HYDRATE_BLOCK).length === 2, 'D-123-8: hydrate contains the own-site merge block exactly once');
+  assert(hydrateNow.replace(D8_HYDRATE_BLOCK, '') === topLevelFunction(head, 'hydrateWorkspaceFromCloud'), 'D-123-8: hydrateWorkspaceFromCloud unchanged vs HEAD apart from the own-site merge block');
   const untouched = [
-    'hydrateWorkspaceFromCloud',
     'upsertAccessProfile',
     'upsertUserService',
     'upsertEncryptedCredential',
@@ -444,7 +460,7 @@ function checkPersistenceScope(overrides) {
   }
   const deleteFn = topLevelFunction(now, 'deleteAccessProfileFromCloud');
   assert(/forgetProfile\(userId, trimmed\);\n\}/.test(deleteFn ?? ''), 'AD-123-18: deleteAccessProfileFromCloud only adds forgetProfile after success');
-  return `AD-123-18: persistence.ts — ${untouched.length} functions byte-identical to HEAD (hydrate, upserts, remove-service, credential delete, KDF); crypto imports unchanged; no RPC / RLS / schema text added`;
+  return `AD-123-18: persistence.ts — ${untouched.length} functions byte-identical to HEAD (upserts, remove-service, credential delete, KDF); hydrate identical apart from the D-123-8 own-site block; crypto imports unchanged; no RPC / RLS / schema text added`;
 }
 
 /**
