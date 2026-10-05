@@ -16,7 +16,7 @@
  *        No mutation switch = full sweep (END OF ROUND only, test policy T-1).
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
@@ -298,18 +298,21 @@ function checkHomeNotGated(overrides) {
   const headLine = '        const next: VaultState = { ...current, selectedIds: nextSelected };';
   assert(prune(app).split(outboxLine).length - 1 <= 1, 'fixture: amendment A prune line found at most once');
   assert(prune(app).replace(outboxLine, headLine) === prune(head), 'AD-123-19: prune of inactive selections unchanged (runs on the ungated catalog)');
-  for (const rel of ['src/Dashboard.tsx', 'src/ManageServices.tsx', 'src/loginAssistance/LoginAssistancePanel.tsx', 'src/registry/registryLoader.ts', 'src/catalog/catalogLoader.ts']) {
+  // src/ManageServices.tsx left the list: deleted by AD-123-1 (Phase 123.4).
+  for (const rel of ['src/Dashboard.tsx', 'src/loginAssistance/LoginAssistancePanel.tsx', 'src/registry/registryLoader.ts', 'src/catalog/catalogLoader.ts']) {
     assert(!/isListedInUserCatalog|catalogGateState|catalogVisibility/.test(source(overrides, rel)), `AD-123-19: ${rel} is not gated`);
   }
   for (const rel of ['src/registry/registryLoader.ts', 'src/catalog/catalogLoader.ts', 'src/registry/registryMapper.ts', 'src/execution']) {
     assert(git('diff', '--name-only', BASE, '--', rel).trim() === '', `AD-123-19: ${rel} unchanged vs HEAD (runtime loading of existing tiles)`);
   }
-  assert(/<AppCatalog\s+services=\{allServices\}/.test(source(overrides, 'src/ManageServices.tsx')), 'ManageServices renders the same gated AppCatalog');
+  // Superseded by AD-123-1 / AD-123-9 (Phase 123.4): the catalog modal is the only AppCatalog host.
+  assert(!existsSync(join(root, 'src/ManageServices.tsx')), 'AD-123-1: ManageServices deleted; the catalog modal is the only AppCatalog host');
+  assert(/<AppCatalogModal[\s\S]*services=\{allServices\}/.test(source(overrides, 'src/App.tsx')), 'the catalog modal renders the gated AppCatalog with allServices');
   const summary = source(overrides, 'src/dev/catalogGateSummary.ts');
   assert(/if \(!isDevBuild\(\) \|\| definitions\.length === 0\) return;/.test(summary), 'dev summary runs in dev builds only');
   assert(!/loginFields|metadata\b(?!\s*:)|credential(?!s?\))/.test(summary.replace(/^ \*.*$/gm, '').replace(/catalogGateState\(definition\)/g, '')), 'dev summary logs names / states only');
   assert(/useEffect\(\(\) => \{\n {4}logCatalogGateSummary\(catalogDefinitions\);\n {2}\}, \[catalogDefinitions\]\);/.test(app), 'App logs the dev summary from the loaded catalog');
-  return 'static: App home tiles / allServices / prune unchanged vs HEAD; Dashboard / ManageServices home / panel / loader / mapper / execution not gated; dev summary dev-only (names + states)';
+  return 'static: App home tiles / allServices / prune unchanged vs HEAD; Dashboard home / panel / loader / mapper / execution not gated; dev summary dev-only (names + states)';
 }
 
 // ─── Mutations ────────────────────────────────────────────────────────────────

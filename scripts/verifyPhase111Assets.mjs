@@ -121,10 +121,11 @@ function main() {
   );
 
   const dashboard = read('src/Dashboard.tsx');
-  const manage = read('src/ManageServices.tsx');
+  // AD-123-1 / AD-123-9 (Phase 123.4): ManageServices deleted; its logo surface is the catalog body.
+  const manage = read('src/digitalHome/AppCatalog.tsx');
   assert(
     !dashboard.includes('resolveServiceLogo') && !manage.includes('resolveServiceLogo'),
-    'Home/Manage must not call resolveServiceLogo directly (via logoCache only)',
+    'Home/catalog must not call resolveServiceLogo directly (via logoCache only)',
   );
 
   const refresh = read('src/serviceAssets/refresh.ts');

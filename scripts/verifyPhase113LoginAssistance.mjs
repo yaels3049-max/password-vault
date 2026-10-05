@@ -126,8 +126,11 @@ function mainStatic() {
   assert(!messages.includes('export function labelOpenSiteNamed'), 'named CTA helper retired');
   assert(messages.includes("נסה מילוי אוטומטי"), 'Autofill copy unchanged');
   assert(messages.includes('לא אותר דף התחברות'), 'AC-113-23 Hebrew home-open');
-  assert(messages.includes('ניהול האתרים'), 'AC-113-24 manage prompt');
-  assert(!messages.includes('«ניהול האתרים»'), 'no guillemets around manage screen name');
+  // Superseded by AD-123-1 (Phase 123.4): the manage screen is gone; the prompt points to the app window.
+  assert(
+    messages.includes('בחלון האפליקציה בבית הדיגיטלי') && !messages.includes('ניהול האתרים'),
+    'AC-113-24 missing-credentials prompt points to the Digital Home app window (AD-123-1)',
+  );
   assert(!/\bשירות/.test(messages), 'AC-113-32 glossary אתר in assistance messages');
 
   const openRules = read('src/loginAssistance/openUrlRules.ts');
@@ -209,15 +212,23 @@ function mainStatic() {
     'Home missing-credentials CTA reuses existing credential editor',
   );
   assert(dash.includes('setStatusMessage(null)'), 'opening Launch Card must clear the global warning');
-  assert(dash.includes('dashboard-manage-cta'), 'Home still has prominent Manage CTA');
+  // Superseded by AD-123-1 / AD-123-9 (Phase 123.4): no Manage CTA; «+ הוספת אפליקציה» is the Home CTA.
+  assert(
+    !dash.includes('dashboard-manage-cta') && dash.includes('dashboard-add-app-cta'),
+    'Home has no Manage CTA; «+ הוספת אפליקציה» is the prominent CTA (AD-123-1)',
+  );
   assert(!dash.includes('la-home-notice-cta') && !dash.includes('LABEL_GO_MANAGE'), 'no banner manage button');
   assert(dash.includes('la-home-notice'), 'credentials notice banner');
   assert(!dash.includes('openServiceWithProfile'), 'Home uses assistance panel first');
   assert(dash.includes('userDisplayName') && dash.includes('הבית הדיגיטלי של'), 'AC-113-26 named title');
   assert(!dash.includes('openDemoAndFill') && !dash.includes('openIsraeliSiteAutofillTest'), 'no PoC fill buttons');
   assert(!dash.includes('dashboard-subtitle') && !dash.includes('במהירות ובביטחון'), 'no marketing subtitle');
-  assert(dash.includes('dashboard-manage-cta') && dash.includes('sm-footer-nav'), 'AC-113-27 centered Discover-like CTA');
-  assert(dash.includes('ניהול אתרים') && !dash.includes('ניהול שירותים'), 'AC-113-32 Home glossary');
+  assert(dash.includes('dashboard-add-app-cta') && dash.includes('sm-footer-nav'), 'AC-113-27 centered Discover-like CTA (AD-123-1: add-app)');
+  // Superseded by AD-123-1: «ניהול אתרים» is removed; the glossary stays אתר / אפליקציה, never שירות.
+  assert(
+    !dash.includes('ניהול אתרים') && dash.includes('האתרים שלי') && !dash.includes('ניהול שירותים'),
+    'AC-113-32 Home glossary (AD-123-1)',
+  );
 
   const css = read('src/App.css');
   assert(css.includes('--app-content-max: 792px'), 'AC-113-25/47 shared shell width (−10% phone silhouette)');
@@ -252,20 +263,13 @@ function mainStatic() {
     !/rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*0\.62\s*\)/.test(css),
     'D-113-22 must not keep ~62% white shell wash',
   );
-  const shellBlock = css.match(
-    /\.dashboard,\s*\.service-management\s*\{[^}]+\}/,
-  )?.[0];
-  assert(Boolean(shellBlock), 'shared Home/Manage shell rule exists');
+  // AD-123-1 / AD-123-9 (Phase 123.4): the Manage shell and its .sm-section rules are deleted with
+  // ManageServices; the Home shell rule keeps the D-113-22 contract.
+  const shellBlock = css.match(/\.dashboard\s*\{[^}]*var\(--app-shell-bg-image\)[^}]*\}/)?.[0];
+  assert(Boolean(shellBlock), 'Home shell rule exists');
   assert(
-    shellBlock.includes('var(--app-shell-bg-image)') &&
-      !/linear-gradient\s*\(/.test(shellBlock),
-    'D-113-22 Home/Manage shell BG is portrait asset without stacked wash gradient',
-  );
-  const smSection = css.match(/\.sm-section\s*\{[^}]+\}/)?.[0] ?? '';
-  assert(
-    /rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*0\.\d+\s*\)/.test(smSection) &&
-      !/background:\s*#fff\b/.test(smSection),
-    'Manage sections use translucent shell-visible BG (not solid white)',
+    !/linear-gradient\s*\(/.test(shellBlock) && !css.includes('.service-management {') && !/\.sm-section\s*\{/.test(css),
+    'D-113-22 Home shell BG is portrait asset without stacked wash gradient; Manage shell rules removed',
   );
 
   // D-113-23 / AC-113-35 — lock inside shells; no identity chip; no exterior bar.
@@ -278,11 +282,8 @@ function mainStatic() {
   );
   assert(dash.includes('shell-lock-row') && dash.includes('VaultStateBadge'), 'Home lock inside shell');
   assert(dash.includes('vaultUnlocked') && dash.includes('onLockVault'), 'Home receives lock props');
-  const manageForLock = read('src/ManageServices.tsx');
-  assert(
-    manageForLock.includes('shell-lock-row') && manageForLock.includes('VaultStateBadge'),
-    'Manage lock inside shell',
-  );
+  // Superseded by AD-123-1: the Manage screen (and its lock row) no longer exists.
+  assert(!existsSync(join(root, 'src/ManageServices.tsx')), 'Manage screen removed (AD-123-1)');
   assert(
     css.includes('.shell-lock-row') && !css.includes('.app-vault-shell-bar'),
     'shell-lock-row styles; exterior vault bar removed',
@@ -306,17 +307,21 @@ function mainStatic() {
   const catalog = read('src/catalog/builtinCatalog.ts');
   assert(catalog.includes("loginAssistanceLevel: 'manual_only'"), 'manual mode catalog fixture');
 
-  const manage = read('src/ManageServices.tsx');
-  assert(manage.includes('sm-accordion') && manage.includes('mineSearch'), 'AC-113-29 accordion + mine search');
+  // Superseded by AD-123-1 / AD-123-9 (Phase 123.4): AC-113-28/29/32/36 lived on the Manage screen.
+  // Their homes: catalog search in the catalog modal, remove in the app window (parity matrix rows 2, 7).
+  const manage = read('src/digitalHome/AppCatalog.tsx');
+  assert(manage.includes('filterCatalog') || manage.includes('filterDiscoveryServices'), 'AC-113-29 search lives in the catalog modal (AD-123-9)');
   assert(!manage.includes('הוסיפו, פתחו ונהלו'), 'AC-113-28 no marketing subtitle');
-  assert(manage.includes('לבית הדיגיטלי') && manage.includes('sm-home-nav'), 'AC-113-28 top Home CTA');
-  assert(manage.includes('ניהול אתרים') && manage.includes('האתרים שלי'), 'AC-113-32 Manage glossary');
-  assert(!manage.includes('ניהול שירותים') && !manage.includes('השירותים שלי'), 'AC-113-32 no old Manage glossary');
-  // D-113-24 / AC-113-36 — remove menu fully visible, blue, no trash.
-  assert(manage.includes('createPortal') && manage.includes('sm-menu--portal'), 'AC-113-36 portal menu');
-  assert(manage.includes('הסר אתר') && !manage.includes('🗑'), 'AC-113-36 text-only הסר אתר');
-  assert(!manage.includes('sm-menu-item--danger'), 'AC-113-36 no danger-red remove item');
-  assert(css.includes('sm-menu--portal') && css.includes('sm-menu-item--action'), 'AC-113-36 blue action styles');
+  assert(!manage.includes('ניהול שירותים') && !manage.includes('השירותים שלי'), 'AC-113-32 no old glossary in the catalog');
+  const panelForRemove = read('src/loginAssistance/LoginAssistancePanel.tsx');
+  assert(
+    panelForRemove.includes('data-action="remove-app"') && !panelForRemove.includes('🗑'),
+    'AC-113-36 remove is a text action in the app window, no trash glyph (AD-123-9)',
+  );
+  assert(
+    !css.includes('sm-menu--portal') && !css.includes('.sm-accordion') && !css.includes('.sm-home-nav'),
+    'Manage-only menu / accordion / Home-nav styles removed with ManageServices (AD-123-1)',
+  );
 
   const state = read('src/serviceManagement/serviceManagementState.ts');
   assert(
@@ -423,9 +428,11 @@ function mainStatic() {
     'AC-113-45 UI-only + a11y dialog; no LI',
   );
   assert(css.includes('.cd-dialog') && /max-width:\s*580px/.test(css), 'AC-113-45 compact width CSS');
+  // AD-123-9 (Phase 123.4): the opener moved from ManageServices to the Digital Home tile.
   assert(
-    manage.includes('manageOpenerRef') && manage.includes('opener.focus'),
-    'AC-113-45 return focus to ניהול opener',
+    appSrcLaunch.includes('profileReturnFocusId') &&
+      /\[data-service-tile\]\[data-service-id=[^\]]*\] button`\)\s*\?\.focus\(\)/.test(appSrcLaunch),
+    'AC-113-45 return focus to the app tile after the profile host closes (AD-123-9)',
   );
   const hubInput = read('src/trust/HubCredentialInput.tsx');
   assert(hubInput.includes('revealAsText'), 'password reveal without dropping Hub hardening');

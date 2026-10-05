@@ -22,7 +22,7 @@ export const MSG_OPENED_HOME_FALLBACK =
 
 /** Retired from Digital Home tile-click (was a page-level yellow banner). */
 export const MSG_NO_CREDENTIALS =
-  'עדיין לא הוזנו פרטי התחברות לאתר זה. הוסיפו אותם במסך ניהול האתרים.';
+  'עדיין לא הוזנו פרטי התחברות לאתר זה. הוסיפו אותם בחלון האפליקציה בבית הדיגיטלי.';
 
 /** Launch Card copy for CREDENTIAL_FIELDS without stored user values. */
 export const MSG_MISSING_USER_CREDENTIALS_LAUNCH =
@@ -51,9 +51,6 @@ export const MSG_NO_STORED_CREDENTIALS_LAUNCH =
 export const MSG_NOT_CONFIGURED_LAUNCH =
   'ממתין להגדרת מנהל המערכת.';
 
-/** @deprecated Prefer the prominent Home «ניהול אתרים» CTA — no longer shown beside the banner. */
-export const LABEL_GO_MANAGE = 'לניהול האתרים';
-
 export const LABEL_SUPPORT_AUTOMATIC = 'מילוי אוטומטי זמין';
 export const LABEL_SUPPORT_BEST_EFFORT = 'מילוי אוטומטי — נסה וחזור';
 export const LABEL_SUPPORT_MANUAL = 'מילוי ידני בלבד';
@@ -68,3 +65,13 @@ export const LABEL_CLOSE = 'סגור';
 export const LABEL_ASSISTANCE = 'סיוע בהתחברות';
 
 export const MSG_SELECT_PROFILE = 'בחרו פרופיל לפני ניסיון מילוי אוטומטי.';
+
+/**
+ * AD-123-1: replaces the execution-layer credentials_missing copy, which still names the removed
+ * manage screen (src/execution is frozen, N-2).
+ */
+/** Removed-elsewhere notice when no open window closed (e.g. a tile left the home). */
+export const MSG_REMOVED_ELSEWHERE_PLAIN = 'האפליקציה או הפרופיל נמחקו בחלון אחר.';
+
+export const MSG_AUTOFILL_CREDENTIALS_MISSING =
+  'פרטי הכניסה בפרופיל הזה חסרים. לחצו «עריכת פרופיל» בחלון האפליקציה והשלימו אותם.';

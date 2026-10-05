@@ -151,5 +151,5 @@ export async function discoverLoginForRegistryService(
   };
 }
 
-/** @deprecated Use discoverLoginForRegistryService — kept for ManageServices import stability. */
+/** @deprecated Use discoverLoginForRegistryService — kept for import stability. */
 export const discoverLoginForCustomService = discoverLoginForRegistryService;

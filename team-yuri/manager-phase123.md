@@ -4,7 +4,7 @@
 PHASE=123 (from `team-Yuri/PHASE.md`).
 
 ## Status
-READY_FOR_DEVELOPER — slice 123.4 (AD-123-1, -9, -15) + END OF ROUND OPEN (2026-10-05). Slice 123.3 is Architect PASS (frozen tree `664646a0…18af`, BASE `0dfb9de7`; RC-1 closed by dev Known Issue 7). Precondition: Sarah's WIP commit of the 123.3 tree = the 123.4 baseline. All Owner manual steps (D-123-6…8, `[catalog-gate]` count, 123.3, 123.4) are in ONE consolidated Owner run after END OF ROUND. Branch `wip/phase123-recovered` (no push / merge).
+READY_FOR_ARCHITECT_REVIEW — slice 123.4 (AD-123-1, -9, -15) + END OF ROUND Manager APPROVED (round 1, 2026-10-05) on frozen tree `fef52c66…3ac6` (BASE WIP `c700cd60`, scope `-- src scripts supabase`); END OF ROUND 63/63 in one clean sequential run. Was: OPEN (2026-10-05). Slice 123.3 is Architect PASS (frozen tree `664646a0…18af`, BASE `0dfb9de7`; RC-1 closed by dev Known Issue 7). Precondition: Sarah's WIP commit of the 123.3 tree = the 123.4 baseline. All Owner manual steps (D-123-6…8, `[catalog-gate]` count, 123.3, 123.4) are in ONE consolidated Owner run after END OF ROUND. Branch `wip/phase123-recovered` (no push / merge).
 - History: slice 123.2 + R-123-1 Architect PASS; 123.1 reopened by D-123-1.
 - Slice 123.1: Manager APPROVED (round 2); Architect PASS (conditional). It closes only when C-123.1-1 (the Owner's manual run) is recorded.
 - Slices 123.3 → 123.4 are each opened only after the Architect reviews the previous slice (see Slice Authorization).
@@ -79,7 +79,7 @@ The «ניהול אתרים» screen (`ManageServices`) is removed at the end. T
 | Fix round + 123.2b | D-123-1…5 + AD-123-18 + amendment A; 123.2b catalog gate (AD-123-19) | DONE: Manager APPROVED round 2 (frozen tree c06950a5…ff1c21); Architect PASS (conditional), standing after the incident recovery (WIP `af881f6b`). Owner items 1–3 PASS, item 4 pending | Owner item 4 recorded |
 | Fix round D-123-6…8 | D-123-6 admin copy (N-1 copy exception), D-123-7 URL scheme-only, D-123-8 REVISED (vault copy until approved; Step 1 root cause, then user-side fix) | YES (Architect ruling 2026-10-04; D-123-8 revised by the Owner; re-added 2026-10-05). D-123-6 / D-123-7 accepted at Architect level; D-123-8 released 2026-10-05 with the narrow N-2 exception (own-site hydrate merge + App catalog merge only). DONE: Manager APPROVED round 1 (frozen tree `1de67427…e387`); Architect PASS (2026-10-05) | Owner re-check moved to the consolidated Owner run at the end of the phase (no longer gates 123.3) |
 | 123.3 | Remove app (confirm, Undo, deferred full deletion) | **DONE:** Manager round 1 CHANGES REQUIRED (documentation only) → RC-1 closed by dev KI-7 (fingerprint `664646a0…18af` unchanged); Architect PASS (2026-10-05). Was: OPEN (2026-10-05) after Architect PASS on fix round D-123-6…8; Owner re-checks deferred to the consolidated end-of-phase run (Owner preference). C-123.1-1 (two windows) was recorded PASS as Owner item 1. Precondition: WIP commit of the approved tree. **Order:** Item 0a (KI-5) → Step 0 (AD-123-16, MC-3), a hard sub-gate: STOP and report before any migration / product code → rest of 123.3 | Manager Review PASS → Architect review PASS |
-| 123.4 | Navigation unification + ManageServices deletion + admin aggregate + END OF ROUND | **YES, OPEN (2026-10-05)** after Architect PASS on 123.3. Precondition: WIP commit of the 123.3 tree (= 123.4 baseline). The orphan / leftover cleanup is a PROPOSAL only, implemented only after an Architect decision | Manager Review PASS → Architect review PASS → consolidated Owner run → phase close |
+| 123.4 | Navigation unification + ManageServices deletion + admin aggregate + END OF ROUND | **Manager APPROVED round 1 (2026-10-05)** on frozen tree `fef52c66…3ac6` (BASE `c700cd60`) → awaiting Architect review. Was: OPEN (2026-10-05) after Architect PASS on 123.3. Precondition: WIP commit of the 123.3 tree (= 123.4 baseline; `c700cd60`). The orphan / leftover cleanup is a PROPOSAL only, implemented only after an Architect decision | Manager Review PASS → Architect review PASS → consolidated Owner run → phase close |
 
 Each slice is one Developer round. It writes or updates `team-Yuri/dev-phase123.md` with a section per slice, then STOPS.
 
@@ -821,9 +821,62 @@ Context:
 - **Manager note:** non-form credential entries (`resolveCredentialEntry(...).kind !== 'form'`) keep today's gating of profile UI. If PRD FRs require profile UI for them, apply the stop rule.
 
 ## Manager Review
-MANAGER_REVIEW_STATUS: AWAITING SUBMISSION — slice 123.4 + END OF ROUND (opened 2026-10-05). Previous: slice 123.3 CHANGES REQUIRED round 1 (documentation only) → RC-1 closed by dev KI-7 → Architect PASS (2026-10-05) — slice 123.3 on frozen tree sha256=664646a004d28fe107964527e69b2dfc6c5ec9e88aa9d5e87f2060a8d6c318af (BASE `0dfb9de7`, scope `-- src scripts supabase`). Code and tests pass all review criteria; one Known Issue required by the Architect is missing from the evidence (RC-1). No code change and no re-run are needed (team docs are outside the fingerprint scope). Then hand off to the Architect. Previous: fix round D-123-6…8 APPROVED (round 1), Architect PASS (2026-10-05), frozen tree sha256=1de67427489e2d49eb5d6a8ff377c2ab17572e420e316d8a738bd4b6af49e387; Owner re-check moved to the consolidated end-of-phase run. Previous: APPROVED (round 2), Architect PASS (conditional) — joint resubmission: fix round D-123-1…5 + AD-123-18 + amendment A + H-1 + Known Issue 5, and slice 123.2b (AD-123-19 + addenda (a)/(b)), frozen tree sha256=c06950a50486cfef9fcfd041622aebbd3e5dfaa7a3d85e99038d9dff93ff1c21. Handed to the Architect. Owner items are carried as conditions. (Earlier: fix round round 1 BLOCKED; slice 123.2 + R-123-1 APPROVED round 1; slice 123.1 APPROVED round 2.)
+MANAGER_REVIEW_STATUS: APPROVED (round 1, 2026-10-05) — slice 123.4 + END OF ROUND, frozen tree sha256=fef52c66c81fe5c8a95661f0a0cb5172ccc1df7cb536c3554e1e5a84611a3ac6 (BASE WIP `c700cd60`, scope `-- src scripts supabase`). Handed to the Architect. The consolidated Owner run is a carried condition before phase close. Previous: slice 123.3 CHANGES REQUIRED round 1 (documentation only) → RC-1 closed by dev KI-7 → Architect PASS (2026-10-05) — slice 123.3 on frozen tree sha256=664646a004d28fe107964527e69b2dfc6c5ec9e88aa9d5e87f2060a8d6c318af (BASE `0dfb9de7`, scope `-- src scripts supabase`). Code and tests pass all review criteria; one Known Issue required by the Architect is missing from the evidence (RC-1). No code change and no re-run are needed (team docs are outside the fingerprint scope). Then hand off to the Architect. Previous: fix round D-123-6…8 APPROVED (round 1), Architect PASS (2026-10-05), frozen tree sha256=1de67427489e2d49eb5d6a8ff377c2ab17572e420e316d8a738bd4b6af49e387; Owner re-check moved to the consolidated end-of-phase run. Previous: APPROVED (round 2), Architect PASS (conditional) — joint resubmission: fix round D-123-1…5 + AD-123-18 + amendment A + H-1 + Known Issue 5, and slice 123.2b (AD-123-19 + addenda (a)/(b)), frozen tree sha256=c06950a50486cfef9fcfd041622aebbd3e5dfaa7a3d85e99038d9dff93ff1c21. Handed to the Architect. Owner items are carried as conditions. (Earlier: fix round round 1 BLOCKED; slice 123.2 + R-123-1 APPROVED round 1; slice 123.1 APPROVED round 2.)
 
 ### Review Notes
+Slice 123.4 + END OF ROUND, Manager review round 1 (2026-10-05) — **APPROVED → Architect review.**
+- **Frozen tree:**
+  - HEAD `c700cd60` (WIP 123.4 baseline), no commit after it.
+  - The fingerprint (`$env:TEMP\pv-fingerprint-123-4.mjs`, BASE `c700cd60`, scope `-- src scripts supabase`) is `fef52c66…3ac6` before and after all Manager runs (21 tracked changed incl. the deleted `src/ManageServices.tsx`, 2 untracked). 0 other runners at start.
+- **1. Parity matrix:**
+  - 17 rows (+ 5a) in `dev-phase123.md`, each citing file + symbol. Every ManageServices capability maps to a Digital Home location (grid, floating window, single profile host, catalog modal, app menu, Dashboard banner / header) or to a documented retirement: row 16 «לבית הדיגיטלי» (navigation only, duplicate re-persist), and row 5a (informational line not repeated, dev KI-1).
+  - The matrix references `c700cd60` symbols, and `verifyPhase123Navigation` checks that 25 matrix symbols exist.
+  - "Written before deletion" is the Developer's declaration. There is no intermediate commit, so git cannot prove the order; the content is consistent with it.
+- **2. One "custom" rule:**
+  - Edit-site (`openSiteDetailsEdit`), remove step 5 (`beginPendingRemoval` `deleteOwnRow`) and the panel menu all use `isUserCustomApp`. `checkSingleCustomRule` + M11 enforce it; no `edit_site_details` / `deleteOwnRow` decision exists elsewhere.
+  - No hostname / serviceId branch, `window.confirm` / `alert` / `prompt` in the added lines.
+  - *Observation O-1 (non-blocking):* six `source === 'user-created'` checks remain in user `src/`, all pre-existing at `c700cd60` with identical counts: `App.tsx` ×2 (merge / dedupe), `catalogVisibility` (AD-123-19 (b) own_site gate), `addCustomServiceOutcome` (duplicate classifier), `credentialSchema` / `credentialsGate` (custom form default), `customServiceDiscovery` (source attribution). They're source attribution, not custom-app action rules, so the binding is met. The dev sentence "no `source === 'user-created'` decision left in user `src/` outside `appContext.ts`" overstates it.
+- **3. Empty state / inline error / notice:**
+  - 0 apps → `[data-home-empty]` with Hebrew copy and a central «+ הוספת אפליקציה». The catalog opens only through `onOpenCatalog` (no auto-open; M3).
+  - Catalog failure → Dashboard banner + modal inline error with «נסו שוב»; `retryCatalogLoad` no longer resets `catalogHydrated` (no full-screen error / loading; M7).
+  - "Removed elsewhere" notice: `.dh-reconcile-notice`, `role="status"`, `dir="rtl"`, above the catalog overlay and the floating window. It is browser-checked on the plain home, above the open catalog (`elementFromPoint`) and with the window open (M8–M10). No native dialog in any group.
+- **4. AD-123-15 migration:**
+  - `public.admin_apps_without_profile_counts()`: `security definer`, `set search_path = public`; first statement `if not public.is_admin() then raise exception`.
+  - Returns exactly 8 `bigint` counts from `user_services.created_at` / `user_id` and `min(access_profiles.created_at)`. No ids / names / URLs / credential data. No DDL on tables / policies, no writes.
+  - `revoke all … from public, anon`; `grant execute … to authenticated`.
+  - PGlite proves: anon denied, non-admin / disabled admin / no session refused, admin gets one row of 8 exact counts (M4 / M5 / M6 / M13).
+  - Not applied (Owner instructions recorded). `git diff c700cd60 -- src/admin` empty.
+- **5. Frozen files:**
+  - `src/execution`, `src/digitalHome/cloudReconcile.ts`, `src/supabase/**`, `src/admin`, `extension/` and package files: no diff vs `c700cd60`; `supabase/` = the one new migration only.
+  - The `assistanceActions.ts` override maps `status === 'credentials_missing'` to `MSG_AUTOFILL_CREDENTIALS_MISSING` before any execution `userMessage` is used (M14 caught).
+  - *Observation O-2 (cosmetic):* in `src/loginAssistance/messages.ts` the AD-123-1 doc comment sits above `MSG_REMOVED_ELSEWHERE_PLAIN` instead of `MSG_AUTOFILL_CREDENTIALS_MISSING`.
+- **6. `verifyPhase123Navigation`:** the Manager re-run gives 12 groups / 15 mutations caught (1m 17s). The evidence shows one sequential loop per attempt with a 0-runner check before each; no concurrent runs.
+- **7. END OF ROUND history:**
+  - Attempt 1 (tree `7d9ca62d`): FAIL on a stale RemoveApp M8 anchor. It was re-anchored to the same mutation (still caught), then re-frozen.
+  - Attempt 2 (`fef52c66`): 62/63; AdminWorkspace hit the 30-min job bound but passed inside `runOfflineRegression` in 3159 s.
+  - Attempt 3: shell interrupted at job 52.
+  - Attempt 4: 63/63 clean, 114 min, fingerprint identical.
+  - The bound change (30 → 90 min per job, equal to `runOfflineRegression`'s per-script bound) lives in the runner loop only. No repo file changed, so no assertion was weakened. AdminWorkspace in attempt 4: 32 groups / 74 mutations in 46m 11s.
+- **Manager re-runs on the frozen tree (sequential, all exit 0):**
+  - `verifyPhase123Navigation` (full) 12 / 15;
+  - `verifyPhase123RemoveApp --no-mutations` 13;
+  - `verifyPhase123D8OwnSite` (full) 10 / 20;
+  - `verifyPhase123AppContext --mutations=M3,M8,M10..M15` 23 / 8;
+  - `verifyPhase123CatalogGate` (full) 8 / 20; `verifyPhase123Sync` (full) 15 / 35;
+  - touched: 113, 104, ServiceSourceOwnership, 109, 102;
+  - admin sample: 121DeleteService (43), 122AdminNotes (8), 121IframeSurface;
+  - `npx tsc -b` exit 0; `npm run build` exit 0.
+  - The full END OF ROUND set (63 jobs incl. `runOfflineRegression` 88/88 and AdminWorkspace full) is accepted from the evidence.
+- **Flags for the Architect (not decided by the Manager):**
+  - (a) **D8OwnSite superseded assertion outside the G-3 list:** `checkHydrateScope` drops `supabase` from the unchanged list and instead allows exactly one path, the AD-123-15 migration file. Every other `supabase/` path must stay unchanged. Narrow, but it cites AD-123-15, which is not in G-3.
+  - (b) **Developer's own-call deviations:**
+    - focus return to the tile after the profile host closes (AC-113-45 kept and re-homed; M15);
+    - the copy override in `assistanceActions.ts` for the frozen execution `credentials_missing` text (M14);
+    - `MSG_REMOVED_ELSEWHERE_PLAIN` placed in `loginAssistance/messages.ts` so `cloudReconcile.ts` stays frozen.
+  - (c) **Cleanup proposal P1 / P2:** proposal only, nothing implemented. P1: local drop of a leftover own `customServices` entry in `dropGoneFromVault`. P2: an explicit «מחיקת האתר שלי» catalog action using the existing owner delete.
+  - Also for awareness: dev KI-2 (× on the notice also closes an open floating window, as an outside click); KI-3 dead code kept; O-1 / O-2 above.
+- **Carried condition:** the consolidated Owner run (D-123-6…8, `[catalog-gate]` count, 123.3 steps, 123.4 steps incl. the AD-123-15 apply / admin call / refusals) before phase close.
+
 2026-10-05: **slice 123.3 Architect PASS** (arch Review Notes "Slice 123.3 Architect review (2026-10-05): PASS").
 - **RC-1 CLOSED:** dev Known Issue 7 was added (documentation only). The Manager confirmed the fingerprint `664646a0…18af` is unchanged (HEAD `0dfb9de7`).
   - KI-7 corrects the Manager's trace in two places: a *pending* own row returns to the catalog after the next refresh / login (not immediately); an *active* row stays listed. The Architect accepted KI-7 as written; it supersedes the Manager trace in round 1.
@@ -1134,7 +1187,7 @@ Slice 123.1, round 1:
 - **Known Issue 1 (BLOCKED, Architect):** profile UI stays gated on form credential entries, with behaviour unchanged. This is the stop rule applied correctly. For the Architect at review: does AD-123-2 apply to `no-stored-credentials` / `not-configured` apps?
 
 ### Required Corrections
-Slice 123.4: none yet (awaiting submission).
+Slice 123.4 + END OF ROUND, round 1: none. O-1 (wording) and O-2 (doc-comment placement) are non-blocking observations; the consolidated Owner run is a carried condition.
 
 Slice 123.3, round 1 (documentation only; no code change, no re-run), CLOSED 2026-10-05 by dev KI-7:
 1. **RC-1:** add a Known Issue to `dev-phase123.md` → "123.3 Known Issues", answering the Architect's question: when `deleteCustomServiceRegistryRow` still fails after its retry, the removed own site stays in the owner's catalog. State what the user sees, per the Manager's code trace in Review Notes:

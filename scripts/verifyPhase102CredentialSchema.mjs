@@ -57,12 +57,17 @@ function mainStatic() {
   assert(entry.includes('allowsCredentialProfileManagement'), 'profiles only when a credential form exists');
   assert(!entry.includes('getLoginFields'), 'credential entry must not use the autofill default helper');
 
-  const manage = read('src/ManageServices.tsx');
-  assert(manage.includes('offersCredentialManagementPanel'), 'manage action must gate on credential mode');
-  assert(manage.includes('isNoStoredCredentialsMode'), 'no-stored list label must use resolved mode');
-  assert(manage.includes('NO_STORED_CREDENTIALS_LIST_LABEL'), 'no-stored list label must be the defined copy');
-  assert(manage.includes('ללא פרטי כניסה') || read('src/service/credentialSchema.ts').includes("ללא פרטי כניסה"), 'user list shows ללא פרטי כניסה');
-  assert(manage.includes('sm-manage-status'), 'no-stored label is non-interactive status text');
+  // AD-123-1 / AD-123-9 (Phase 123.4): ManageServices deleted. Profile management opens from the
+  // Digital Home window through App.openProfileManagement (same credential-mode gate); the no-stored
+  // state is the window's no-stored-credentials launch kind (non-interactive Hebrew text).
+  const appSrc = read('src/App.tsx');
+  const openFn = appSrc.slice(appSrc.indexOf('function openProfileManagement('), appSrc.indexOf('const profileHostService'));
+  assert(openFn.includes('offersCredentialManagementPanel(service)'), 'manage action must gate on credential mode');
+  const gateSrc = read('src/loginAssistance/credentialsGate.ts');
+  assert(gateSrc.includes("'no-stored-credentials'") && gateSrc.includes('resolveCredentialEntry'), 'no-stored state must use resolved mode');
+  const panelSrc = read('src/loginAssistance/LoginAssistancePanel.tsx');
+  assert(panelSrc.includes('MSG_NO_STORED_CREDENTIALS_LAUNCH'), 'no-stored state must be the defined copy');
+  assert(read('src/loginAssistance/messages.ts').includes('export const MSG_NO_STORED_CREDENTIALS_LAUNCH'), 'no-stored copy defined');
 
   const launchGate = read('src/loginAssistance/credentialsGate.ts');
   assert(launchGate.includes('shouldOpenLoginAssistancePanel'), 'Digital Home launch gate helper');

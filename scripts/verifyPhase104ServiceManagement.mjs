@@ -20,7 +20,7 @@
  *
  * Usage: node scripts/verifyPhase104ServiceManagement.mjs
  */
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -56,24 +56,26 @@ function sameUserCustomDuplicateMessageProbe(serviceName) {
 }
 
 function main() {
-  // AD-123-8: the «הוספת אתרים» body moved to the shared AppCatalog, which ManageServices renders; both files
-  // form the Service Management surface (absence checks now cover the catalog body too).
-  const manage = `${read('src/ManageServices.tsx')}\n${read('src/digitalHome/AppCatalog.tsx')}`;
+  // AD-123-1 / AD-123-9 (Phase 123.4): ManageServices is deleted; the Service Management surface is
+  // the shared AppCatalog body (Digital Home catalog modal). Absence checks cover the catalog body.
+  const manage = read('src/digitalHome/AppCatalog.tsx');
+  const dashboardSrc = read('src/Dashboard.tsx');
 
-  // AC-104-1 — screen title (glossary: אתרים)
+  // AC-104-1 — superseded by AD-123-1: no «ניהול אתרים» screen; Digital Home is the only user screen.
   assert(
-    manage.includes('ניהול אתרים') || manage.includes('ניהול שירותים'),
-    'Service Management screen title must be present',
+    !existsSync(join(root, 'src/ManageServices.tsx')) && !dashboardSrc.includes('ניהול אתרים'),
+    'AD-123-1: no separate Service Management screen («ניהול אתרים») remains',
   );
 
-  // AC-104-2, AC-104-3 — two sections (glossary: אתרים)
+  // AC-104-2 — superseded by AD-123-9: «האתרים שלי» is the Digital Home grid.
   assert(
-    manage.includes('האתרים שלי') || manage.includes('השירותים שלי'),
-    'My Services section heading required',
+    dashboardSrc.includes('aria-label="האתרים שלי"'),
+    'My Services = the Digital Home grid (AD-123-9)',
   );
+  // AC-104-3 — superseded by AD-123-1 / AD-123-9: «הוספת אתרים» = the Digital Home catalog modal.
   assert(
-    manage.includes('הוספת אתרים') || manage.includes('הוספת שירותים'),
-    'Add services section heading required',
+    read('src/digitalHome/AppCatalogModal.tsx').includes('{CATALOG_MODAL_TITLE}'),
+    'Add section = the catalog modal (AD-123-9)',
   );
   assert(
     !manage.includes('גילוי שירותים'),
@@ -116,9 +118,10 @@ function main() {
   for (const badge of ['not_added', 'added', 'missing_credentials', 'multiple_profiles']) {
     assert(stateModule.includes(badge), `management state "${badge}" must be defined`);
   }
+  // Superseded by AD-123-9: the per-app state is the launch kind in the Digital Home window.
   assert(
-    manage.includes('deriveServiceManagementState'),
-    'ManageServices must render derived management state',
+    read('src/loginAssistance/LoginAssistancePanel.tsx').includes('resolveDigitalHomeLaunchKind('),
+    'Digital Home window renders the derived per-app state (launch kind, AD-123-9)',
   );
 
   // Amended AC-104-17 / D-104-17 — Service Management is administration-only:
@@ -136,12 +139,11 @@ function main() {
     'ManageServices must not call executeServiceFromTile (no execution)',
   );
 
-  // D-104-10 — selected cards expose ניהול + הסרה only (no card-level profile/credential buttons)
-  assert(manage.includes('ניהול'), 'Selected cards must expose a ניהול action');
+  // D-104-10 — superseded by AD-123-9: profile management + remove live in the Digital Home window.
+  const panelSrc = read('src/loginAssistance/LoginAssistancePanel.tsx');
   assert(
-    (manage.includes('הסר אתר') || manage.includes('הסר שירות') || manage.includes('הסרה')) &&
-      manage.includes('onRemoveService'),
-    'Selected cards must expose remove via secondary menu',
+    panelSrc.includes('data-action="edit-profile"') && panelSrc.includes('data-action="remove-app"'),
+    'Selected apps expose profile management + remove (app menu) in the floating window (AD-123-9)',
   );
   assert(
     !manage.includes('ניהול פרופילים'),
@@ -151,9 +153,10 @@ function main() {
     !manage.includes('עריכת פרטי כניסה'),
     'Card-level "עריכת פרטי כניסה" button must be removed (unified into ניהול modal)',
   );
+  // Superseded by AD-123-9 / AD-123-14: the single custom rule isUserCustomApp gates the edit.
   assert(
-    manage.includes("'user-created'") && !manage.includes('isCustomServiceId'),
-    'עריכת פרטי האתר must gate on source === user-created, not isCustomServiceId',
+    panelSrc.includes('isUserCustomApp(service, isCustom)') && !panelSrc.includes('isCustomServiceId'),
+    'עריכת פרטי האתר must gate on isUserCustomApp (user-created + vault custom), not isCustomServiceId',
   );
 
   // D-104-19 — progressive-disclosure management modal
@@ -200,9 +203,11 @@ function main() {
     /await persistSelectionState\(next[\s\S]*?setVaultState\(next\)/.test(app),
     'App must persist before committing selection to state (no optimistic tile)',
   );
+  // Superseded by AD-123-9: the catalog disables an add while it is pending.
   assert(
-    manage.includes('pendingIds.has') && manage.includes('disabled={pending}'),
-    'ManageServices must disable controls during pending operations',
+    manage.includes('catalogItemState(service.id, selectedIds, pendingIds)') &&
+      manage.includes("disabled={itemState === 'pending'}"),
+    'Catalog must disable controls during pending operations (AD-123-9)',
   );
 
   // AC-104-11, AC-104-20 — no direct global service_registry mutation from the UI
@@ -391,9 +396,10 @@ function main() {
     selection.includes('SELECTION_PERSIST_FAILED_MESSAGE'),
     'serviceSelection must define a friendly persist-failure message',
   );
+  // Superseded by AD-123-9: Digital Home surfaces selection errors (catalog add errors inline).
   assert(
-    manage.includes('selectionError'),
-    'ManageServices must surface selection persist errors',
+    app.includes('const homeError = removeError ?? (catalogOpen ? null : selectionError);'),
+    'Digital Home must surface selection persist errors (AD-123-9)',
   );
 
   console.log('PASS: Phase 104 Service Management (static)');

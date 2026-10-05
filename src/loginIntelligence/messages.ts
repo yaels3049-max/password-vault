@@ -12,7 +12,7 @@ export const LI_USER_MESSAGES = {
   fillUnavailable:
     'האתר נפתח. מילוי אוטומטי לא זמין כרגע — ניתן למלא את השדות ידנית.',
   credentialsMissing:
-    'הגדירו פרטי כניסה במסך «ניהול האתרים» — לחצו «הוסף אתרים נוספים».',
+    'עדיין לא הוזנו פרטי כניסה. לחצו על האייקון של האפליקציה בבית הדיגיטלי והוסיפו פרופיל.',
 } as const;
 
 export function hebrewMessageForComplexity(

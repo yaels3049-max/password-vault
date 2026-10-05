@@ -20,11 +20,14 @@ function read(path) {
 }
 
 function mainStatic() {
-  const manage = read('src/ManageServices.tsx');
-  assert(!manage.includes('isCustomServiceId'), 'ManageServices must not use isCustomServiceId');
-  assert(manage.includes("source ==="), 'edit menu must read runtime source');
-  assert(manage.includes("'user-created'"), 'edit menu must require user-created source');
-  assert(manage.includes('עריכת פרטי האתר'), 'custom edit label remains');
+  // AD-123-1 / AD-123-9 / AD-123-14 (Phase 123.4): ManageServices deleted; the edit menu lives in the
+  // Digital Home window and reads the runtime source through the single rule isUserCustomApp.
+  const panel = read('src/loginAssistance/LoginAssistancePanel.tsx');
+  const rule = read('src/digitalHome/appContext.ts');
+  assert(!panel.includes('isCustomServiceId') && !rule.includes('isCustomServiceId'), 'edit menu must not use isCustomServiceId');
+  assert(/return inVaultCustomServices && service\.source === 'user-created';/.test(rule), 'edit menu must read runtime source and require user-created');
+  assert(panel.includes('isUserCustomApp(service, isCustom)'), 'edit menu uses the single custom rule');
+  assert(read('src/loginAssistance/messages.ts').includes('עריכת פרטי האתר'), 'custom edit label remains');
 
   const app = read('src/App.tsx');
   assert(!app.includes('isCustomServiceId'), 'App dedupe must not use isCustomServiceId');

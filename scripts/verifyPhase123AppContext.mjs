@@ -344,10 +344,10 @@ function checkSingleHost(overrides) {
   const app = source(overrides, 'src/App.tsx');
   assert(/function openProfileManagement\(request: ProfileManagementRequest\)/.test(app), 'AD-123-3: App openProfileManagement({ serviceId, profileId?, mode })');
   assert(/useState<ProfileManagementRequest \| null>/.test(app), 'AD-123-3: App host state { serviceId, profileId?, mode } | null');
-  const manage = source(overrides, 'src/ManageServices.tsx');
-  assert(!/ServiceProfileManagementModal/.test(manage), 'AD-123-3: ManageServices has no embedded modal wiring');
-  assert(/onOpenProfileManagement\(\{\s*serviceId: service\.id,\s*mode: 'edit',?\s*\}\)/.test(manage), 'AD-123-3: ManageServices «ניהול» routes to the App host');
-  return 'AD-123-3: one <ServiceProfileManagementModal render site (the host), one host element in App, ManageServices routed via callback';
+  // Superseded by AD-123-1 / AD-123-9 (Phase 123.4): ManageServices is deleted; Digital Home is the only opener.
+  assert(!existsSync(join(root, 'src/ManageServices.tsx')), 'AD-123-1: ManageServices deleted (no second opener)');
+  assert(/onOpenProfileManagement\(\{ serviceId: service\.id, profileId, mode: 'edit' \}\)/.test(source(overrides, 'src/Dashboard.tsx')), 'AD-123-3: Digital Home edit routes to the App host');
+  return 'AD-123-3: one <ServiceProfileManagementModal render site (the host), one host element in App, Digital Home routed via callback (ManageServices deleted, AD-123-1)';
 }
 
 function checkPanelStatic(overrides) {
@@ -537,7 +537,6 @@ const DH_FILES = [
   'src/digitalHome/AppCatalog.tsx',
   'src/digitalHome/AppCatalogModal.tsx',
   'src/digitalHome/EditSiteDetailsModal.tsx',
-  'src/ManageServices.tsx',
 ];
 const EXTRACTED_FROM_MANAGE = ['src/digitalHome/AppCatalog.tsx', 'src/digitalHome/EditSiteDetailsModal.tsx', 'src/digitalHome/customSiteForm.ts'];
 /** AD-123-18 — the only Supabase imports the fix round may add (sync rule wiring). */
@@ -1143,10 +1142,11 @@ const MUTATIONS = [
       "    if (adding === 'entry' || sortedProfiles.length === 0) {\n      void onCreateProfile('ראשי', null);\n      onClose();", o),
   })],
   ['M8 second modal render site (AD-123-3)', (o) => {
-    let src = read('src/ManageServices.tsx');
-    src = replaceOnce(src, "import ServiceCard from './components/ServiceCard';", "import ServiceCard from './components/ServiceCard';\nimport ServiceProfileManagementModal from './ServiceProfileManagementModal';", o);
-    src = replaceOnce(src, '      {menuOpenId &&\n', '      {false && <ServiceProfileManagementModal {...({} as never)} />}\n      {menuOpenId &&\n', o);
-    return { 'src/ManageServices.tsx': src };
+    // Re-anchored on Dashboard.tsx (AD-123-1: ManageServices deleted in 123.4).
+    let src = read('src/Dashboard.tsx');
+    src = replaceOnce(src, "import { useEffect, useRef, useState } from 'react';", "import { useEffect, useRef, useState } from 'react';\nimport ServiceProfileManagementModal from './ServiceProfileManagementModal';", o);
+    src = replaceOnce(src, '    return (\n      <Tile\n', '    if (Math.random() > 2) return <ServiceProfileManagementModal {...({} as never)} />;\n    return (\n      <Tile\n', o);
+    return { 'src/Dashboard.tsx': src };
   }],
   ['M9 first added profile left non-default (MC-2 / FR-04)', (o) => ({
     'src/vault/profileManagement.ts': replaceOnce(read('src/vault/profileManagement.ts'),

@@ -541,8 +541,16 @@ function checkHydrateScope(overrides) {
   // Superseded by the KI-3 ruling (was: sessionSyncScope.ts unchanged): only the KI-3 edits.
   const scopeRel = 'src/supabase/sessionSyncScope.ts';
   assert(withoutKi3(source(overrides, scopeRel), KI3_SCOPE, scopeRel) === baseSource(scopeRel), `N-2: ${scopeRel} identical to ${BASE.slice(0, 8)} apart from the KI-3 seen-in-cloud set`);
-  const others = ['src/vault/crypto.ts', 'src/vault/vault.ts', 'src/supabase/registryPersistence.ts', 'src/registry/registryMapper.ts', 'src/digitalHome/cloudReconcile.ts', 'supabase'];
+  const others = ['src/vault/crypto.ts', 'src/vault/vault.ts', 'src/supabase/registryPersistence.ts', 'src/registry/registryMapper.ts', 'src/digitalHome/cloudReconcile.ts'];
   for (const rel of others) assert(git('diff', '--name-only', BASE, '--', rel).trim() === '' && git('ls-files', '--others', '--exclude-standard', '--', rel).trim() === '', `N-2: ${rel} unchanged vs ${BASE.slice(0, 8)}`);
+  // AD-123-15 (Phase 123.4): the admin-only aggregate migration is the one allowed supabase/ change;
+  // its content is checked by verifyPhase123Navigation. Every other supabase/ path stays unchanged.
+  const AD_123_15_MIGRATION = 'supabase/migrations/20261005120000_phase123_admin_apps_without_profile.sql';
+  const supa = [
+    ...git('diff', '--name-only', BASE, '--', 'supabase').split('\n'),
+    ...git('ls-files', '--others', '--exclude-standard', '--', 'supabase').split('\n'),
+  ].map((p) => p.trim()).filter(Boolean);
+  assert(supa.every((p) => p === AD_123_15_MIGRATION), `N-2: supabase unchanged vs ${BASE.slice(0, 8)} apart from the AD-123-15 migration (${supa.join(', ')})`);
   const admin = git('diff', '--name-only', BASE, '--', 'src/admin').split('\n').filter(Boolean);
   assert(admin.every((p) => p === 'src/admin/ApprovalQueue.tsx'), `N-2: src/admin unchanged apart from the D-123-6 line (${admin.join(', ')})`);
   return `N-2: persistence.ts vs ${BASE.slice(0, 8)} = D-123-8 import + own-site block (+ KI-3 refresh rule) only; sync scope = KI-3 set only; crypto / vault / registry / mapper / reconcile / supabase / src/admin unchanged`;

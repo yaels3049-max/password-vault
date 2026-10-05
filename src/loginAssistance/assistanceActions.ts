@@ -19,7 +19,14 @@ import {
   allowsAutomaticCompletionAttempt,
   resolveLoginAssistanceLevel,
 } from './supportLevel';
-import { MSG_AUTO_ATTEMPTED, MSG_MANUAL_ONLY, MSG_OPENED, MSG_OPENED_HOME_FALLBACK, MSG_SELECT_PROFILE } from './messages';
+import {
+  MSG_AUTO_ATTEMPTED,
+  MSG_AUTOFILL_CREDENTIALS_MISSING,
+  MSG_MANUAL_ONLY,
+  MSG_OPENED,
+  MSG_OPENED_HOME_FALLBACK,
+  MSG_SELECT_PROFILE,
+} from './messages';
 
 export type OpenAssistanceUrlResult =
   | { status: 'opened'; url: string; source: 'loginUrl' | 'homeUrl'; message: string }
@@ -82,6 +89,10 @@ export async function attemptExistingAutomaticCompletion(
   const result = await executeServiceFromTile(service, credential, loginFields, {
     activeProfileId: profileId,
   });
+
+  if (result.status === 'credentials_missing') {
+    return { attempted: true, message: MSG_AUTOFILL_CREDENTIALS_MISSING, outcome: 'failure' };
+  }
 
   const structured = result.userMessage?.trim();
   const managedClaim = serviceClaimsValidatedManagedProfile(service);

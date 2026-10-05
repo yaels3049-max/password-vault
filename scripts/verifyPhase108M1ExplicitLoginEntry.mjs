@@ -25,7 +25,9 @@ function read(path) {
 const productPaths = [
   'src/App.tsx',
   'src/AddSiteModal.tsx',
-  'src/ManageServices.tsx',
+  // AD-123-1 (Phase 123.4): ManageServices deleted; its custom-add / edit surfaces are these two.
+  'src/digitalHome/AppCatalog.tsx',
+  'src/digitalHome/EditSiteDetailsModal.tsx',
   'src/admin/RegistryAdmin.tsx',
   'src/admin/ApprovalQueue.tsx',
   'src/admin/UrlFieldWithCopy.tsx',

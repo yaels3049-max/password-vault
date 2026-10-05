@@ -152,9 +152,12 @@ function main() {
     ) || (app.includes('function handleLockVault') && app.includes('signOutAccount')),
     'Vault lock must full-logout to Login (AC-109-24)',
   );
+  // Superseded by AD-123-1 (Phase 123.4, FR-01): login always lands on Digital Home, so App no longer
+  // chooses a screen from the user_services count (countUserServices stays in src/auth).
   assert(
-    app.includes('countUserServices'),
-    'App must route using user_services preference helper',
+    !app.includes('countUserServices') &&
+      app.includes('setShowMagicMomentHint(hydrated.selectedIds.length === 0);'),
+    'App lands on Digital Home after login without a user_services screen choice (AD-123-1)',
   );
 
   assert(

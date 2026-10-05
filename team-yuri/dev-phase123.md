@@ -16,6 +16,12 @@ PHASE=123
 - B-1 (re-frozen): the tree was frozen again after these changes. Fingerprint `c06950a50486cfef9fcfd041622aebbd3e5dfaa7a3d85e99038d9dff93ff1c21` (command and scope: section "Frozen-tree fingerprint" at the end). Every result marked "frozen tree" below ran on that tree; no source, test or config file was edited after it. Submitted together for Manager → Architect review.
 - Fix round D-123-6…8: COMPLETE — D-123-6, D-123-7 and D-123-8 implemented; one clean sequential T-1 run (68 jobs) + `tsc` + build PASS on frozen tree `1de67427…e387`. Owner re-check: awaiting Owner (after the Architect review). 123.3 not open. See section "Fix round D-123-6…8".
 - Slice 123.3 (Remove app): COMPLETE — Step 0 DELETED (accepted), Item 0a (KI-5), confirm + Undo, AD-123-11 commit order, AD-123-12 edge rules, PQ-123-1, AD-123-14 clarification, KI-3. One clean sequential T-1 run (70 jobs) + `tsc` + build PASS on frozen tree `664646a0…18af` (identical before / after). Owner manual steps: awaiting Owner. Stopping for Manager → Architect review; 123.4 not open. See section "Slice 123.3 - Remove app".
+- Slice 123.4 (Navigation unification, AD-123-1 / -9 / -15) + END OF ROUND: COMPLETE.
+  - Baseline: WIP commit `c700cd60`.
+  - Done: parity matrix before the deletion; ManageServices deleted; Digital Home is the only screen (empty state, inline catalog error, "removed elsewhere" notice); AD-123-15 admin-only counts migration (not applied); new `verifyPhase123Navigation` (15 mutations); cleanup proposal (KI-7 / KI-3) only.
+  - END OF ROUND: one clean sequential run, 63/63 PASS, on frozen tree `fef52c66…3ac6` (identical before / after).
+  - Live migration apply / call and the Owner manual steps: awaiting Owner.
+  - Stopping for Manager → Architect review. See section "Slice 123.4".
 
 ## Source References
 - `team-Yuri/manager-phase123.md` — sections "Slice 123.1", "Slice 123.2", "Task R-123-1", N-1…N-8, Test Policy (T-1).
@@ -1918,3 +1924,357 @@ Not run: no Owner session; the test credentials are not reused.
 - `src/admin`, `extension/`, `supabase/`, package files: unchanged. No commit made.
 
 Stopping for Manager → Architect review. 123.4 is not open.
+
+## Slice 123.4 - Navigation unification (AD-123-1, -9, -15) + END OF ROUND (opened 2026-10-05)
+
+### WIP commit (123.4 baseline)
+- `c700cd605abeb382a612ae19a4ca5e3c016aeec4` on local branch `wip/phase123-recovered`, on top of `0dfb9de7`. Message: "WIP Phase 123: slice 123.3 remove app approved tree (Architect PASS 2026-10-05), baseline for slice 123.4, not reviewed for merge".
+- Before the commit, the fingerprint (BASE `0dfb9de7`, scope `-- src scripts supabase`) was recomputed and confirmed: `664646a004d28fe107964527e69b2dfc6c5ec9e88aa9d5e87f2060a8d6c318af`.
+- 21 files, staged by explicit path:
+  - the 14 tracked and 3 untracked files under `src` / `scripts`;
+  - `team-yuri/PLAN.md`, `team-yuri/arch-phase123.md`, `team-yuri/dev-phase123.md`, `team-yuri/manager-phase123.md` (lowercase path only).
+- Not used: `node_modules/.tmp`, `git add -A` / `.`, push, merge, `--no-verify`, amend.
+- After the commit, `git diff c700cd60 -- src scripts supabase` was empty (0 lines), and `git ls-files --others --exclude-standard -- src scripts supabase` returned nothing.
+- **All 123.4 fingerprints use `c700cd60` as BASE, with scope `-- src scripts supabase`.**
+
+### Parity matrix (AD-123-9), written before `ManageServices.tsx` was deleted
+Each capability of `src/ManageServices.tsx` (as of `c700cd60`) maps to its home on Digital Home. "Custom" decisions use the single AD-123-14 rule `isUserCustomApp(service, inVaultCustomServices)` (`src/digitalHome/appContext.ts`): in vault `customServices` AND runtime source `user-created`. ManageServices' own rule (`source === 'user-created'` on its row menu) disappears with the file.
+
+| # | ManageServices capability (symbol) | New home (file → symbol) | Slice |
+|---|---|---|---|
+| 1 | «האתרים שלי» list of selected apps, grouped by category (`selectedServices`, `mineCategoryGroups`, `groupSelectedServicesByCategory`) | `src/Dashboard.tsx` → `renderTile` grid; the category sections come from `src/digitalHome/homeLayout.ts` → `shouldUseCategoryLayout` / `groupSelectedServicesByCategory` | existing, AD-123-9 "list = grid" |
+| 2 | Search in «האתרים שלי» (`mineSearchQuery`, `filterDiscoveryServices`) | `src/digitalHome/AppCatalog.tsx` search (`filterCatalog` in `src/digitalHome/catalogModel.ts` → `filterDiscoveryServices`). Apps in the home are always shown there, marked «✓ כבר בבית הדיגיטלי» (`isShownInUserCatalog(service, inHome)`, `src/catalog/catalogVisibility.ts`) | 123.2 |
+| 3 | Per-row management state label (`deriveServiceManagementState`) | `src/loginAssistance/LoginAssistancePanel.tsx` → `resolveDigitalHomeLaunchKind` (`credentialsGate.ts`); launch-kind copy in the floating window; the dot = `appHasProfile` (`appContext.ts`) → `Tile hasCredentials` | 123.1 |
+| 4 | Per-row profile count (`getProfilesForService(...).length`) | Dot for ≥ 1 profile (FR-21…23, no count per N-6) + the profile switcher in the floating window (`showProfileChips`, `appContextActions(...).switcher`) | 123.1 |
+| 5 | «ניהול» → profile management for apps with a credential panel (`offersCredentialManagementPanel`, `onOpenProfileManagement({serviceId, mode: 'edit'})`) | Floating window «עריכת פרופיל» / «הוספת פרופיל» / empty-state «הוספת פרופיל ראשון» (`onEditProfile` / `onAddProfile`) → `Dashboard` → `App.openProfileManagement` (the same `offersCredentialManagementPanel` gate) → the single host `DigitalHomeCredentialModal` (AD-123-3). Profile add / rename / default / delete / credential edit / credential clear are modal functions, unchanged | 123.1 |
+| 5a | «ניהול» on an app with an incomplete schema (not-configured launch kind) opened the modal. The modal showed only `INCOMPLETE_SCHEMA_MESSAGE` and, if a credential is stored, `STORED_DETAILS_RETAINED_MESSAGE` (no form, no profile actions: `allowsCredentialProfileManagement` is false) | The floating window shows `MSG_NOT_CONFIGURED_LAUNCH` «ממתין להגדרת מנהל המערכת.» (`launchKind === 'not-configured'`). No action is lost. The informational line «אם כבר נשמרו פרטים, הם נשמרים ולא מוצגים כאן.» is not repeated there (see Known Issues) | 123.1 (AD-123-2 gating) |
+| 6 | No-stored-credentials label (`isNoStoredCredentialsMode`, `NO_STORED_CREDENTIALS_LIST_LABEL`) | Floating window `launchKind === 'no-stored-credentials'` → `MSG_NO_STORED_CREDENTIALS_LAUNCH` | 123.1 |
+| 7 | Row menu «הסר אתר» (`onRemoveService` → `App.removeService` → `requestRemoveApp`) | App menu «הסרת אפליקציה» (`LoginAssistancePanel` `showRemoveApp = actions.menu.remove_app && Boolean(onRemoveApp)`) → `Dashboard.onRemoveApp` → `App.requestRemoveApp` → `RemoveAppConfirmDialog` → `beginPendingRemoval` → Undo → `commitPendingRemoval` → `changeSelection(remove)`. **Step 5 uses the single custom rule:** `deleteOwnRow: isUserCustomApp(service, customServiceIds.has(serviceId.trim()))` in `beginPendingRemoval` | 123.3 |
+| 8 | Row menu «עריכת פרטי האתר» (`source === 'user-created'` → `EditSiteDetailsModal` → `onUpdateCustom`) | App menu «עריכת פרטי האתר» (`showEditSiteDetails = actions.menu.edit_site_details && …`, with `appContextActions(service, profiles, isUserCustomApp(service, isCustom))`) → `App.openSiteDetailsEdit` (guards: `customServiceIds.has(...)` AND `isUserCustomApp(service, true)`) → `EditSiteDetailsModal` → `App.updateCustomService` (unchanged). **The single custom rule**; the ManageServices rule is gone with the file | 123.2 / AD-123-14 clarification |
+| 9 | «הוספת אתרים» catalog body (`AppCatalog`: search, categories, add without a profile, custom add, duplicate offers) | `src/digitalHome/AppCatalogModal.tsx` (same `AppCatalog` body) opened by «+ הוספת אפליקציה» (`Dashboard` `data-action="open-catalog"` → `onOpenCatalog` → `App` `catalogOpen`). Add = `App.addApp`, custom add = `App.addCustomService` | 123.2 |
+| 10 | Catalog load error inline with «נסו שוב» (`catalogError`, `onRetryCatalog` → `retryCatalogLoad()`) | `AppCatalogModal` `catalogError` + `onRetryCatalog` → `retryCatalogLoad()` (no full-screen loading: `catalogHydrated` is not reset). With 0 apps, Digital Home stays (no full-screen error, 123.4 binding) | 123.2 / 123.4 |
+| 11 | Selection error banner (`selectionError`, `role="alert"`) | Add: inline in the catalog (`AddOutcome` `{status: 'failed', message}` from `App.addApp`). Remove: the Digital Home error banner `[data-remove-error]` (`removeError`, set by `commitPendingRemoval` when `changeSelection(remove)` fails). `selectionError` (set by `changeSelection`, pinned by 113) is shown in the same Digital Home banner: `removeError ?? selectionError`, with `selectionError` hidden while the catalog modal is open (the modal already shows the add failure inline). × clears both | 123.3 / 123.4 |
+| 12 | Pending state (`pendingIds` disables row controls, «מסיר…») | Catalog `pendingIds` (`AppCatalogModal`); removal: the selection lock (`selectionLockRef`), the toast hidden while committing (`pendingRemoval.committing`) | 123.2 / 123.3 |
+| 13 | Lock / logout (`VaultStateBadge`) | `Dashboard` header `VaultStateBadge` → `handleLockVault` (AD-123-12 commit first) | existing |
+| 14 | Logos (`useServiceLogos`) | `Dashboard` `useServiceLogos(services)`; catalog `AppCatalog` | existing |
+| 15 | First-run guidance («בחרו אתר אחד להתחלה…») | Digital Home empty state with a central «+ הוספת אפליקציה» (`Dashboard` 0 apps, FR-30), plus the updated first-login hint | 123.4 |
+| 16 | «לבית הדיגיטלי» (`onContinue`: `saveVaultState(vaultState)` + hint + `setScreen('dashboard')`) | Navigation only, gone with the screen. The re-persist duplicated writes that every action already makes (`changeSelection`, the profile host `handleVaultStateChange`, `addCustomService` / `updateCustomService`). The hint is now set at login (row 15) | 123.4 |
+| 17 | Focus back on «ניהול» after the modal closes (`manageOpenerRef`) | The floating window closes when the modal opens, so the opener is the app's tile. `src/App.tsx` `profileReturnFocusId` (effect on `profileRequest`) refocuses the tile's `button.app-icon` (`[data-service-tile][data-service-id] button`) when the host closes; no-op if the tile is gone (app removed, logout). Focus handling inside the dialogs is unchanged (D-123-3). *Updated in 123.4 during the superseded-verify pass: AC-113-45 is kept, not superseded* | 123.1 / 123.4 |
+
+No ManageServices capability is left without a row, so this is not a STOP.
+
+### Implementation (AD-123-1, AD-123-9)
+- **One user screen (FR-01).** `src/App.tsx`:
+  - Removed: the `ManageServices` import, `type Screen`, the `screen` / `manageIsFirstRun` state, `resolvePostAuthScreen`, `countUserServices` (the post-login screen choice), `removeService` (the ManageServices bridge to `requestRemoveApp`), `onContinue`, and the full-screen catalog error / loading block.
+  - After login, `handleAuthenticated` always lands on Digital Home. The first-login hint is armed with `setShowMagicMomentHint(hydrated.selectedIds.length === 0)`, and `Dashboard` shows it only once the first app is in the home.
+  - `clearWorkspaceMemory` resets the hint instead of the screen.
+  - The final render is the single `<AppVaultShell>` with `Dashboard`, also with 0 apps and with a catalog error.
+- **Catalog failure with 0 apps (binding).**
+  - `retryCatalogLoad()` no longer resets `catalogHydrated`, so a retry never brings back a full-screen loading or error state.
+  - The catalog modal keeps its inline error with «נסו שוב» (`onRetryCatalog={() => void retryCatalogLoad()}`).
+  - `Dashboard` shows the catalog banner for any app count. With 0 apps the copy is «קטלוג האפליקציות אינו זמין כרגע. אפשר לנסות שוב מתוך «+ הוספת אפליקציה».».
+- **Empty state (FR-30).**
+  - `Dashboard` with 0 apps shows `[data-home-empty]` «עדיין אין אפליקציות בבית הדיגיטלי. הוסיפו את האפליקציה הראשונה כדי להתחיל.» and a central «+ הוספת אפליקציה» (`data-action="open-catalog-empty"`). The header «+ הוספת אפליקציה» stays.
+  - The catalog never opens by itself.
+  - The «ניהול אתרים» button and the `onAddMore` prop are removed.
+- **Updated Hebrew copy.**
+  - Hint: «לחצו על האייקון של אפליקציה כדי לפתוח אותה. בחלון שנפתח אפשר להוסיף פרופיל עם פרטי הכניסה.»
+  - Copy that pointed to the removed screen was replaced:
+    - `MSG_NO_CREDENTIALS` → «… הוסיפו אותם בחלון האפליקציה בבית הדיגיטלי.»;
+    - the unused `loginIntelligence` `credentialsMissing` string.
+  - The execution-layer `credentials_missing` copy («הגדירו פרטי כניסה במסך «ניהול האתרים» …») sits in `src/execution/serviceExecution.ts`, which is frozen (N-2 in AppContext / Catalog / CatalogGate). It is therefore replaced where Digital Home shows it:
+    - `attemptExistingAutomaticCompletion` (`src/loginAssistance/assistanceActions.ts`) maps `status === 'credentials_missing'` to the new `MSG_AUTOFILL_CREDENTIALS_MISSING` «פרטי הכניסה בפרופיל הזה חסרים. לחצו «עריכת פרופיל» בחלון האפליקציה והשלימו אותם.» before any execution `userMessage` is used;
+    - `src/execution` is byte-identical to `c700cd60`.
+- **"Removed elsewhere" notice (binding).**
+  - `Dashboard` owns a `reconcileNotice`, rendered last as `.dh-reconcile-notice` with `role="status"`, `dir="rtl"` and a × «סגירה». It is position fixed with z-index 100, above the catalog overlay (90) and the floating window (40). No browser dialog.
+  - Text: if a window closed, `MSG_REMOVED_ELSEWHERE` («…, ולכן החלון נסגר.»). Otherwise (e.g. a tile left the home on the KI-3 drop path) the new `MSG_REMOVED_ELSEWHERE_PLAIN` «האפליקציה או הפרופיל נמחקו בחלון אחר.»
+  - `MSG_REMOVED_ELSEWHERE_PLAIN` lives in `src/loginAssistance/messages.ts`, so `src/digitalHome/cloudReconcile.ts` stays unchanged (N-2 in D8OwnSite).
+  - The notice hides itself after the status timeout.
+- **Selection error.**
+  - `selectionError` (pinned by 113 AC-113-51) is shown in the Digital Home banner `homeError = removeError ?? (catalogOpen ? null : selectionError)`; the catalog shows add failures inline. × clears both.
+  - `requestRemoveApp` clears `selectionError`.
+- **Focus return (parity row 17, AC-113-45 kept).** `profileReturnFocusId` (effect on `profileRequest`) refocuses the app's tile when the profile host closes.
+- **Deletion and cleanup (AD-123-9, after the matrix).**
+  - Deleted: `src/ManageServices.tsx`, `LABEL_GO_MANAGE`, and the Manage-only CSS in `src/App.css`:
+    - `.service-management` in the shared shell rule;
+    - `.dashboard-manage-cta`, `.service-management-header`;
+    - `.sm-home-nav`, `.sm-mine-toolbar`, `.sm-accordion*`;
+    - `.sm-section` / `.sm-section-title`, `.sm-manage-status`;
+    - `.sm-row-menu`, `.sm-kebab*`, `.sm-menu*`.
+  - Kept: everything `AppCatalog` / the catalog modal / `ServiceCard` still use.
+  - Comments updated in `src/digitalHome/AppCatalog.tsx` and `src/catalog/customServiceDiscovery.ts`.
+- **Single "custom" rule.** Edit-site (`openSiteDetailsEdit`), the panel menu and remove step 5 (`beginPendingRemoval` `deleteOwnRow`) all use `isUserCustomApp`. After the deletion no `source === 'user-created'` decision is left in user `src/` outside `appContext.ts` (static check, mutation M11).
+
+### AD-123-15 — admin-only "apps without profile" aggregate
+- New migration `supabase/migrations/20261005120000_phase123_admin_apps_without_profile.sql`, the only `supabase/` change.
+- `public.admin_apps_without_profile_counts()`:
+  - `language plpgsql stable security definer set search_path = public`;
+  - first statement `if not public.is_admin() then raise exception 'Admin access required'; end if;`, the existing Phase 109 check (active user with `is_admin` or `role = 'admin'`);
+  - `revoke all … from public` / `from anon`; `grant execute … to authenticated`.
+- Output: one row of 8 `bigint` counts:
+  - `apps_total`, `apps_with_profile`, `apps_without_profile`;
+  - `apps_without_profile_over_1d`, `apps_without_profile_over_7d`;
+  - `apps_first_profile_after_1d`;
+  - `users_with_apps`, `users_with_app_without_profile`.
+- Inputs: only `user_services.created_at` / `user_id` (for distinct counts) and `min(access_profiles.created_at)`. No ids, names, service ids, URLs or credential data leave the function.
+- No table, column, policy, trigger or write. No `src/admin` change (`git diff c700cd60 -- src/admin` is empty; the verify fails if it is not).
+- **Not applied** (no DB access): live apply and call are awaiting Owner (instructions below).
+
+### Verify — `scripts/verifyPhase123Navigation.mjs` (new; BASE `c700cd60`)
+- **Static:**
+  - ManageServices deleted and unreferenced; no `screen` / `manageIsFirstRun` / `onContinue` / post-auth screen choice.
+  - No «ניהול אתרים» / «ניהול האתרים» / «הוסף אתרים נוספים» in any user `src/` file (src/admin excluded). The frozen `src/execution` copy is checked to be replaced in `assistanceActions` before any `userMessage`, and Digital Home reaches execution only through `assistanceActions`.
+  - No full-screen catalog error / loading on retry; empty state + «+ הוספת אפליקציה»; no auto-open.
+  - 25 parity-matrix symbols exist.
+  - One "custom" rule.
+  - N-1 (src/admin unchanged; supabase = the one migration), N-2 (`cloudReconcile.ts` unchanged), N-4, N-5, N-6, N-8.
+  - Migration static: admin-gated stable security definer, bigint counts only, revokes, no DDL on tables / policies, no writes, no names / ids / credential data.
+- **SQL (PGlite):** the real migration on the Phase 101 schema plus the Phase 109 `is_admin()`. The fixture is 5 apps / 3 profiles over 3 users.
+  - anon → permission denied;
+  - two non-admin users, a disabled admin and no session → «Admin access required»;
+  - admin → exactly one row, exactly the 8 columns, exact counts 5 / 2 / 3 / 2 / 1 / 1 / 3 / 2, no id / name values;
+  - read-only; schema and policies unchanged.
+- **Browser:** the real App in StrictMode, Playwright msedge.
+  - 0 apps → Digital Home, empty state, no auto catalog, first add.
+  - > 0 apps → every FR action reachable from Digital Home, and focus returns to the tile after the profile host.
+  - 0 apps + catalog failure → empty state + notice; modal inline error; a failed retry stays inline; recovery.
+  - "Removed elsewhere":
+    - on the plain home;
+    - above the open catalog modal (`elementFromPoint`);
+    - with the floating window open;
+    - affected window closes with the closed variant.
+  - No native dialog in any group.
+- **Mutations M1–M15** (each must fail the verify). SQL mutations must also fail the SQL layer alone:
+  - M1 non-dashboard screen with 0 apps;
+  - M2 «ניהול אתרים» restored;
+  - M3 auto-open catalog;
+  - M4 non-count column;
+  - M5 non-admin allowed;
+  - M6 per-user rows;
+  - M7 full-screen catalog error restored;
+  - M8 notice not rendered;
+  - M9 notice under the catalog modal;
+  - M10 notice only when a window closed;
+  - M11 second "custom" rule;
+  - M12 empty state without the CTA;
+  - M13 anon may execute;
+  - M14 execution copy (removed screen) shown again;
+  - M15 no focus return.
+- H-1: group 90 s, mutation 300 s, contexts closed in `finally`.
+
+### Superseded assertions (G-3)
+Each change cites AD-123-1 / AD-123-9 (manage removal) unless noted. No assertion was weakened beyond replacing the ManageServices target with its parity-matrix home.
+
+| Script | Assertion (was) | Now | AD |
+|---|---|---|---|
+| `verifyPhase104ServiceManagement` | AC-104-1 ManageServices screen; AC-104-2 «האתרים שלי» on Manage; AC-104-3 catalog title on Manage | no ManageServices / no «ניהול אתרים»; Dashboard `aria-label="האתרים שלי"`; `AppCatalogModal` `{CATALOG_MODAL_TITLE}` | AD-123-1 / -9 |
+| `verifyPhase104ServiceManagement` | `deriveServiceManagementState` rendered; D-104-10 row actions; user-created gate; pending; `selectionError` render | panel `resolveDigitalHomeLaunchKind(`; panel edit-profile + remove-app; `isUserCustomApp(service, isCustom)`; `catalogItemState(...)` + `disabled={itemState === 'pending'}`; App `homeError` line | AD-123-9, AD-123-14 |
+| `verifyPhase111Assets` | ManageServices logo source | `src/digitalHome/AppCatalog.tsx` | AD-123-1 |
+| `verifyPhase102CredentialSchema` | ManageServices «ניהול» gate / no-stored label | App `openProfileManagement` `offersCredentialManagementPanel`; credentialsGate `'no-stored-credentials'` + `resolveCredentialEntry`; panel `MSG_NO_STORED_CREDENTIALS_LAUNCH` | AD-123-9 |
+| `verifyServiceSourceOwnership` | ManageServices edit menu | panel + `appContext` rule; label `LABEL_EDIT_SITE_DETAILS` | AD-123-9, AD-123-14 |
+| `verifyPhase108M1ExplicitLoginEntry` | product paths include ManageServices | `AppCatalog.tsx`, `EditSiteDetailsModal.tsx` | AD-123-1 |
+| `verifyPhase109Accounts` | App routes with `countUserServices` | no `countUserServices` in App; `setShowMagicMomentHint(hydrated.selectedIds.length === 0)` | AD-123-1 (FR-01) |
+| `verifyPhase113LoginAssistance` | AC-113-24 prompt names «ניהול האתרים» | prompt points to the app window; no «ניהול האתרים» | AD-123-1 |
+| `verifyPhase113LoginAssistance` | Home has `dashboard-manage-cta`; AC-113-27 Manage CTA; AC-113-32 «ניהול אתרים» on Home | no Manage CTA; `dashboard-add-app-cta` + `sm-footer-nav`; «האתרים שלי», no «ניהול אתרים» / «ניהול שירותים» | AD-123-1 |
+| `verifyPhase113LoginAssistance` | D-113-22 shared `.dashboard, .service-management` rule; `.sm-section` translucent | `.dashboard` rule with the portrait asset, no gradient; Manage rules gone | AD-123-1 |
+| `verifyPhase113LoginAssistance` | Manage lock inside shell; AC-113-28/29/32/36 on ManageServices | ManageServices absent; search in `AppCatalog` (`filterCatalog`); no marketing / old glossary in the catalog; remove = panel `data-action="remove-app"`, no 🗑; Manage-only CSS removed | AD-123-1 / -9 |
+| `verifyPhase113LoginAssistance` | AC-113-45 focus back to «ניהול» (`manageOpenerRef`) | **kept, re-homed**: App `profileReturnFocusId` refocuses the tile (browser-checked in Navigation, M15) | AD-123-9 |
+| `verifyPhase123AppContext` `checkSingleHost` | ManageServices routes «ניהול» to the host | ManageServices absent; Dashboard edit → `onOpenProfileManagement` | AD-123-1 |
+| `verifyPhase123AppContext` `checkNoNewWriteSites` / M8 | `DH_FILES` includes ManageServices; M8 anchored in ManageServices | removed from the list; M8 re-anchored in `Dashboard.tsx` (still caught) | AD-123-1 |
+| `verifyPhase123Catalog`, `verifyPhase123RemoveApp` N-4 lists | include `src/ManageServices.tsx` | file removed from the lists | AD-123-1 |
+| `verifyPhase123CatalogGate` | ManageServices not gated; renders `<AppCatalog services={allServices}>` | removed from the list; ManageServices absent; `AppCatalogModal services={allServices}` | AD-123-1 / -9 |
+| `verifyPhase123RemoveApp` | `removeService` → `requestRemoveApp`, `onRemoveService` | no `removeService` / `onRemoveService`, ManageServices absent (one remove entry) | AD-123-1 / -9 (was AD-123-11) |
+| `verifyPhase123D8OwnSite` `checkHydrateScope` | `supabase` unchanged vs `af881f6b` | unchanged apart from the one AD-123-15 migration file | **AD-123-15** (outside the G-3 list; see note) |
+
+Note for the Architect: the last row is not in the G-3 list (AD-123-5 / -11 / -13 / -1). AD-123-15 itself authorizes this one migration, and every other `supabase/` path is still required unchanged. I report it rather than treat it as a STOP. If the Architect disagrees, the alternative is to revert the D8OwnSite edit and accept that D8OwnSite fails while the migration exists.
+
+### Cleanup proposal — orphan own registry rows (KI-7) and leftover `customServices` entries (123.3 KI-3) — PROPOSAL ONLY, nothing implemented
+**Scope:**
+- User side only.
+- No automatic registry delete, no admin change, no schema / RLS / RPC change.
+- Waiting for the Architect's decision.
+
+**Cases:**
+1. **A — leftover `customServices` entry after a cross-window removal (123.3 KI-3).**
+   - What happens: window A removes an own site. Window B's refresh drops the membership, profiles and credentials (`dropGoneFromVault`), but keeps the vault `customServices` copy.
+   - What the user sees today:
+     - no tile;
+     - the site is listed in the catalog under its category as "not added" with «הוספה» (own sites are always listed: AD-123-19 (b));
+     - re-adding works and starts with 0 profiles.
+   - No data exposure; the copy is in the user's own encrypted vault.
+2. **B — orphan own registry row after step 5 failed twice (KI-7 / RC-1).**
+   - What the user sees today:
+     - no error, no tile;
+     - after the next hydrate the site returns to the catalog as "not added" (Item 0a adds a row with no local copy to `customServices`).
+   - The admin still sees the row as the user's pending submission.
+3. **C — both at once.** A leftover entry whose registry row also survived. Seen as case B.
+
+**Proposed user-side handling (to decide):**
+- **P1 — local only, for case A** (smallest change).
+  - `dropGoneFromVault` also drops the `customServices` entry of a removed app when `isUserCustomApp(service, true)` (the single rule) and the id is not selected.
+  - It never touches the registry.
+  - Effect: window B matches window A immediately. If the registry row still exists, the next hydrate brings the entry back (case B), which is then handled by P2.
+- **P2 — explicit user action, for cases B / C.**
+  - In the catalog, an own site that is not in the home gets a menu item «מחיקת האתר שלי».
+  - It uses the same in-app confirm dialog pattern as remove (no browser dialog), Hebrew, RTL.
+  - It runs the existing user-side delete `deleteCustomServiceRegistryRow(id)`, the same call and RLS as remove step 5 (owner-only, `source_type = 'user'`, pending), and then drops the vault entry.
+  - On failure: inline Hebrew error, nothing removed locally, retry available.
+  - Promoted / global rows are never offered (the single custom rule is false for them).
+- **Not proposed:**
+  - automatic retry or a background delete queue (the brief forbids an automatic registry delete);
+  - any admin-side change.
+
+**Risks:**
+- P1 could remove a copy the user wants back. It is reversible: re-adding a hydrated row restores it.
+- P2 adds a destructive action to the catalog: a mis-tap is guarded by the confirm. A shared site (promoted after the user added it) must not be deletable; covered by the single rule.
+- Two windows: P2 in window A while window B is open. Window B sees the site disappear at its next refresh. No notice is needed, because the site was not in the home.
+
+**Tests (when approved):**
+- Unit: P1 drops only `isUserCustomApp` entries that are not selected; keeps catalog / global ones.
+- Browser:
+  - P2 confirm / cancel / Escape;
+  - the delete call and the vault drop happen only after confirm;
+  - a failure keeps everything and shows the inline error;
+  - no item for promoted / built-in sites;
+  - no browser dialog.
+- Mutations:
+  - P1 drops a global app's entry;
+  - P2 deletes without confirm;
+  - P2 offered for a promoted row;
+  - P2 drops locally after a failed delete.
+- N-checks:
+  - no new RPC / schema / policy;
+  - `src/admin` unchanged.
+
+### Owner instructions — AD-123-15 aggregate (live apply and call: awaiting Owner)
+Not applied by the Developer: no DB access.
+
+1. **Apply.** In the Supabase SQL editor, open and run the whole file `supabase/migrations/20261005120000_phase123_admin_apps_without_profile.sql`. Expected: "Success. No rows returned".
+2. **Call as an admin.** The SQL editor runs as `postgres` without a user session, so `auth.uid()` is empty and `is_admin()` is false: a plain call is refused (see step 4). Use one of these:
+   - **(a)** the editor's role selector: "authenticated", impersonating the admin user;
+   - **(b)** run as one script, replacing `<ADMIN_USER_ID>` with the admin's `public.users.id`:
+
+```sql
+begin;
+select set_config('request.jwt.claims', json_build_object('sub', '<ADMIN_USER_ID>', 'role', 'authenticated')::text, true);
+set local role authenticated;
+select * from public.admin_apps_without_profile_counts();
+rollback;
+```
+
+   - The id is not a secret, but do not paste it into team docs.
+3. **Expected shape.** Exactly **one row**, exactly these 8 columns, all whole numbers:
+   - `apps_total`, `apps_with_profile`, `apps_without_profile`;
+   - `apps_without_profile_over_1d`, `apps_without_profile_over_7d`;
+   - `apps_first_profile_after_1d`;
+   - `users_with_apps`, `users_with_app_without_profile`.
+
+   Checks:
+   - no user id, e-mail, name, service id, URL or credential value;
+   - `apps_with_profile + apps_without_profile = apps_total`;
+   - `apps_without_profile_over_7d ≤ apps_without_profile_over_1d ≤ apps_without_profile`.
+4. **Refusals.** Each must end with an error and return no row:
+   - the same script with a non-admin user's id → `ERROR: Admin access required`;
+   - a plain `select * from public.admin_apps_without_profile_counts();` without impersonation → `ERROR: Admin access required`;
+   - role "anon" → `permission denied for function admin_apps_without_profile_counts`.
+5. Nothing to undo: the function writes nothing. To remove it: `drop function public.admin_apps_without_profile_counts();`.
+
+### 123.4 Owner manual steps — awaiting Owner (consolidated Owner run)
+Not run: no Owner session; the test credentials are not reused.
+1. Log in with a user that has **0 apps** → Digital Home (not another screen), Hebrew empty state with the central «+ הוספת אפליקציה», the catalog does not open by itself, no «ניהול אתרים» anywhere.
+2. Log in with a user that has **> 0 apps** → Digital Home with the grid; no «ניהול אתרים». From the home: open an app, edit / add a profile, remove an app, edit own site details, catalog add, custom add, lock. After closing the profile window, keyboard focus is on the app's icon.
+3. **Catalog failure with 0 apps** (e.g. offline before login, then online): Digital Home empty state with «קטלוג האפליקציות אינו זמין כרגע…»; «+ הוספת אפליקציה» opens the catalog with its inline error and «נסו שוב»; no full-screen error. Retry after reconnecting lists the catalog.
+4. **Removed elsewhere:** two windows; in window A remove an app (or a profile) that window B shows; refocus window B → Hebrew notice at the bottom (also visible with the catalog modal or the app window open); no browser dialog.
+5. If «נסה מילוי אוטומטי» is offered for a profile whose stored details are incomplete, the status reads «פרטי הכניסה בפרופיל הזה חסרים. לחצו «עריכת פרופיל» בחלון האפליקציה והשלימו אותם.» (no «ניהול האתרים»).
+6. AD-123-15: Owner instructions above (apply, admin call, refusals).
+
+### T-1 before END OF ROUND (not evidence; on the tree before the freeze)
+- `verifyPhase123Navigation`:
+  - `--no-mutations`: PASS, 12 groups, 23 s;
+  - full sweep: PASS, 15 mutations caught, 2m 25s.
+- Touched / superseded verifies: PASS. The whole top-level set (88 scripts) was pre-run with `--no-mutations` where supported: 88/88 PASS.
+- `git diff --stat c700cd60 -- src/admin`: empty; no untracked files under `src/admin`.
+- `npx tsc -b`: exit 0. `npm run build`: exit 0 (the chunk-size warning is pre-existing). Lints clean.
+
+### END OF ROUND — runs on the frozen tree
+**Scope and method:**
+- Fingerprint helper: `%TEMP%\pv-fingerprint-123-4.mjs`, BASE `c700cd60`, scope `-- src scripts supabase`. It hashes the binary diff plus every untracked file (sorted path, NUL, bytes, NUL).
+- Each run was one inline sequential PowerShell loop with one job at a time.
+- Before each run, a `Win32_Process` check confirmed 0 other runners.
+- Every job had its own H-1 bound; a timeout counts as FAIL.
+
+**Earlier attempts (not evidence, reported for completeness):**
+1. **Attempt 1, tree `7d9ca62d…`:** FAIL.
+   - The `verifyPhase123RemoveApp` sweep failed with "fixture: mutation anchor M8 … found 0×". The anchor `setRemoveError(null);\n    setRemoveRequestId` no longer matched after `setSelectionError(null);` was added to `requestRemoveApp`.
+   - I stopped the run, re-anchored M8 on `setSelectionError(null);\n    setRemoveRequestId(serviceId);` (the same mutation, still caught), and re-froze.
+2. **Attempt 2, tree `fef52c66…`, identical before and after:** 62/63 PASS.
+   - The separate `verifyPhase122AdminWorkspace` full-sweep job hit **my** 30-minute job bound (FAIL, H-1 timeout).
+   - Inside `runOfflineRegression` in the same run, the same script passed in 3159 s.
+   - The bound was too low for this ~50-minute sweep. It was raised to 90 minutes per verify job, the same as `runOfflineRegression`'s per-script bound. No file changed.
+3. **Attempt 3, tree `fef52c66…`:** incomplete.
+   - The controlling shell was terminated by a session interruption during job 52/63 (AdminWorkspace).
+   - The logs of jobs 1–51 all end in a PASS line, including `runOfflineRegression` 88/88. Their exit codes were lost with the shell.
+   - Jobs 53–63 never ran.
+   - I stopped the orphaned process and started over.
+
+**Clean run (attempt 4): 63 / 63 PASS, 0 timeouts, total 114 min (18:09 → 20:03).**
+- Fingerprint before (18:09:04): `fef52c66c81fe5c8a95661f0a0cb5172ccc1df7cb536c3554e1e5a84611a3ac6` (diff 83410 bytes, 21 tracked changed, 2 untracked).
+- Fingerprint after (20:03:54): `fef52c66c81fe5c8a95661f0a0cb5172ccc1df7cb536c3554e1e5a84611a3ac6`. **Identical.**
+- Runners before: 0. Jobs ran one at a time.
+- H-1 bounds: 90 min per verify job, 6 h for `runOfflineRegression` (it bounds each script at 90 min itself), 10 min for `tsc`, 15 min for build.
+
+| # | Job | Result | Elapsed |
+|---|---|---|---|
+| 1 | `verifyPhase123AppContext` full sweep | PASS — 23 groups, 15 mutations caught | 0m 36s |
+| 2 | `verifyPhase123Catalog` full sweep | PASS — 19 groups, 18 mutations | 1m 46s |
+| 3 | `verifyPhase123CatalogGate` full sweep | PASS — 8 groups, 20 mutations | 0m 1s |
+| 4 | `verifyPhase123Sync` full sweep | PASS — 15 groups, 35 mutations | 0m 4s |
+| 5 | `verifyPhase123FixD6D8` full sweep | PASS — 6 groups, 9 mutations | 0m 0s |
+| 6 | `verifyPhase123D8OwnSite` full sweep | PASS — 10 groups, 20 mutations | 0m 10s |
+| 7 | `verifyPhase123RemoveApp` full sweep | PASS — 13 groups, 20 mutations | 0m 34s |
+| 8 | `verifyPhase123Navigation` full sweep | PASS — 12 groups, 15 mutations | 1m 18s |
+| 9 | `node scripts/runOfflineRegression.mjs` | PASS — 88 scripts, 88 PASS, 0 FAIL (live-only not run: 101Supabase, 102Registry) | 58m 6s |
+| 10–49 | 40 × `verifyPhase121*` | 40 / 40 PASS. The longest are ChoiceScreen 51s, DeleteService 25s, StepButtons 23s, InspectReadinessEligible 21s; the rest are each ≤ 19s | ≈ 6 min |
+| 50 | `verifyPhase122AdminNotes` | PASS | 0m 26s |
+| 51 | `verifyPhase122SubmitterProfiles` | PASS | 0m 24s |
+| 52 | `verifyPhase122AdminWorkspace` full | PASS — 32 groups, 74 mutations caught | 46m 11s |
+| 53–61 | Touched: 102CredentialSchema, 104ServiceManagement, 108M1ExplicitLoginEntry, 109Accounts, 111Assets, 112LoginIntelligence, 113LoginAssistance, 117ManagedAutofill, ServiceSourceOwnership | 9 / 9 PASS | each 0m 0s |
+| 62 | `npx tsc -b` | PASS | 0m 10s |
+| 63 | `npm run build` | PASS | 0m 15s |
+
+Per-job logs: `%TEMP%\pv-eor-123-4d\` (`summary.log` + `<n>.out` / `<n>.err`). They contain no credential values or secrets.
+
+### Changed files (123.4, vs `c700cd60`)
+- **Source:**
+  - `src/App.tsx`, `src/App.css`, `src/Dashboard.tsx`;
+  - deleted `src/ManageServices.tsx`;
+  - `src/digitalHome/AppCatalog.tsx` (comment), `src/catalog/customServiceDiscovery.ts` (comment);
+  - `src/loginAssistance/assistanceActions.ts`, `src/loginAssistance/messages.ts`, `src/loginIntelligence/messages.ts`.
+- **Migration:** new `supabase/migrations/20261005120000_phase123_admin_apps_without_profile.sql`, not applied.
+- **Tests:**
+  - new `scripts/verifyPhase123Navigation.mjs`;
+  - modified (superseded table above): `verifyPhase102CredentialSchema`, `verifyPhase104ServiceManagement`, `verifyPhase108M1ExplicitLoginEntry`, `verifyPhase109Accounts`, `verifyPhase111Assets`, `verifyPhase113LoginAssistance`, `verifyPhase123AppContext`, `verifyPhase123Catalog`, `verifyPhase123CatalogGate`, `verifyPhase123D8OwnSite`, `verifyPhase123RemoveApp`, `verifyServiceSourceOwnership`.
+- **Unchanged:** `src/admin`, `src/execution`, `src/digitalHome/cloudReconcile.ts`, `src/supabase/**`, `extension/`, package files.
+- No commit after the 123.4 baseline `c700cd60` (none requested).
+
+### Dependencies and docs
+- **Dependencies:** none added, removed or upgraded (`package.json` / lockfile unchanged).
+- **Docs:**
+  - `verifyPhase123Navigation.mjs` is picked up automatically by `runOfflineRegression`.
+  - The migration has to be applied by the Owner (instructions above); no env variable or setup step was added.
+  - Behaviour is specified in `arch-phase123.md` / `manager-phase123.md`, which the Developer does not edit.
+
+### 123.4 Known Issues
+1. **Parity row 5a:** for a not-configured app the floating window shows «ממתין להגדרת מנהל המערכת.», but not the old modal line «אם כבר נשמרו פרטים, הם נשמרים ולא מוצגים כאן.». No action is lost.
+2. **Notice ×:** clicking × on the "removed elsewhere" notice while the floating window is open also closes that window, because it counts as an outside click. The notice and the notice-on-top behaviour are unaffected.
+3. **Dead code kept on purpose (follow-up cleanup, no user effect):**
+   - the `ServiceCard` `row` layout with `.sm-grid--rows` / `service-card--row` CSS;
+   - the pre-existing unused `.sm-section-head` / `.service-management-footer` CSS;
+   - `NO_STORED_CREDENTIALS_LIST_LABEL` / `deriveServiceManagementState` (still pinned by older verifies);
+   - `openServiceWithProfile` (no caller);
+   - `countUserServices` (still exported from `src/auth`).
+4. **Frozen execution copy:** `src/execution/serviceExecution.ts` still contains the old «ניהול האתרים» string, because it is frozen (N-2). Digital Home never shows it: `assistanceActions` replaces it (static check, M14). `pocAutofill.ts` (dev PoC) and the dead `openWithProfile.ts` call execution directly.
+5. **Superseded assertion outside G-3:** the D8OwnSite `supabase` row cites AD-123-15, which is outside the G-3 list (see the note under "Superseded assertions"). Awaiting the Architect.
+6. **Cleanup proposal (KI-7 / 123.3 KI-3):** proposal only, nothing implemented. Awaiting the Architect's decision.
+
+Stopping for Manager → Architect review.

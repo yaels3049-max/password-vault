@@ -11,6 +11,7 @@ import NotificationsSection from './digitalHome/NotificationsSection';
 import UsefulServicesSection from './digitalHome/UsefulServicesSection';
 import {
   LoginAssistancePanel,
+  MSG_REMOVED_ELSEWHERE_PLAIN,
   shouldOpenLoginAssistancePanel,
 } from './loginAssistance';
 import type { Service } from './mockServices';
@@ -30,7 +31,6 @@ interface DashboardProps {
   userDisplayName?: string;
   showMagicMomentHint: boolean;
   onDismissMagicMomentHint: () => void;
-  onAddMore: () => void;
   /** Soft catalog load indicator — reserved shells, no full-screen jump (AC-105-13). */
   catalogLoading?: boolean;
   /** Soft catalog/network error — Hebrew friendly copy (AC-105-14). */
@@ -78,7 +78,6 @@ export default function Dashboard({
   userDisplayName = '',
   showMagicMomentHint,
   onDismissMagicMomentHint,
-  onAddMore,
   catalogLoading = false,
   catalogError = null,
   vaultUnlocked = true,
@@ -95,8 +94,11 @@ export default function Dashboard({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<'info' | 'warn' | 'success'>('info');
   const [assistance, setAssistance] = useState<AssistanceState | null>(null);
+  const [reconcileNotice, setReconcileNotice] = useState<string | null>(null);
   const extensionAvailable = isExtensionAvailable();
-  const showExtensionBanner = !extensionAvailable && showMagicMomentHint;
+  // The first-login hint is about opening an app, so it waits for the first app.
+  const showHint = showMagicMomentHint && services.length > 0;
+  const showExtensionBanner = !extensionAvailable && showHint;
 
   const useCategoryLayout = shouldUseCategoryLayout(services.length);
   const categoryGroups = useCategoryLayout
@@ -125,9 +127,15 @@ export default function Dashboard({
     if (closesPanel) {
       setAssistance(null);
     }
-    if (closesPanel || cloudReconcile.closedOtherSurface) {
-      clearStatusSoon(MSG_REMOVED_ELSEWHERE, 'warn');
-    }
+    // Fixed above the catalog modal and the floating window, so it is seen wherever the user is.
+    const message =
+      closesPanel || cloudReconcile.closedOtherSurface
+        ? MSG_REMOVED_ELSEWHERE
+        : MSG_REMOVED_ELSEWHERE_PLAIN;
+    setReconcileNotice(message);
+    window.setTimeout(() => {
+      setReconcileNotice((current) => (current === message ? null : current));
+    }, STATUS_TIMEOUT_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cloudReconcile]);
 
@@ -171,13 +179,6 @@ export default function Dashboard({
         </div>
         <h1>{digitalHomeTitle(userDisplayName)}</h1>
         <div className="dashboard-manage-bar">
-          <button
-            type="button"
-            className="sm-action sm-action--secondary sm-footer-nav dashboard-manage-cta"
-            onClick={onAddMore}
-          >
-            ניהול אתרים
-          </button>
           {onOpenCatalog && (
             <button
               type="button"
@@ -200,11 +201,11 @@ export default function Dashboard({
         </div>
       )}
 
-      {showMagicMomentHint && (
+      {showHint && (
         <div className="dashboard-banner dashboard-banner--hint">
           <p>
-            הגדירו פרטי כניסה ב<strong>ניהול אתרים</strong>, ואז לחצו על האייקון
-            לפתיחת האתר.
+            לחצו על האייקון של אפליקציה כדי לפתוח אותה. בחלון שנפתח אפשר להוסיף
+            פרופיל עם פרטי הכניסה.
           </p>
           <button
             type="button"
@@ -216,10 +217,12 @@ export default function Dashboard({
         </div>
       )}
 
-      {catalogError && services.length > 0 && (
+      {catalogError && (
         <div className="dashboard-banner dashboard-banner--warn" role="status">
           <p>
-            חלק מקטלוג האתרים אינו זמין כרגע. האתרים שבחרתם עדיין זמינים לפתיחה.
+            {services.length > 0
+              ? 'חלק מקטלוג האתרים אינו זמין כרגע. האתרים שבחרתם עדיין זמינים לפתיחה.'
+              : `קטלוג האפליקציות אינו זמין כרגע. אפשר לנסות שוב מתוך «${LABEL_ADD_APP}».`}
           </p>
         </div>
       )}
@@ -250,8 +253,20 @@ export default function Dashboard({
         )}
 
         {!catalogLoading && services.length === 0 && (
-          <div className="dashboard-empty-state">
-            <p className="dashboard-empty">עדיין לא נבחרו אתרים</p>
+          <div className="dashboard-empty-state" data-home-empty="true">
+            <p className="dashboard-empty">
+              עדיין אין אפליקציות בבית הדיגיטלי. הוסיפו את האפליקציה הראשונה כדי להתחיל.
+            </p>
+            {onOpenCatalog && (
+              <button
+                type="button"
+                className="sm-action sm-action--primary dashboard-empty-cta"
+                data-action="open-catalog-empty"
+                onClick={onOpenCatalog}
+              >
+                {LABEL_ADD_APP}
+              </button>
+            )}
           </div>
         )}
 
@@ -315,6 +330,20 @@ export default function Dashboard({
               : undefined
           }
         />
+      )}
+
+      {reconcileNotice && (
+        <div className="dh-reconcile-notice" role="status" dir="rtl" data-reconcile-notice="true">
+          <span>{reconcileNotice}</span>
+          <button
+            type="button"
+            className="la-icon-btn"
+            aria-label="סגירה"
+            onClick={() => setReconcileNotice(null)}
+          >
+            ×
+          </button>
+        </div>
       )}
     </div>
   );

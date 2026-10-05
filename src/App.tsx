@@ -2,13 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import Dashboard from './Dashboard';
 
-import ManageServices from './ManageServices';
-
 import AuthEntryScreen from './auth/AuthEntryScreen';
 import {
   AUTH_COPY,
   AccountStatusError,
-  countUserServices,
   restoreAccountSession,
   signOutAccount,
   type AppUserProfile,
@@ -124,8 +121,6 @@ export { isAdminRoute, ADMIN_ROUTE_HASH } from './admin/adminRoutes';
 
 
 
-type Screen = 'manage' | 'dashboard';
-
 /** AD-123-11 / PQ-123-1 — a removal waiting for its Undo window; memory only, never persisted. */
 interface PendingRemoval {
   serviceId: string;
@@ -186,7 +181,7 @@ function mergeCustomDefinitions(
 
 /**
  * Collapse built-in + custom cards that share the same site URL so Digital Home
- * and Manage Services do not show duplicates (e.g. hapoalim + custom bank URL).
+ * and the catalog do not show duplicates (e.g. hapoalim + custom bank URL).
  * Preference uses authoritative mapped `source`, never the id prefix.
  */
 function isUserCreatedRuntimeSource(
@@ -251,10 +246,6 @@ function App() {
 
   const [isUnlocked, setIsUnlocked] = useState(false);
 
-  const [screen, setScreen] = useState<Screen>('manage');
-
-  const [manageIsFirstRun, setManageIsFirstRun] = useState(false);
-
   const [showMagicMomentHint, setShowMagicMomentHint] = useState(false);
 
   const [catalogDefinitions, setCatalogDefinitions] = useState<ServiceDefinition[]>([]);
@@ -268,7 +259,7 @@ function App() {
 
   const [vaultState, setVaultState] = useState<VaultState>(() => emptyVaultState());
 
-  /** AD-123-3 — the single profile-management host (one per app, both screens). */
+  /** AD-123-3 — the single profile-management host (one per app). */
   const [profileRequest, setProfileRequest] = useState<ProfileManagementRequest | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [siteEditServiceId, setSiteEditServiceId] = useState<string | null>(null);
@@ -280,6 +271,20 @@ function App() {
   } | null>(null);
   const profileRequestRef = useRef(profileRequest);
   profileRequestRef.current = profileRequest;
+  // AC-113-45: the app window closes when the host opens, so focus returns to the app's tile.
+  const profileReturnFocusId = useRef<string | null>(null);
+  useEffect(() => {
+    if (profileRequest) {
+      profileReturnFocusId.current = profileRequest.serviceId;
+      return;
+    }
+    const serviceId = profileReturnFocusId.current;
+    profileReturnFocusId.current = null;
+    if (!serviceId) return;
+    document
+      .querySelector<HTMLElement>(`[data-service-tile][data-service-id="${CSS.escape(serviceId)}"] button`)
+      ?.focus();
+  }, [profileRequest]);
   const siteEditServiceIdRef = useRef(siteEditServiceId);
   siteEditServiceIdRef.current = siteEditServiceId;
 
@@ -727,8 +732,7 @@ function App() {
     setCatalogHydrated(false);
     setCatalogError(null);
     setCatalogLoading(false);
-    setScreen('manage');
-    setManageIsFirstRun(false);
+    setShowMagicMomentHint(false);
     setPendingIds(new Set());
     setSelectionError(null);
     selectionLockRef.current = new Set();
@@ -758,17 +762,6 @@ function App() {
 
   function handleLockVault() {
     void handleLogout();
-  }
-
-  async function resolvePostAuthScreen(
-    loaded: VaultState,
-    profile: AppUserProfile,
-  ): Promise<Screen> {
-    const cloudCount = await countUserServices(profile.id);
-    if (cloudCount != null) {
-      return cloudCount > 0 ? 'dashboard' : 'manage';
-    }
-    return loaded.selectedIds.length > 0 ? 'dashboard' : 'manage';
   }
 
   /** Single door: clear prior workspace, unlock THIS userId's vault, hydrate cloud→local, then paint. */
@@ -829,16 +822,9 @@ function App() {
       setLoginEmailPrefill(profile.email ?? '');
       setVaultState(hydrated);
       setIsUnlocked(true);
-
-      const nextScreen = await resolvePostAuthScreen(hydrated, profile);
-
-      if (nextScreen === 'dashboard') {
-        setManageIsFirstRun(false);
-        setScreen('dashboard');
-      } else {
-        setManageIsFirstRun(true);
-        setScreen('manage');
-      }
+      // FR-01 / AD-123-1 — after login the user always lands on Digital Home; the hint is shown
+      // once the first app is added.
+      setShowMagicMomentHint(hydrated.selectedIds.length === 0);
     } catch (error) {
       clearWorkspaceMemory();
       await signOutAccount();
@@ -989,11 +975,6 @@ function App() {
       : { status: 'failed', message: SELECTION_PERSIST_FAILED_MESSAGE };
   }
 
-  /** ManageServices «הסר אתר» = the same confirm + Undo flow as Digital Home (AD-123-11). */
-  async function removeService(id: string): Promise<void> {
-    await requestRemoveApp(id);
-  }
-
   /** AD-123-11 — a failed removal leaves local as it was, also after the local write (steps 3–4). */
   async function restoreLocalAfterFailedRemove(previous: VaultState) {
     try {
@@ -1044,6 +1025,7 @@ function App() {
       return;
     }
     setRemoveError(null);
+    setSelectionError(null);
     setRemoveRequestId(serviceId);
   }
 
@@ -1359,8 +1341,8 @@ function App() {
     );
   }
 
-  // Wait for the first catalog hydrate after unlock so Digital Home / Manage
-  // never paint vault-only customs and then jump when builtins arrive.
+  // Wait for the first catalog hydrate after unlock so Digital Home never paints
+  // vault-only customs and then jumps when builtins arrive.
   if (!catalogHydrated) {
     return (
       <div className="onboarding">
@@ -1369,13 +1351,10 @@ function App() {
     );
   }
 
-  /** `inline`: retry from the catalog modal without replacing Digital Home by the loading screen. */
-  async function retryCatalogLoad(options: { inline?: boolean } = {}) {
+  /** Retry from the catalog modal; Digital Home stays (no full-screen loading or error). */
+  async function retryCatalogLoad() {
     setCatalogLoading(true);
     setCatalogError(null);
-    if (!options.inline) {
-      setCatalogHydrated(false);
-    }
     // Phase 109: do not sign out the account session on catalog retry
     clearRegistryCatalogCache();
 
@@ -1398,7 +1377,7 @@ function App() {
       selectedIds={visibleSelectedIds}
       pendingIds={pendingIds}
       catalogError={catalogError}
-      onRetryCatalog={() => void retryCatalogLoad({ inline: true })}
+      onRetryCatalog={() => void retryCatalogLoad()}
       onAddApp={addApp}
       onAddCustom={addCustomService}
       onClose={() => setCatalogOpen(false)}
@@ -1435,7 +1414,10 @@ function App() {
     ? allServices.find((item) => item.id === removeRequestId) ?? null
     : null;
 
-  // AD-123-11 — user-side confirm, Undo window and failure notice (both screens; N-4).
+  // The catalog modal shows its own add failure inline.
+  const homeError = removeError ?? (catalogOpen ? null : selectionError);
+
+  // AD-123-11 — user-side confirm, Undo window and failure notice (N-4).
   const removeAppHosts = (
     <>
       {removeRequestService && (
@@ -1452,10 +1434,18 @@ function App() {
           onUndo={undoPendingRemoval}
         />
       )}
-      {removeError && screen === 'dashboard' && (
+      {homeError && (
         <div className="dh-remove-error" role="alert" dir="rtl" data-remove-error="true">
-          <span>{removeError}</span>
-          <button type="button" className="la-icon-btn" aria-label="סגירה" onClick={() => setRemoveError(null)}>
+          <span>{homeError}</span>
+          <button
+            type="button"
+            className="la-icon-btn"
+            aria-label="סגירה"
+            onClick={() => {
+              setRemoveError(null);
+              setSelectionError(null);
+            }}
+          >
             ×
           </button>
         </div>
@@ -1465,46 +1455,9 @@ function App() {
 
 
 
-  // Full-screen catalog error only when there is nothing to manage yet.
-  // With existing selected services, Service Management stays usable and the
-  // Discover section shows a friendly error inline (AC-104-10).
-  if (catalogError && selectedIds.size === 0) {
-
-    return (
-
-      <div className="onboarding">
-
-        <p>לא ניתן לטעון את קטלוג האתרים מהרשת.</p>
-
-        <p>{catalogError}</p>
-
-        <p className="onboarding-first-run-note">
-
-          {catalogError.includes('Failed to fetch') ||
-          catalogError.includes('issuer certificate') ||
-          catalogError.includes('נדרשת התחברות')
-            ? 'פתחי את הכתובת שמופיעה בטרמינל אחרי npm run dev (למשל http://localhost:5173/). עצרי שרתים ישנים, הפעילי npm run dev מחדש, נקי Application → Storage ל-localhost, רענני Ctrl+Shift+R ולחצי «נסי שוב».'
-            : 'ודאי שמיגרציות Phase 109 הורצו ב-Supabase ושיש התחברות לחשבון פעיל. אפשר גם לנקות נתוני אתר ל-localhost (Application → Storage) ולנסות שוב.'}
-
-        </p>
-
-        <button type="button" className="finish-btn" onClick={() => void retryCatalogLoad()}>
-
-          נסי שוב
-
-        </button>
-
-      </div>
-
-    );
-
-  }
-
-
-
-  if (screen === 'dashboard') {
-
-    return (
+  // AD-123-1 — Digital Home is the only user screen, also with 0 apps and a catalog error: the
+  // error and its retry live in the catalog modal (AC-104-10 inline variant).
+  return (
 
       <AppVaultShell>
 
@@ -1544,14 +1497,6 @@ function App() {
 
               onLockVault={handleLockVault}
 
-              onAddMore={() => {
-
-                setManageIsFirstRun(false);
-
-                setScreen('manage');
-
-              }}
-
               customServiceIds={customServiceIds}
 
               approvedOwnSiteIds={ownSites.approvedOwnIds}
@@ -1578,45 +1523,6 @@ function App() {
         </ProfileResolution>
 
       </AppVaultShell>
-
-    );
-
-  }
-
-
-
-  return (
-
-    <AppVaultShell>
-
-      <ManageServices
-        allServices={allServices}
-        selectedIds={visibleSelectedIds}
-        isFirstRun={manageIsFirstRun}
-        vaultState={vaultState}
-        pendingIds={pendingIds}
-        selectionError={selectionError}
-        catalogError={catalogError}
-        onAddApp={addApp}
-        onRemoveService={removeService}
-        onAddCustom={(definition) => addCustomService(definition)}
-        onUpdateCustom={(definition) => updateCustomService(definition)}
-        onOpenProfileManagement={openProfileManagement}
-        profileManagementOpen={profileHost !== null}
-        onRetryCatalog={() => void retryCatalogLoad()}
-        onContinue={() => {
-          void saveVaultState(vaultState);
-          setShowMagicMomentHint(manageIsFirstRun);
-          setScreen('dashboard');
-        }}
-        onLockVault={handleLockVault}
-        vaultUnlocked={isUnlocked}
-      />
-
-      {profileHost}
-      {removeAppHosts}
-
-    </AppVaultShell>
 
   );
 

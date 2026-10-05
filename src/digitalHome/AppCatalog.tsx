@@ -90,7 +90,7 @@ function SearchField({
   );
 }
 
-/** AD-123-8 — container-agnostic catalog body (Digital Home modal; ManageServices until 123.4). */
+/** AD-123-8 — container-agnostic catalog body (hosted by the Digital Home catalog modal). */
 export default function AppCatalog({
   services,
   categories,

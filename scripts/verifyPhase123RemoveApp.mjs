@@ -435,11 +435,13 @@ function checkPendingStatic(overrides) {
   assert(custom && custom.indexOf('await commitPendingRemovalForUrl(normalizedUrl);') < custom.indexOf('classifyAddCustomService('), 'AD-123-12: a custom add of the pending site commits the removal first');
   const clear = fnBody(app, 'function clearWorkspaceMemory()');
   assert(clear && /clearRemovalTimer\(\);\s*setPending\(null\);/.test(clear), 'PQ-123-1: leaving the workspace drops the pending removal and its timer');
-  assert(/async function removeService\(id: string\): Promise<void> \{\s*await requestRemoveApp\(id\);\s*\}/.test(app) && /onRemoveService=\{removeService\}/.test(app), 'AD-123-11: ManageServices «הסר אתר» uses the same confirm + Undo flow');
+  // Superseded by AD-123-1 / AD-123-9 (Phase 123.4): ManageServices and its removeService bridge are
+  // deleted; the app window is the only remove entry (parity matrix row 7).
+  assert(!/function removeService\(|onRemoveService=/.test(app) && !existsSync(join(root, 'src/ManageServices.tsx')), 'AD-123-1: no second remove entry (ManageServices / removeService deleted)');
   assert(/onRemoveApp=\{\(service\) => void requestRemoveApp\(service\.id\)\}/.test(app), 'AD-123-11: Digital Home «הסרת אפליקציה» → requestRemoveApp');
   const open = fnBody(app, 'function openSiteDetailsEdit(serviceId: string)');
   assert(open && /if \(!customServiceIds\.has\(serviceId\)\) \{\s*return;/.test(open) && /isUserCustomApp\(service, true\)/.test(open), 'AD-123-14: edit-site only for user-created vault customs');
-  return 'static: request / begin / undo write nothing; pending state in React memory only (no storage, PQ-123-1); 5 s timer → commit; logout / lock / second request / re-add (catalog + custom) commit first; ManageServices + Digital Home share the flow; edit-site = single custom rule';
+  return 'static: request / begin / undo write nothing; pending state in React memory only (no storage, PQ-123-1); 5 s timer → commit; logout / lock / second request / re-add (catalog + custom) commit first; Digital Home is the only remove entry (AD-123-1); edit-site = single custom rule';
 }
 
 function checkPanelStatic(overrides) {
@@ -452,7 +454,8 @@ function checkPanelStatic(overrides) {
 }
 
 function checkNChecks(overrides) {
-  for (const rel of [...NEW_FILES, APP, 'src/Dashboard.tsx', PANEL, 'src/ManageServices.tsx']) {
+  // src/ManageServices.tsx left the list: deleted by AD-123-1 (Phase 123.4).
+  for (const rel of [...NEW_FILES, APP, 'src/Dashboard.tsx', PANEL]) {
     source(overrides, rel).split('\n').forEach((line, i) => {
       assert(!/window\.(confirm|alert|prompt)\s*\(|(?<![\w.$])(confirm|alert|prompt)\s*\(/.test(line.replace(/\/\/.*$/, '')), `N-4: browser dialog call in ${rel}:${i + 1}`);
     });
@@ -895,8 +898,8 @@ const MUTATIONS = [
     '    if (!removed.has(key) && key !== target) {',
     '    if (removed.size >= 0) {')],
   ['M8 confirm uses window.confirm', edit(APP,
-    '    setRemoveError(null);\n    setRemoveRequestId(serviceId);',
-    "    setRemoveError(null);\n    if (window.confirm('להסיר?')) beginPendingRemoval(serviceId);")],
+    '    setSelectionError(null);\n    setRemoveRequestId(serviceId);',
+    "    setSelectionError(null);\n    if (window.confirm('להסיר?')) beginPendingRemoval(serviceId);")],
   ['M9 app menu hidden for one launch kind', edit(PANEL,
     'const showAppMenu = showEditSiteDetails || showRemoveApp;',
     "const showAppMenu = (showEditSiteDetails || showRemoveApp) && launchKind !== 'not-configured';")],

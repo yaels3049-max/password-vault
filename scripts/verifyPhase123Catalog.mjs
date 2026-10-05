@@ -488,13 +488,14 @@ function checkMenuOutsideProfileGate(overrides) {
 
 function checkNoBrowserDialogsNew(overrides) {
   const hits = [];
-  for (const rel of [...NEW_DH_FILES, 'src/loginAssistance/LoginAssistancePanel.tsx', 'src/Dashboard.tsx', 'src/App.tsx', 'src/ManageServices.tsx']) {
+  // src/ManageServices.tsx left the list: deleted by AD-123-1 (Phase 123.4).
+  for (const rel of [...NEW_DH_FILES, 'src/loginAssistance/LoginAssistancePanel.tsx', 'src/Dashboard.tsx', 'src/App.tsx']) {
     source(overrides, rel).split('\n').forEach((line, i) => {
       if (/window\.(confirm|alert|prompt)\s*\(|(?<![\w.$])(confirm|alert|prompt)\s*\(/.test(line.replace(/\/\/.*$/, ''))) hits.push(`${rel}:${i + 1}`);
     });
   }
   assert(hits.length === 0, `N-4: browser dialog call: ${hits.join(', ')}`);
-  return 'N-4: no window.confirm / alert / prompt in the catalog / edit-site / panel / Dashboard / App / ManageServices';
+  return 'N-4: no window.confirm / alert / prompt in the catalog / edit-site / panel / Dashboard / App';
 }
 
 function checkNoSiteBranchesNew(overrides) {
