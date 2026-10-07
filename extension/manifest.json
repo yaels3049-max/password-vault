@@ -1,8 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Israeli Vault Autofill POC",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvrOpZb65LqwCN5kpcwWwuuBDDY/WBKOIFfwGwXJ2vzzGJrEpKUKt5K+d8nhecF8LjOKLE/2cDY2iJKrXqj7BfCIGjcwdfDsRuWso1hCcRe2Jz9sF2Wr/Zk3cdpr++NOAwja3ZsVuTnU0gPoURYXi3V6M1mnFHLNZAuCmS2pePtZcDy0fDyVpLFx1Kdz04YORHMWo+wSmG4J1NVnRV389xuC8VrhcQcNccm/l3PMIkhLs/AX6DlPhBEruDs1Vnw9jG5MTuyydnKoOQNwKKE/OX8T5gsckp8Hwl7nv920N9kY5OrS6yNmGPsI8oQie5pP3ljo61x+ik+9Y9S3zx4GdxwIDAQAB",
+  "default_locale": "he",
+  "name": "__MSG_extName__",
   "version": "1.4.25",
-  "description": "Local demo autofill proof of concept only",
+  "description": "__MSG_extDescription__",
   "minimum_chrome_version": "93",
   "permissions": ["tabs", "scripting"],
   "host_permissions": [
