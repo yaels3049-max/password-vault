@@ -1,20 +1,26 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AddSiteModal, { type AddSiteFormValues } from '../AddSiteModal';
-import ServiceCard from '../components/ServiceCard';
+import { ServiceCardLogo } from '../components/ServiceCard';
 import { isShownInUserCatalog } from '../catalog/catalogVisibility';
 import { runtimeCategoryLabels, type Service, type ServiceCategory } from '../mockServices';
 import type { ServiceDefinition } from '../service/serviceModel';
 import {
-  CATALOG_SERVICE_ADD_HOME_LABEL,
   CATALOG_SERVICE_ALREADY_IN_HOME_DISMISS_LABEL,
   catalogServiceAlreadyInHomeMessage,
-  CATALOG_SERVICE_AVAILABLE_PROMPT,
-  catalogServiceAvailableTitle,
-  CATALOG_SERVICE_NOT_NOW_LABEL,
   type AddCustomServiceResult,
 } from '../supabase/registryPersistence';
 import { toFriendlySecurityError } from '../trust';
 import { useServiceLogos } from '../useServiceLogos';
+import {
+  CATALOG_OFFER_ADD_LABEL,
+  CATALOG_OFFER_BACK_LABEL,
+  catalogOfferFoundTitle,
+  catalogOfferSupportedText,
+  LABEL_ALL_CATEGORIES,
+  LABEL_ALREADY_IN_HOME,
+  pickAddedLabel,
+  pickAddLabel,
+} from './catalogMessages';
 import { catalogItemState, filterCatalog, type AddOutcome } from './catalogModel';
 import { buildCustomSiteDefinition } from './customSiteForm';
 import { useBackdropDismiss, useEscapeToClose } from './dialogDismiss';
@@ -24,9 +30,8 @@ export const MSG_CATALOG_LOAD_FAILED =
   'לא ניתן לטעון את קטלוג האתרים כרגע. האתרים שלכם עדיין זמינים.';
 export const MSG_CATALOG_NO_MATCH = 'לא נמצאו אתרים תואמים. נסו חיפוש אחר או הוסיפו אתר מותאם אישית.';
 
-export function customSiteAddedMessage(displayName: string): string {
-  return `«${displayName}» נוסף לבית הדיגיטלי.`;
-}
+/** O-123-35 — how long the CTA / offer shows its «✓ נוסף…» label before the catalog closes. */
+export const PICK_ADDED_MS = 500;
 
 export interface AppCatalogProps {
   services: Service[];
@@ -36,7 +41,11 @@ export interface AppCatalogProps {
   catalogError: string | null;
   onRetryCatalog: () => void;
   onAddApp: (serviceId: string) => Promise<AddOutcome>;
+  /** O-123-35 — the picker's selection, added in one vault update (all-or-nothing). */
+  onAddApps: (serviceIds: string[]) => Promise<AddOutcome>;
   onAddCustom: (definition: ServiceDefinition) => Promise<AddCustomServiceResult>;
+  /** O-123-35 — the post-add sequence continues in the host (catalog fade → home). */
+  onAddSequenceDone?: (serviceIds: string[]) => void;
   searchInputRef?: React.Ref<HTMLInputElement>;
 }
 
@@ -99,7 +108,9 @@ export default function AppCatalog({
   catalogError,
   onRetryCatalog,
   onAddApp,
+  onAddApps,
   onAddCustom,
+  onAddSequenceDone,
   searchInputRef,
 }: AppCatalogProps) {
   const [searchDraft, setSearchDraft] = useState('');
@@ -111,8 +122,22 @@ export default function AppCatalog({
   const [catalogOffer, setCatalogOffer] = useState<CatalogOffer | null>(null);
   const [catalogOfferBusy, setCatalogOfferBusy] = useState(false);
   const [addFailure, setAddFailure] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [picks, setPicks] = useState<ReadonlySet<string>>(() => new Set());
+  const [picking, setPicking] = useState(false);
+  const [pickedCount, setPickedCount] = useState(0);
+  const [offerAdded, setOfferAdded] = useState(false);
+  const [failedLogos, setFailedLogos] = useState<ReadonlySet<string>>(() => new Set());
   const addInFlightRef = useRef(false);
+  const timersRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => timers.forEach((id) => window.clearTimeout(id));
+  }, []);
+
+  function later(fn: () => void, ms: number) {
+    timersRef.current.push(window.setTimeout(fn, ms));
+  }
 
   // AD-123-19: listing only — the host's home tiles come from its own unfiltered list.
   const listed = useMemo(
@@ -126,6 +151,46 @@ export default function AppCatalog({
     [listed, searchQuery, categoryFilter],
   );
 
+  // An app that reached the home another way (offer, other window) is no longer a pick.
+  useEffect(() => {
+    setPicks((current) => {
+      if (![...current].some((id) => selectedIds.has(id))) return current;
+      return new Set([...current].filter((id) => !selectedIds.has(id)));
+    });
+  }, [selectedIds]);
+
+  function togglePick(serviceId: string) {
+    if (picking || pickedCount > 0) return;
+    if (catalogItemState(serviceId, selectedIds, pendingIds) !== 'available') return;
+    setAddFailure(null);
+    setPicks((current) => {
+      const next = new Set(current);
+      if (next.has(serviceId)) next.delete(serviceId);
+      else next.add(serviceId);
+      return next;
+    });
+  }
+
+  /** O-123-35: one host call for the whole selection; on failure nothing is added and the picks stay. */
+  async function addPicks() {
+    if (picking || pickedCount > 0 || picks.size === 0) return;
+    const ids = listed.filter((service) => picks.has(service.id)).map((service) => service.id);
+    setAddFailure(null);
+    setPicking(true);
+    const outcome = await onAddApps(ids);
+    setPicking(false);
+    if (outcome.status === 'failed') {
+      setAddFailure(outcome.message);
+      return;
+    }
+    setPickedCount(ids.length);
+    setPicks(new Set());
+    later(() => {
+      if (onAddSequenceDone) onAddSequenceDone(ids);
+      else setPickedCount(0);
+    }, PICK_ADDED_MS);
+  }
+
   function commitSearch(event?: React.FormEvent) {
     event?.preventDefault();
     setSearchQuery(searchDraft.trim());
@@ -138,9 +203,12 @@ export default function AppCatalog({
     }
   }
 
+  function chooseCategory(category: ServiceCategory | null) {
+    setCategoryFilter(category);
+  }
+
   async function addApp(serviceId: string) {
     setAddFailure(null);
-    setStatusMessage(null);
     const outcome = await onAddApp(serviceId);
     if (outcome.status === 'failed') {
       setAddFailure(outcome.message);
@@ -151,14 +219,18 @@ export default function AppCatalog({
   function dismissCatalogOffer() {
     setCatalogOffer(null);
     setCatalogOfferBusy(false);
+    setOfferAdded(false);
   }
 
   const offerBackdrop = useBackdropDismiss(dismissCatalogOffer, {
     containsForm: false,
     disabled: catalogOfferBusy,
   });
+  // O-123-34: with no ×, Escape on the catalog-available offer is the keyboard «חזרה לחנות האתרים».
   useEscapeToClose(() => {
-    if (!catalogOfferBusy) dismissCatalogOffer();
+    if (catalogOfferBusy) return;
+    if (catalogOffer?.kind === 'catalog_service_available') closeOfferAndForm();
+    else dismissCatalogOffer();
   }, catalogOffer !== null);
 
   async function confirmAddCatalogToHome() {
@@ -167,18 +239,29 @@ export default function AppCatalog({
     }
     if (catalogOfferBusy) return;
     setCatalogOfferBusy(true);
-    const outcome = await addApp(catalogOffer.serviceId);
+    const serviceId = catalogOffer.serviceId;
+    const outcome = await addApp(serviceId);
     if (outcome.status === 'failed') {
       setCatalogOfferBusy(false);
       return;
     }
+    // O-123-35: the same post-add sequence as the picker CTA.
+    setOfferAdded(true);
+    later(() => {
+      if (onAddSequenceDone) onAddSequenceDone([serviceId]);
+      else closeOfferAndForm();
+    }, PICK_ADDED_MS);
+  }
+
+  /** O-123-13: «הוספה לבית הדיגיטלי» (after success) and «חזרה לחנות האתרים» end the custom add. */
+  function closeOfferAndForm() {
     dismissCatalogOffer();
+    dismissAddModal();
   }
 
   function openAddModal() {
     setAddError(null);
     setIsSavingCustom(false);
-    setStatusMessage(null);
     setShowAddModal(true);
   }
 
@@ -206,8 +289,9 @@ export default function AppCatalog({
       setIsSavingCustom(true);
 
       const result = await onAddCustom(definition);
+      // O-123-13/14: the offer opens above the form, which stays open (inert) with the typed values.
       if (result.status === 'already_in_user_home') {
-        dismissAddModal();
+        setIsSavingCustom(false);
         setCatalogOffer({
           kind: 'already_in_user_home',
           serviceId: result.existingServiceId,
@@ -216,7 +300,7 @@ export default function AppCatalog({
         return;
       }
       if (result.status === 'catalog_service_available') {
-        dismissAddModal();
+        setIsSavingCustom(false);
         setCatalogOffer({
           kind: 'catalog_service_available',
           serviceId: result.existingServiceId,
@@ -225,7 +309,7 @@ export default function AppCatalog({
         return;
       }
       if (result.status === 'same_user_custom_duplicate') {
-        dismissAddModal();
+        setIsSavingCustom(false);
         setCatalogOffer({
           kind: 'already_in_user_home',
           serviceId: result.existingServiceId,
@@ -233,8 +317,9 @@ export default function AppCatalog({
         });
         return;
       }
-      dismissAddModal();
-      setStatusMessage(customSiteAddedMessage(definition.displayName));
+      // O-123-39: the store add's post-add path; the form (still «שומר…») leaves with the catalog.
+      if (onAddSequenceDone) onAddSequenceDone([definition.id]);
+      else dismissAddModal();
     } catch (error) {
       setIsSavingCustom(false);
       setAddError(toFriendlySecurityError(error));
@@ -263,7 +348,7 @@ export default function AppCatalog({
             />
             <button
               type="button"
-              className="sm-action sm-action--secondary sm-add-site-btn"
+              className="sm-add-site-link"
               data-action="add-custom-site"
               onClick={openAddModal}
             >
@@ -272,17 +357,14 @@ export default function AppCatalog({
           </div>
 
           <div className="sm-controls">
-            <span className="sm-chips-label" id="sm-category-filter-label">
-              סינון לפי קטגוריה
-            </span>
-            <div className="sm-chips" role="group" aria-labelledby="sm-category-filter-label">
+            <div className="sm-chips" role="group" aria-label="סינון לפי קטגוריה">
               <button
                 type="button"
                 className={`sm-chip${categoryFilter === null ? ' sm-chip--active' : ''}`}
                 aria-pressed={categoryFilter === null}
-                onClick={() => setCategoryFilter(null)}
+                onClick={() => chooseCategory(null)}
               >
-                הכל
+                {LABEL_ALL_CATEGORIES}
               </button>
               {categories.map((category) => (
                 <button
@@ -291,7 +373,7 @@ export default function AppCatalog({
                   className={`sm-chip${categoryFilter === category ? ' sm-chip--active' : ''}`}
                   aria-pressed={categoryFilter === category}
                   data-category={category}
-                  onClick={() => setCategoryFilter(category)}
+                  onClick={() => chooseCategory(category)}
                 >
                   {runtimeCategoryLabels[category] ?? category}
                 </button>
@@ -299,67 +381,77 @@ export default function AppCatalog({
             </div>
           </div>
 
-          {addFailure && (
+          {addFailure && picks.size === 0 && (
             <p className="sm-banner sm-banner--error" role="alert">
               {addFailure}
             </p>
           )}
-          {statusMessage && (
-            <p className="app-catalog-status" role="status">
-              {statusMessage}
-            </p>
-          )}
-
-          <div className="sm-add-results" aria-live="polite" aria-label="קטלוג אתרים להוספה">
+          <div
+            className="sm-add-results"
+            aria-live="polite"
+            aria-label="קטלוג אתרים להוספה"
+          >
             {results.length === 0 ? (
               <p className="sm-empty">{MSG_CATALOG_NO_MATCH}</p>
             ) : (
-              <div className="sm-grid sm-grid--compact">
+              <div className="sm-pick-grid">
                 {results.map((service) => {
                   const itemState = catalogItemState(service.id, selectedIds, pendingIds);
+                  const picked = picks.has(service.id);
+                  const inHome = itemState === 'added';
                   return (
-                    <div
+                    <button
                       key={service.id}
-                      className="app-catalog-item"
+                      type="button"
+                      className={`app-catalog-item sm-pick${picked ? ' sm-pick--selected' : ''}${inHome ? ' sm-pick--in-home' : ''}`}
                       data-catalog-item={service.id}
                       data-catalog-state={itemState}
+                      aria-pressed={picked}
+                      aria-disabled={itemState !== 'available' ? true : undefined}
+                      onClick={() => togglePick(service.id)}
                     >
-                      <ServiceCard
-                        name={service.name}
-                        categoryLabel={runtimeCategoryLabels[service.category] ?? service.category}
-                        logoSrc={logos[service.id]}
-                        state={itemState === 'added' ? 'added' : 'not_added'}
-                        showBadge={false}
-                        pending={itemState === 'pending'}
-                        layout="compact"
-                        actions={
-                          itemState === 'added' ? (
-                            <button
-                              type="button"
-                              className="sm-action sm-action--passive"
-                              disabled
-                              aria-label="כבר בבית הדיגיטלי"
-                            >
-                              ✓ כבר בבית הדיגיטלי
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="sm-action sm-action--primary"
-                              onClick={() => void addApp(service.id)}
-                              disabled={itemState === 'pending'}
-                            >
-                              {itemState === 'pending' ? 'מוסיף…' : 'הוספה'}
-                            </button>
-                          )
-                        }
-                      />
-                    </div>
+                      <span className="sm-pick-icon" aria-hidden="true">
+                        <ServiceCardLogo
+                          name={service.name}
+                          logoSrc={logos[service.id]}
+                          imgFailed={failedLogos.has(service.id)}
+                          onImgError={() => setFailedLogos((current) => new Set(current).add(service.id))}
+                        />
+                      </span>
+                      <span className="sm-pick-name" title={service.name}>
+                        {service.name}
+                      </span>
+                      {picked && (
+                        <span className="sm-pick-check" aria-hidden="true">
+                          ✓
+                        </span>
+                      )}
+                      {inHome && <span className="sm-pick-in-home">{LABEL_ALREADY_IN_HOME}</span>}
+                    </button>
                   );
                 })}
               </div>
             )}
           </div>
+          {(picks.size > 0 || pickedCount > 0) && (
+            <div className="sm-pick-cta-bar" data-catalog-cta-bar="true">
+              {addFailure && picks.size > 0 && (
+                <p className="sm-pick-error" role="alert">
+                  {addFailure}
+                </p>
+              )}
+              <button
+                type="button"
+                className={`sm-action sm-action--primary sm-pick-cta${pickedCount > 0 ? ' sm-pick-cta--done' : ''}`}
+                data-action="catalog-add-selected"
+                aria-busy={picking ? true : undefined}
+                aria-disabled={picking || pickedCount > 0 ? true : undefined}
+                onClick={() => void addPicks()}
+              >
+                {pickedCount > 0 ? pickAddedLabel(pickedCount) : pickAddLabel(picks.size)}
+              </button>
+            </div>
+          )}
         </>
       )}
 
@@ -371,6 +463,7 @@ export default function AppCatalog({
           categoryOptions={categories}
           error={addError}
           isSaving={isSavingCustom}
+          covered={catalogOffer !== null}
         />
       )}
 
@@ -392,6 +485,7 @@ export default function AppCatalog({
                   <button
                     type="button"
                     className="modal-btn modal-btn-primary"
+                    autoFocus
                     onClick={dismissCatalogOffer}
                   >
                     {CATALOG_SERVICE_ALREADY_IN_HOME_DISMISS_LABEL}
@@ -401,25 +495,30 @@ export default function AppCatalog({
             ) : (
               <>
                 <h2 id="sm-catalog-offer-title" className="modal-title sm-catalog-offer-title">
-                  {catalogServiceAvailableTitle(catalogOffer.displayName)}
+                  {catalogOfferFoundTitle(catalogOffer.displayName)}
                 </h2>
-                <p className="sm-catalog-offer-prompt">{CATALOG_SERVICE_AVAILABLE_PROMPT}</p>
+                <p className="sm-catalog-offer-prompt">
+                  {catalogOfferSupportedText(catalogOffer.displayName)}
+                </p>
                 <div className="modal-actions">
                   <button
                     type="button"
                     className="modal-btn modal-btn-primary"
+                    data-action="catalog-offer-add"
+                    autoFocus
                     disabled={catalogOfferBusy}
                     onClick={() => void confirmAddCatalogToHome()}
                   >
-                    {catalogOfferBusy ? 'מוסיף…' : CATALOG_SERVICE_ADD_HOME_LABEL}
+                    {offerAdded ? pickAddedLabel(1) : catalogOfferBusy ? 'מוסיף…' : CATALOG_OFFER_ADD_LABEL}
                   </button>
                   <button
                     type="button"
                     className="modal-btn modal-btn-secondary"
+                    data-action="catalog-offer-back"
                     disabled={catalogOfferBusy}
-                    onClick={dismissCatalogOffer}
+                    onClick={closeOfferAndForm}
                   >
-                    {CATALOG_SERVICE_NOT_NOW_LABEL}
+                    {CATALOG_OFFER_BACK_LABEL}
                   </button>
                 </div>
               </>

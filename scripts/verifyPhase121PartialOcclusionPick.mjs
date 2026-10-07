@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { parseHTML } from 'linkedom';
 import { revertD12149EligibilityEdits } from './lib/phase121D49EligibilityEdits.mjs';
 import { revertD12171EligibilityEdits, revertD12171VisualPickEdits } from './lib/phase121D71Edits.mjs';
+import { revertPhase126PartAManifest } from './lib/phase126PartA.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
@@ -264,7 +265,8 @@ async function checkOtherPathsUnchanged(c) {
 function checkScope(c) {
   const mte = c.sources[MTE_FILE];
   const vtp = c.sources[VTP_FILE];
-  assert(git('show HEAD:extension/manifest.json') === read('extension/manifest.json'), 'manifest unchanged');
+  // Phase 126 Part A (G-3): the manifest may differ only by the Part A lines.
+  assert(git('show HEAD:extension/manifest.json') === revertPhase126PartAManifest(read('extension/manifest.json')), 'manifest unchanged');
   // R-123-1: pre-slice reference frozen at 909cc8b~1 (= 909cc8b^; `^` is an escape char in cmd.exe; HEAD now
   // contains the Phase 121 edits).
   assert(revertD12149EligibilityEdits(revertD12171EligibilityEdits(read(MTE_FILE))) === git(`show 909cc8b~1:${MTE_FILE}`), 'eligibility: reverting D-121-71 then D-121-49 reproduces the pre-slice bytes (only evaluate() changed)');

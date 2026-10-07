@@ -8,6 +8,8 @@ interface TileProps {
   hasCredentials: boolean;
   /** Phase 113 — clicked tile stays identifiable while assistance floats nearby. */
   assisted?: boolean;
+  /** O-123-35 — just added from the catalog (brief highlight). */
+  justAdded?: boolean;
   onOpen: (anchorRect: DOMRect) => void;
 }
 
@@ -17,6 +19,7 @@ export default function Tile({
   logoSrc,
   hasCredentials,
   assisted = false,
+  justAdded = false,
   onOpen,
 }: TileProps) {
   const [imgFailed, setImgFailed] = useState(false);
@@ -30,9 +33,10 @@ export default function Tile({
 
   return (
     <div
-      className={`app-icon-wrap${assisted ? ' app-icon-wrap--assisted' : ''}`}
+      className={`app-icon-wrap${assisted ? ' app-icon-wrap--assisted' : ''}${justAdded ? ' app-icon-wrap--just-added' : ''}`}
       data-service-tile="true"
       data-service-id={serviceId}
+      data-just-added={justAdded ? 'true' : undefined}
     >
       <button
         type="button"

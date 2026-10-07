@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { parseHTML } from 'linkedom';
 import { installManagedDomGeometry } from './lib/linkedomManagedHarness.mjs';
 import { revertD12170ValidatedAutofillEdits } from './lib/phase121D70ValidatedAutofillEdits.mjs';
+import { revertPhase126PartAManifest } from './lib/phase126PartA.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
@@ -503,7 +504,8 @@ function staticChecks() {
   for (const rel of listSrc()) {
     assert(!read(rel).includes('skipPostRuntimeObserve'), `${rel}: the Hub never sends the flag`);
   }
-  assert(execSync('git diff HEAD -- extension/manifest.json', { cwd: root }).toString() === '', 'manifest / permissions unchanged');
+  // Phase 126 Part A (G-3): the manifest may differ only by the Part A lines (was: git diff empty).
+  assert(revertPhase126PartAManifest(read('extension/manifest.json')) === execSync('git show HEAD:extension/manifest.json', { cwd: root }).toString().replace(/\r\n/g, '\n'), 'manifest / permissions unchanged');
   const edit = bg.slice(at - 200, at + 80) + va.slice(va.indexOf('D-121-70'), va.indexOf('D-121-70') + 300);
   assert(!/hostname|serviceId|\.co\.il|\.com\b/.test(edit), 'no site / hostname / serviceId branches');
 }

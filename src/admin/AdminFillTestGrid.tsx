@@ -47,11 +47,21 @@ interface AdminFillTestGridProps {
   statusLine?: ReactNode;
   /** 122.8 R2 — «מעבר להגדרת כניסה ומילוי» in the incomplete-mapping notice. */
   onGoToLoginTab?: () => void;
+  /** O-123-31 — false while another workspace tab is shown; leaving the tab clears the result. */
+  active?: boolean;
 }
 
 interface SpecialTestResult {
   outcome: SpecialRunOutcome;
   at: string;
+}
+
+/** O-123-31 (b) — the summary's technical tokens after the Hebrew sentence (shown collapsed). */
+function technicalTokens(outcome: ManagedAutofillStructuredOutcome): string {
+  const summary = formatAdminManagedTestResultSummary(outcome);
+  return summary.startsWith(outcome.userMessage)
+    ? summary.slice(outcome.userMessage.length).replace(/^ · /, '')
+    : summary;
 }
 
 /**
@@ -69,6 +79,7 @@ export default function AdminFillTestGrid({
   onTestingChange,
   statusLine = null,
   onGoToLoginTab,
+  active = true,
 }: AdminFillTestGridProps) {
   const stored = classifyStoredLoginFields(row.login_fields);
   const fields = stored.status === 'valid' ? stored.fields : [];
@@ -107,15 +118,17 @@ export default function AdminFillTestGrid({
 
   useEffect(() => () => onTestingChange(false), [onTestingChange]);
 
+  // O-123-31 — the result stays until the tab is left or the test is run again (no timer).
   useEffect(() => {
-    if (!success) {
+    if (active) {
       return;
     }
-    const timer = window.setTimeout(() => {
-      setSuccess(null);
-    }, 4000);
-    return () => window.clearTimeout(timer);
-  }, [success]);
+    setError(null);
+    setSuccess(null);
+    setTestOutcome(null);
+    setSpecialResult(null);
+    setStopped(false);
+  }, [active]);
 
   const specialContext = plan.route === 'special';
   const grid = managedGrid && managedGrid.rowId === row.id ? managedGrid : null;
@@ -172,11 +185,7 @@ export default function AdminFillTestGrid({
         console.info('[A2 ManagedFillDiagnostics]', outcome.fillDiagnostics);
       }
       if (outcome.ok) {
-        setSuccess(
-          diagText
-            ? `${outcome.userMessage}\n\n[A2 diagnostics — copy from browser console: A2 ManagedFillDiagnostics]`
-            : outcome.userMessage,
-        );
+        setSuccess(outcome.userMessage);
         // Phase 120.8 — persist Admin Test success fact only (no MEDIUM→HIGH, no validate).
         const configVersion = existing.configVersion;
         const mappedIds = existing.fieldMappings
@@ -199,12 +208,7 @@ export default function AdminFillTestGrid({
         });
         await onSaved();
       } else {
-        const failSummary = formatAdminManagedTestResultSummary(outcome);
-        setError(
-          diagText
-            ? `${failSummary}\n\n[A2 diagnostics — see browser console: A2 ManagedFillDiagnostics]`
-            : failSummary,
-        );
+        setError(outcome.userMessage);
       }
     } catch {
       setError('בדיקת המילוי המנוהל נכשלה. נסו שוב.');
@@ -307,15 +311,9 @@ export default function AdminFillTestGrid({
         </p>
       ) : null}
       {specialResult ? <SpecialTestResultView outcome={specialResult.outcome} at={specialResult.at} /> : null}
-      {testOutcome && !testOutcome.ok ? (
-        <p className="admin-muted" data-testid="managed-test-structure" role="status">
-          {[testOutcome.reason, testOutcome.fieldId, testOutcome.detail, testOutcome.locator]
-            .filter(Boolean)
-            .join(' · ')}
-        </p>
-      ) : null}
     </>
   ) : null;
+  const managedTechnical = testOutcome && !testOutcome.ok ? technicalTokens(testOutcome) : '';
   const hasOutput =
     Boolean(error) || Boolean(success) || (showTempInputs && (stopped || specialResult !== null || (testOutcome !== null && !testOutcome.ok)));
 
@@ -435,6 +433,21 @@ export default function AdminFillTestGrid({
         <p className="admin-error" role="alert">
           {error}
         </p>
+      ) : null}
+      {showTempInputs && testOutcome && !testOutcome.ok ? (
+        <details className="admin-special-test-details" data-section="managed-test-technical">
+          <summary>{FILL_TEST_GRID_HE.specialTechnicalDetails}</summary>
+          {managedTechnical ? (
+            <p className="admin-muted" data-part="managed-test-technical-summary">
+              {managedTechnical}
+            </p>
+          ) : null}
+          <p className="admin-muted" data-testid="managed-test-structure">
+            {[testOutcome.reason, testOutcome.fieldId, testOutcome.detail, testOutcome.locator]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        </details>
       ) : null}
       {success ? (
         <p className="admin-success admin-autofill-success" role="status">

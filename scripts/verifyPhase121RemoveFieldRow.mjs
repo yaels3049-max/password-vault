@@ -19,6 +19,7 @@ import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { withTempDir } from './lib/tempDir.mjs';
+import { revertPhase126PartAManifest } from './lib/phase126PartA.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
@@ -444,8 +445,11 @@ function staticChecks() {
   for (const [name, src] of [['editor', ui], ['action bar', barSrc]]) {
     assert(!/ebay|hostname|serviceId ===|fixture/i.test(src), `S no site / hostname / serviceId / fixture branches (${name})`);
   }
-  const diff = execSync('git diff HEAD --stat -- extension/manifest.json src/loginContract/validateSpecialPlan.ts src/loginContract/runtimeGate.ts src/loginContract/parse.ts src/loginContract/types.ts', { cwd: root }).toString();
+  const diff = execSync('git diff HEAD --stat -- src/loginContract/validateSpecialPlan.ts src/loginContract/runtimeGate.ts src/loginContract/parse.ts src/loginContract/types.ts', { cwd: root }).toString();
   assert(diff.trim() === '', `S manifest / validator / gate / parse / contract types unchanged (${diff.trim()})`);
+  // Phase 126 Part A (G-3): the manifest may differ only by the Part A lines.
+  const manifestHead = execSync('git show HEAD:extension/manifest.json', { cwd: root }).toString().replace(/\r\n/g, '\n');
+  assert(revertPhase126PartAManifest(read('extension/manifest.json')) === manifestHead, 'S manifest unchanged except Phase 126 Part A');
 }
 
 // ---------------------------------------------------------------------------

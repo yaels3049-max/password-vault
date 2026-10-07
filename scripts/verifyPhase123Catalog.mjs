@@ -28,7 +28,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { makeTempDir, removeTempDir } from './lib/tempDir.mjs';
+import { revertPhase126PartAManifest, withoutPhase126PartA } from './lib/phase126PartA.mjs';
 import { formatElapsed, mutationId, parseMutationArgs, selectMutations } from './lib/mutationArgs.mjs';
+import { assertSecureContext, registerHarnessDir, routeHarness } from './lib/routeHarness.mjs';
 import { checkTimeoutMessage, closeServer, failRun, isTimeout, mutationTimeoutMessage, withTimeout } from './lib/withTimeout.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -46,20 +48,25 @@ const STARTED = Date.now();
 
 const HE = {
   addApp: '+ הוספת אפליקציה',
-  catalogTitle: 'הוספת אפליקציה',
+  // O-123-35 (G-3): catalog title / «הכול» chip / in-home label superseded; the per-card «הוספה»
+  // is replaced by multi-select + the CTA «הוספת האתר».
+  catalogTitle: 'הוספת אתר לבית הדיגיטלי',
+  all: 'הכול',
+  addSelected: 'הוספת האתר',
   addCustom: '+ הוספת אתר מותאם אישית',
   noMatch: 'לא נמצאו אתרים תואמים. נסו חיפוש אחר או הוסיפו אתר מותאם אישית.',
   loadFailed: 'לא ניתן לטעון את קטלוג האתרים כרגע. האתרים שלכם עדיין זמינים.',
   retry: 'נסו שוב',
   add: 'הוספה',
-  alreadyAdded: '✓ כבר בבית הדיגיטלי',
+  alreadyAdded: '✓ כבר נוסף',
   appActions: 'פעולות אפליקציה',
   editSite: 'עריכת פרטי האתר',
   removeApp: 'הסרת אפליקציה',
-  addHome: 'הוסף לבית הדיגיטלי',
+  // O-123-13 (G-3): catalog-offer copy superseded («הוסף לבית הדיגיטלי» / «לא עכשיו» / the old prompt).
+  addHome: 'הוספה לבית הדיגיטלי',
+  backToCatalog: 'חזרה לחנות האתרים',
   dismiss: 'סגור',
-  notNow: 'לא עכשיו',
-  availablePrompt: 'רוצה להוסיף אותו לבית הדיגיטלי שלך?',
+  availablePrompt: 'מרפאה כללית כבר נתמך, ולכן אין צורך להוסיף אותו כאתר מותאם אישית.',
   categoryRequired: 'יש לבחור קטגוריה',
   categoryPlaceholder: 'בחרו קטגוריה',
 };
@@ -369,6 +376,7 @@ const CATALOG_ALLOWED_IMPORTS = new Set([
   './customSiteForm',
   './AppCatalog',
   './dialogDismiss', // D-123-3 backdrop / Escape hooks (UI only)
+  './catalogMessages', // O-123-13 (G-3): catalog-offer copy (strings only)
   '../catalog/catalogVisibility', // AD-123-19 listing gate (pure, reads catalog metadata only)
 ]);
 const REGISTRY_COPY = new Set([
@@ -530,16 +538,23 @@ function checkProtectedUnchanged() {
     ...manifests,
   ];
   assert(manifests.length >= 1, 'N-2: at least one tracked manifest file found');
+  // Phase 126 Part A (G-3, KI-126-1 ruling): exactly the three Part A extension paths are excluded here;
+  // the manifest is pinned below to BASE apart from the Part A lines.
   for (const p of protectedPaths) {
     assert(existsSync(join(root, p)), `N-2: protected path exists (${p})`);
-    assert(git('diff', '--name-only', BASE, '--', p).trim() === '', `N-2: ${p} unchanged vs HEAD`);
-    assert(git('ls-files', '--others', '--exclude-standard', '--', p).trim() === '', `N-2: no new files under ${p}`);
+    assert(withoutPhase126PartA(git('diff', '--name-only', BASE, '--', p).split('\n')).length === 0, `N-2: ${p} unchanged vs HEAD`);
+    assert(withoutPhase126PartA(git('ls-files', '--others', '--exclude-standard', '--', p).split('\n')).length === 0, `N-2: no new files under ${p}`);
   }
+  assert(revertPhase126PartAManifest(readFileSync(join(root, 'extension/manifest.json'), 'utf8')) === git('show', `${BASE}:extension/manifest.json`).replace(/\r\n/g, '\n'), `Phase 126 Part A (G-3): extension/manifest.json identical to ${BASE} apart from the Part A lines (key, default_locale, __MSG_ name / description)`);
   // AD-123-19 (was: src/admin diff empty): src/admin/userApproval.ts becomes a re-export of the
   // shared helper — content checked by verifyPhase123CatalogGate. D-123-6 (N-1 copy exception):
   // ApprovalQueue.tsx success line — content checked by verifyPhase123FixD6D8.
+  // O-123-23 (KI-123.5-5, G-3): AdminGate.tsx / admin.css also allowed — content pinned by verifyPhase123OwnerFixes checkAdminLoginScreen.
+  const O23_ADMIN = ['src/admin/AdminGate.tsx', 'src/admin/admin.css'];
+  // O-123-29…32 (G-3): Owner-excepted admin shell / RegistryAdmin / fill-test grid — pinned by verifyPhase123OwnerFixes.
+  O23_ADMIN.push('src/admin/AdminApp.tsx', 'src/admin/RegistryAdmin.tsx', 'src/admin/AdminFillTestGrid.tsx');
   const adminChanged = git('diff', '--name-only', BASE, '--', 'src/admin').split('\n').filter(Boolean);
-  assert(adminChanged.every((p) => p === 'src/admin/userApproval.ts' || p === 'src/admin/ApprovalQueue.tsx'), `N-1: only the AD-123-19 re-export (+ D-123-6 copy line) changes under src/admin (${adminChanged.join(', ')})`);
+  assert(adminChanged.every((p) => p === 'src/admin/userApproval.ts' || p === 'src/admin/ApprovalQueue.tsx' || O23_ADMIN.includes(p)), `N-1: only the AD-123-19 re-export (+ D-123-6 copy line) changes under src/admin (${adminChanged.join(', ')})`);
   assert(git('ls-files', '--others', '--exclude-standard', '--', 'src/admin').trim() === '', 'N-1: no new files under src/admin');
   return `N-1 / N-2: src/admin (apart from the AD-123-19 re-export) and ${protectedPaths.length} protected paths unchanged vs HEAD (${protectedPaths.join(', ')})`;
 }
@@ -600,6 +615,24 @@ function Harness({ initial }) {
       setPending((p) => { const n = new Set(p); n.delete(id); return n; });
     }
   }
+  // O-123-35 (G-3): mirrors App.addApps — the picker's selection in one write.
+  async function addApps(ids) {
+    window.__pvSeq.push({ kind: 'onAddApps', ids: clone(ids) });
+    const toAdd = ids.filter((id) => !ref.current.selectedIds.includes(id));
+    if (toAdd.length === 0) return { status: 'already_added' };
+    if (window.__pvCtl.addFail) return { status: 'failed', message: SELECTION_PERSIST_FAILED_MESSAGE };
+    setPending((p) => new Set([...p, ...toAdd]));
+    try {
+      const next = toAdd.reduce((st, id) => addToSelection(st, id), ref.current);
+      window.__pvSeq.push({ kind: 'write', state: clone(next) });
+      await persistVault(next);
+      ref.current = next;
+      setState(next);
+      return { status: 'added' };
+    } finally {
+      setPending((p) => { const n = new Set(p); toAdd.forEach((id) => n.delete(id)); return n; });
+    }
+  }
   async function addCustom(definition) {
     window.__pvSeq.push({ kind: 'onAddCustom', definition: clone(definition) });
     if (window.__pvCtl.customThrow) throw new Error('registry offline');
@@ -641,6 +674,7 @@ function Harness({ initial }) {
           catalogError={catalogError}
           onRetryCatalog={() => { window.__pvSeq.push({ kind: 'retryCatalog' }); setCatalogError(null); }}
           onAddApp={addApp}
+          onAddApps={addApps}
           onAddCustom={addCustom}
           onClose={() => setCatalogOpen(false)}
         />
@@ -703,7 +737,11 @@ function serve(dir) {
       res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
       res.end(readFileSync(file));
     });
-    server.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${server.address().port}/`, close: () => closeServer(server) }));
+    server.listen(0, '127.0.0.1', () => {
+      const url = `http://127.0.0.1:${server.address().port}/`;
+      registerHarnessDir(url, dir);
+      resolve({ url, close: () => closeServer(server) });
+    });
   });
 }
 
@@ -724,6 +762,7 @@ let browser = null;
 async function openPage(url) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'he-IL' });
   openContexts.add(context);
+  await routeHarness(context, url);
   const page = await context.newPage();
   const s = { page, context, errors: [], native: [] };
   page.on('pageerror', (e) => s.errors.push(String(e)));
@@ -732,6 +771,7 @@ async function openPage(url) {
     await d.dismiss();
   });
   await page.goto(url);
+  await assertSecureContext(page);
   await page.waitForFunction(() => window.__pvReady || window.__pvBootError, null, { timeout: 30000 });
   const bootError = await page.evaluate(() => window.__pvBootError ?? null);
   assert(!bootError, `fixture: harness boot failed: ${bootError}`);
@@ -775,6 +815,14 @@ async function openTile(s, id) {
   await panel(s).waitFor({ state: 'visible', timeout: 5000 });
 }
 const tileCount = (s, id) => s.page.locator(`[data-service-id="${id}"]`).count();
+// O-123-35 (G-3): the card itself is the button; in-home = aria-disabled + «✓ כבר נוסף», no inner button.
+const inHomeCard = async (s, id) => (await item(s, id).getAttribute('aria-disabled')) === 'true'
+  && (await item(s, id).textContent()).includes(HE.alreadyAdded)
+  && (await item(s, id).locator('button').count()) === 0;
+async function pickAndAdd(s, id) {
+  await item(s, id).click();
+  await catalog(s).locator('[data-action="catalog-add-selected"]', { hasText: HE.addSelected }).click();
+}
 const insideCatalog = (s) => s.page.evaluate(() => Boolean(document.activeElement?.closest('[data-catalog-modal]')));
 
 async function checkCatalogModalShell(url) {
@@ -828,8 +876,8 @@ async function checkSearchAndCategories(url) {
   assert((await itemIds(s)) === 'svc-clinic,svc-c-nostored,svc-c-notconf', `FR-16: category filter on the shown services (${await itemIds(s)})`);
   await search(s, 'מרפאה');
   assert((await itemIds(s)) === 'svc-clinic', 'FR-15 + FR-16 combined');
-  await catalog(s).locator('.sm-chip', { hasText: 'הכל' }).click();
-  assert((await itemIds(s)) === 'svc-clinic', '«הכל» keeps the search, clears the category');
+  await catalog(s).locator('.sm-chip', { hasText: HE.all }).click();
+  assert((await itemIds(s)) === 'svc-clinic', '«הכול» keeps the search, clears the category');
   assert(!(await catalog(s).locator('[data-category]').evaluateAll((els) => els.map((e) => e.getAttribute('data-category')))).includes('practice'), 'no «practice» category chip');
   assert((await ofKind(s, 'write')).length === 0, 'search / filter writes nothing');
   await closePage(s);
@@ -842,18 +890,17 @@ async function checkAddBuiltIn(url) {
   await openCatalog(s);
   for (const id of FIXTURE.state.selectedIds.filter((x) => LISTED.includes(x))) {
     assert((await item(s, id).getAttribute('data-catalog-state')) === 'added', `FR-17: ${id} (already added) marked`);
-    assert((await item(s, id).locator('button', { hasText: HE.alreadyAdded }).isDisabled()) === true, `FR-17: ${id} shows a disabled «✓ כבר בבית הדיגיטלי»`);
-    assert((await item(s, id).locator('button', { hasText: HE.add }).count()) === 0, `FR-17: ${id} has no «הוספה»`);
+    // O-123-35 (G-3): in-home card = aria-disabled «✓ כבר נוסף» (was a disabled «✓ כבר בבית הדיגיטלי» + no «הוספה»).
+    assert(await inHomeCard(s, id), `FR-17: ${id} is an aria-disabled card with «✓ כבר נוסף»`);
   }
   for (const id of AVAILABLE) assert((await item(s, id).getAttribute('data-catalog-state')) === 'available', `${id} available`);
-  await item(s, 'svc-bank-alpha').locator('button', { hasText: HE.add }).click();
+  // O-123-35 (G-3): select + CTA (was the per-card «הוספה»); after the add the catalog closes itself.
+  await pickAndAdd(s, 'svc-bank-alpha');
   await waitFor(s, () => window.__pv.state().selectedIds.includes('svc-bank-alpha'), null, 'FR-18: add saved');
-  await waitFor(s, () => document.querySelector('[data-catalog-item="svc-bank-alpha"]')?.getAttribute('data-catalog-state') === 'added', null, 'FR-17: just-added app marked');
   const after = await state(s);
   assert(JSON.stringify(after.accessProfiles) === JSON.stringify(before.accessProfiles), 'FR-18: catalog add creates 0 profiles');
   assert(JSON.stringify(after.credentials) === JSON.stringify(before.credentials), 'FR-18: catalog add writes no credential');
   assert((await ofKind(s, 'write')).length === 1, 'one add → one persist');
-  await s.page.keyboard.press('Escape');
   await catalog(s).waitFor({ state: 'detached', timeout: 5000 });
   assert((await tileCount(s, 'svc-bank-alpha')) === 1, 'FR-17: exactly one tile for the added app');
   assert((await s.page.locator('[data-service-id="svc-bank-alpha"] .app-icon-badge').count()) === 0, 'FR-18: added app has no green dot (0 profiles)');
@@ -863,7 +910,7 @@ async function checkAddBuiltIn(url) {
     window.__pvCtl.addFail = true;
   });
   await openCatalog(s);
-  await item(s, 'svc-bank-beta').locator('button', { hasText: HE.add }).click();
+  await pickAndAdd(s, 'svc-bank-beta');
   const alert = catalog(s).locator('[role="alert"]');
   await alert.waitFor({ timeout: 5000 });
   assert(/[\u0590-\u05FF]/.test(await alert.textContent()), 'N-7: add failure → Hebrew error in the modal');
@@ -888,12 +935,16 @@ async function fillCustomSite(s, name, host, { category = 'health' } = {}) {
 async function checkCustomAdd(url) {
   const s = await openPage(url);
   await openCatalog(s);
-  // created → status message.
+  // created → the form and the catalog close.
   const dialog = await fillCustomSite(s, 'האתר החדש שלי', 'my-new-site.example.test');
   await dialog.waitFor({ state: 'detached', timeout: 5000 });
-  assert((await catalog(s).locator('[role="status"]').textContent()) === '«האתר החדש שלי» נוסף לבית הדיגיטלי.', 'FR-19: created → Hebrew confirmation in the modal');
+  // O-123-39 (G-3): was «✓ האתר נוסף לבית הדיגיטלי» in the still-open catalog (O-123-28). The home
+  // landing (highlight / focus) is checked on the real App in verifyPhase123OwnerFixes.
+  await catalog(s).waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+  assert((await catalog(s).count()) === 0, 'FR-19 / O-123-39: created → the form and the catalog close');
   let calls = await ofKind(s, 'onAddCustom');
   assert(calls.length === 1 && calls[0].definition.displayName === 'האתר החדש שלי' && calls[0].definition.source === 'user-created', 'FR-19: one onAddCustom call with the custom definition');
+  await openCatalog(s);
   // Escape while the add-site layer is open closes only that layer (D-123-3), never the catalog.
   const layer = catalog(s).locator('.modal-dialog', { hasText: 'הוספת אתר חדש' });
   await catalog(s).locator('[data-action="add-custom-site"]').click();
@@ -910,6 +961,9 @@ async function checkCustomAdd(url) {
   await offer.waitFor({ timeout: 5000 });
   assert((await offer.locator('h2').textContent()) === 'בנק הבית כבר נמצא בבית הדיגיטלי שלך.', 'FR-19: already in home → Hebrew message');
   await offer.locator('button', { hasText: HE.dismiss }).click();
+  // O-123-14 (G-3): «סגור» closes only the offer; the filled form stays and is cancelled explicitly.
+  await layer.locator('button', { hasText: 'ביטול' }).click();
+  await layer.waitFor({ state: 'detached', timeout: 5000 });
   // same_user_custom_duplicate → same copy.
   await s.page.evaluate(() => {
     window.__pvCtl.customResult = { status: 'same_user_custom_duplicate', existingServiceId: 'svc-c-cred', displayName: 'אתר עם פרטים' };
@@ -918,18 +972,26 @@ async function checkCustomAdd(url) {
   await offer.waitFor({ timeout: 5000 });
   assert((await offer.locator('h2').textContent()) === 'אתר עם פרטים כבר נמצא בבית הדיגיטלי שלך.', 'FR-19: own duplicate → Hebrew message');
   await offer.locator('button', { hasText: HE.dismiss }).click();
-  // catalog_service_available → offer; «הוסף לבית הדיגיטלי» adds via onAddApp (0 profiles).
+  // O-123-14 (G-3): the form stays behind the offer.
+  await layer.locator('button', { hasText: 'ביטול' }).click();
+  await layer.waitFor({ state: 'detached', timeout: 5000 });
+  // catalog_service_available → offer; «הוספה לבית הדיגיטלי» adds via onAddApp (0 profiles).
   await s.page.evaluate(() => {
     window.__pvCtl.customResult = { status: 'catalog_service_available', existingServiceId: 'svc-clinic', displayName: 'מרפאה כללית' };
   });
   await fillCustomSite(s, 'מרפאה', 'clinic.example.test');
   await offer.waitFor({ timeout: 5000 });
-  assert((await offer.locator('h2').textContent()) === 'מרפאה כללית כבר זמין להוספה' && (await offer.textContent()).includes(HE.availablePrompt), 'FR-19: catalog site available → Hebrew offer');
+  // O-123-13 (G-3): title / text superseded («<name> כבר זמין להוספה» + the old prompt).
+  assert((await offer.locator('h2').textContent()) === 'מצאנו את מרפאה כללית בחנות האתרים' && (await offer.textContent()).includes(HE.availablePrompt), 'FR-19: catalog site available → Hebrew offer');
   const profilesBefore = JSON.stringify((await state(s)).accessProfiles);
   await offer.locator('button', { hasText: HE.addHome }).click();
   await waitFor(s, () => window.__pv.state().selectedIds.includes('svc-clinic'), null, 'offer → added');
+  await layer.waitFor({ state: 'detached', timeout: 5000 });
   assert(JSON.stringify((await state(s)).accessProfiles) === profilesBefore, 'offer add creates 0 profiles');
   assert((await ofKind(s, 'onAddApp')).at(-1).id === 'svc-clinic', 'offer add goes through onAddApp');
+  // O-123-35 (G-3): the offer add runs the post-add sequence, so the catalog closes; reopen it.
+  await catalog(s).waitFor({ state: 'detached', timeout: 5000 });
+  await openCatalog(s);
   // Registry error → friendly Hebrew error inside the add-site dialog.
   await s.page.evaluate(() => {
     window.__pvCtl.customThrow = true;
@@ -1044,7 +1106,7 @@ async function checkCatalogFixedHeight(url) {
   await catalog(s).locator('input[type="search"]').fill('');
   await catalog(s).locator('[data-category="health"]').click();
   heights.push((await measure()).height);
-  await catalog(s).locator('.sm-chip', { hasText: 'הכל' }).click();
+  await catalog(s).locator('.sm-chip', { hasText: HE.all }).click();
   heights.push((await measure()).height);
   assert(heights.every((h) => h === heights[0]), `D-123-2: catalog size does not change on search / category (${heights.join(', ')})`);
   await closePage(s);
@@ -1102,11 +1164,16 @@ async function checkDialogBackdropRule(url) {
   await s.page.mouse.click(5, 5);
   await offer.waitFor({ state: 'detached', timeout: 5000 });
   assert((await catalog(s).count()) === 1, 'D-123-3: closing the offer on the backdrop keeps the catalog');
+  // O-123-14 (G-3): the filled add-site form stays behind the offer; cancel it before the next add.
+  await addSite.locator('button', { hasText: 'ביטול' }).click();
+  await addSite.waitFor({ state: 'detached', timeout: 5000 });
   await fillCustomSite(s, 'בנק הבית', 'home-bank.example.test');
   await offer.waitFor({ timeout: 5000 });
   await s.page.keyboard.press('Escape');
   await offer.waitFor({ state: 'detached', timeout: 5000 });
   assert((await catalog(s).count()) === 1, 'D-123-3: Escape closes the offer only');
+  await addSite.locator('button', { hasText: 'ביטול' }).click();
+  await addSite.waitFor({ state: 'detached', timeout: 5000 });
   await catalog(s).locator('button[aria-label="סגירה"]').click();
   await catalog(s).waitFor({ state: 'detached', timeout: 5000 });
 
@@ -1151,7 +1218,7 @@ async function checkCustomCategoryRequired(url) {
   await dialog.waitFor({ state: 'detached', timeout: 5000 });
   const calls = await ofKind(s, 'onAddCustom');
   assert(calls.length === 1 && calls[0].definition.category === 'banking', 'D-123-4: the chosen category is saved');
-  await catalog(s).locator('button[aria-label="סגירה"]').click();
+  // O-123-39 (G-3): the catalog closes itself after a created custom add (was closed with «סגירה»).
   await catalog(s).waitFor({ state: 'detached', timeout: 5000 });
   // Edit keeps the stored category.
   await openTile(s, 'svc-c-cred');
@@ -1176,8 +1243,8 @@ async function checkCatalogGateListing(url) {
   // AD-123-19 (a): a non-approved site already in the home is shown as already added, no add action.
   for (const id of KEPT_IN_HOME) {
     assert((await item(s, id).getAttribute('data-catalog-state')) === 'added', `AD-123-19 (a): ${id} (not approved, in the home) is shown as already added`);
-    assert((await item(s, id).locator('button', { hasText: HE.alreadyAdded }).isDisabled()) === true, `AD-123-19 (a): ${id} shows a disabled «✓ כבר בבית הדיגיטלי»`);
-    assert((await item(s, id).locator('button', { hasText: HE.add }).count()) === 0, `AD-123-19 (a): ${id} has no «הוספה»`);
+    // O-123-35 (G-3): the in-home card is aria-disabled with «✓ כבר נוסף» (was a disabled «✓ כבר בבית הדיגיטלי»).
+    assert(await inHomeCard(s, id), `AD-123-19 (a): ${id} is an aria-disabled card with «✓ כבר נוסף»`);
   }
   // AD-123-19 (b): the owner's own not-promoted custom site is listed, under «מותאם אישית».
   assert((await item(s, 'svc-own-new').getAttribute('data-catalog-state')) === 'available', 'AD-123-19 (b): the user\'s own custom site (no mapping) is listed and addable');
@@ -1185,7 +1252,7 @@ async function checkCatalogGateListing(url) {
   assert((await customChip.textContent())?.includes('מותאם אישית'), 'AD-123-19 (b): «מותאם אישית» category chip');
   await customChip.click();
   assert((await itemIds(s)) === 'svc-own-new', `AD-123-19 (b): own custom site under «מותאם אישית» (${await itemIds(s)})`);
-  await catalog(s).locator('.sm-chip', { hasText: 'הכל' }).click();
+  await catalog(s).locator('.sm-chip', { hasText: HE.all }).click();
   await search(s, 'promoted-site');
   assert((await itemIds(s)) === '' && (await catalog(s).locator('.sm-empty').textContent()) === HE.noMatch, 'AD-123-19: a promoted-but-unmapped site cannot be found by search');
   await search(s, 'pending-site');
@@ -1289,9 +1356,10 @@ const MUTATIONS = [
       'if (!options.disabled && (started || true) && event.target === event.currentTarget) {', o),
   })],
   ['M10 catalog overlay closes on backdrop mousedown again (D-123-3)', (o) => ({
+    // O-123-35 (G-3): the overlay tag spans lines (closing class / data-closing / inert).
     'src/digitalHome/AppCatalogModal.tsx': replaceOnce(read('src/digitalHome/AppCatalogModal.tsx'),
-      '<div className="dh-catalog-overlay" data-dialog-form="true">',
-      '<div className="dh-catalog-overlay" data-dialog-form="true" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>', o),
+      '      data-dialog-form="true"\n',
+      '      data-dialog-form="true"\n      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}\n', o),
   })],
   ['M11 create preselects the first category (D-123-4)', (o) => ({
     'src/AddSiteModal.tsx': replaceOnce(read('src/AddSiteModal.tsx'),

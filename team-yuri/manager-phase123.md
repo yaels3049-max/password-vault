@@ -4,7 +4,8 @@
 PHASE=123 (from `team-Yuri/PHASE.md`).
 
 ## Status
-READY_FOR_ARCHITECT_REVIEW — slice 123.4 (AD-123-1, -9, -15) + END OF ROUND Manager APPROVED (round 1, 2026-10-05) on frozen tree `fef52c66…3ac6` (BASE WIP `c700cd60`, scope `-- src scripts supabase`); END OF ROUND 63/63 in one clean sequential run. Was: OPEN (2026-10-05). Slice 123.3 is Architect PASS (frozen tree `664646a0…18af`, BASE `0dfb9de7`; RC-1 closed by dev Known Issue 7). Precondition: Sarah's WIP commit of the 123.3 tree = the 123.4 baseline. All Owner manual steps (D-123-6…8, `[catalog-gate]` count, 123.3, 123.4) are in ONE consolidated Owner run after END OF ROUND. Branch `wip/phase123-recovered` (no push / merge).
+FIX ROUND 123.5 OPEN (2026-10-06) — Owner run findings O-123-1…8 + late findings O-123-9 (AD-123-16 triggered; arch entry "O-123-9 Regular user cannot add a custom site"), O-123-10 («פתיחה לבדיקה»; arch entry "O-123-10 Address that does not open without www."), O-123-11 (notice only when an affected window closed; arch entry "O-123-11 'Removed elsewhere' notice only when it matters") , O-123-12 (no "not saved yet" line with the fields-updated notice; arch entry "Owner run step 10 / O-123-12") , batch 3 O-123-13…17 (arch entry "Owner findings batch 3 (2026-10-06 15:40)") and batch 4 O-123-18…21 (arch entries "O-123-18 Return to the floating window", "O-123-19…21"). **Sequencing ruling:** T-1 per batch; ONE final run only after the Owner writes "סיימתי את כל רשימת הבדיקה", then a single Manager + Architect review. Backlog F-123-1 (value carry-over by field kind). (arch Review Notes "2026-10-06 — Consolidated Owner run, early findings O-123-1…8"). The Owner run is still in progress; more findings may join this round. Two stages: Stage A (read-only analysis + plan + `scripts/` only) starts now; Stage B (implementation in `src/`) starts only after the Owner writes "סיימתי". BASE WIP `e91b5b12` (approved 123.4 tree). Plan: "Fix round 123.5" below.
+- Previous status: AWAITING_OWNER_RUN — all slices 123.1–123.4 + END OF ROUND are Architect PASS (123.4 PASS 2026-10-05, frozen tree `fef52c66…3ac6`, BASE WIP `c700cd60`). Phase 123 closes after the ONE consolidated Owner run (checklist: "Consolidated Owner run — checklist" below) is recorded without unexplained differences. Cleanup P1 / P2 → backlog (Owner). Slice 123.3 is Architect PASS (frozen tree `664646a0…18af`, BASE `0dfb9de7`; RC-1 closed by dev Known Issue 7). Precondition: Sarah's WIP commit of the 123.3 tree = the 123.4 baseline. All Owner manual steps (D-123-6…8, `[catalog-gate]` count, 123.3, 123.4) are in ONE consolidated Owner run after END OF ROUND. Branch `wip/phase123-recovered` (no push / merge).
 - History: slice 123.2 + R-123-1 Architect PASS; 123.1 reopened by D-123-1.
 - Slice 123.1: Manager APPROVED (round 2); Architect PASS (conditional). It closes only when C-123.1-1 (the Owner's manual run) is recorded.
 - Slices 123.3 → 123.4 are each opened only after the Architect reviews the previous slice (see Slice Authorization).
@@ -79,7 +80,8 @@ The «ניהול אתרים» screen (`ManageServices`) is removed at the end. T
 | Fix round + 123.2b | D-123-1…5 + AD-123-18 + amendment A; 123.2b catalog gate (AD-123-19) | DONE: Manager APPROVED round 2 (frozen tree c06950a5…ff1c21); Architect PASS (conditional), standing after the incident recovery (WIP `af881f6b`). Owner items 1–3 PASS, item 4 pending | Owner item 4 recorded |
 | Fix round D-123-6…8 | D-123-6 admin copy (N-1 copy exception), D-123-7 URL scheme-only, D-123-8 REVISED (vault copy until approved; Step 1 root cause, then user-side fix) | YES (Architect ruling 2026-10-04; D-123-8 revised by the Owner; re-added 2026-10-05). D-123-6 / D-123-7 accepted at Architect level; D-123-8 released 2026-10-05 with the narrow N-2 exception (own-site hydrate merge + App catalog merge only). DONE: Manager APPROVED round 1 (frozen tree `1de67427…e387`); Architect PASS (2026-10-05) | Owner re-check moved to the consolidated Owner run at the end of the phase (no longer gates 123.3) |
 | 123.3 | Remove app (confirm, Undo, deferred full deletion) | **DONE:** Manager round 1 CHANGES REQUIRED (documentation only) → RC-1 closed by dev KI-7 (fingerprint `664646a0…18af` unchanged); Architect PASS (2026-10-05). Was: OPEN (2026-10-05) after Architect PASS on fix round D-123-6…8; Owner re-checks deferred to the consolidated end-of-phase run (Owner preference). C-123.1-1 (two windows) was recorded PASS as Owner item 1. Precondition: WIP commit of the approved tree. **Order:** Item 0a (KI-5) → Step 0 (AD-123-16, MC-3), a hard sub-gate: STOP and report before any migration / product code → rest of 123.3 | Manager Review PASS → Architect review PASS |
-| 123.4 | Navigation unification + ManageServices deletion + admin aggregate + END OF ROUND | **Manager APPROVED round 1 (2026-10-05)** on frozen tree `fef52c66…3ac6` (BASE `c700cd60`) → awaiting Architect review. Was: OPEN (2026-10-05) after Architect PASS on 123.3. Precondition: WIP commit of the 123.3 tree (= 123.4 baseline; `c700cd60`). The orphan / leftover cleanup is a PROPOSAL only, implemented only after an Architect decision | Manager Review PASS → Architect review PASS → consolidated Owner run → phase close |
+| 123.4 | Navigation unification + ManageServices deletion + admin aggregate + END OF ROUND | **DONE: Manager APPROVED round 1; Architect PASS (2026-10-05)** on frozen tree `fef52c66…3ac6` (BASE `c700cd60`). Phase close after the consolidated Owner run. Was: OPEN (2026-10-05) after Architect PASS on 123.3. Precondition: WIP commit of the 123.3 tree (= 123.4 baseline; `c700cd60`). The orphan / leftover cleanup is a PROPOSAL only, implemented only after an Architect decision | Manager Review PASS → Architect review PASS → consolidated Owner run → phase close |
+| Fix round 123.5 | Owner run findings O-123-1…8 (+ late findings ruled by the Architect and added to this plan) + O-2 doc comment | **OPEN (2026-10-06).** Owner wrote "סיימתי" (11:28): Stage A then Stage B released in one prompt. Late findings O-123-9 (AD-123-16 migration; allowed in Stage A), O-123-10 («פתיחה לבדיקה», Stage B), O-123-11 (notice only when a window closed, Stage B) , O-123-12 (no "not saved yet" line with the fields-updated notice) , batch 3 O-123-13…17 (offer layering, rename, notice wording, last-profile dot — priority) and batch 4 O-123-18…21 (return to the floating window; «↗ פתח»; «הסרת אתר»; remove paragraph) added; H-2 harness ruling. **Sequencing:** T-1 per batch; ONE final run only after the Owner's "סיימתי את כל רשימת הבדיקה". BASE `e91b5b12` | Manager Review PASS → Architect review PASS → Owner re-check of the O-123-n items + remaining checklist steps → phase close. **Final run (2026-10-07): Architect ACCEPTED 09:50; Manager APPROVED** (fingerprint `4226bdac…a086` re-verified). **Last batch (O-123-39…44, Phase 126 Part A G-3, F-1/F-2): Architect ACCEPTED 14:11; Manager APPROVED** (fingerprint `690c850b…e9dc` re-verified). Next: Owner visual check O-123-43/44 → commit prompt |
 
 Each slice is one Developer round. It writes or updates `team-Yuri/dev-phase123.md` with a section per slice, then STOPS.
 
@@ -720,11 +722,254 @@ Context:
 - "removed elsewhere" notice;
 - admin aggregate visible to admins only.
 
+### Fix round 123.5 — Owner run findings O-123-1…8 (Architect rulings 2026-10-06)
+Source: arch Review Notes "2026-10-06 — Consolidated Owner run, early findings O-123-1…8" (rulings + test policy). BASE = WIP commit `e91b5b12` (approved 123.4 tree; `git diff e91b5b12 -- src scripts supabase` empty at opening, Architect-verified). Branch `wip/phase123-recovered`; no push / merge / `--no-verify` / amend.
+
+**Two stages (binding; the Owner is testing live on the dev server):**
+- **Stage A — starts now.**
+  - Allowed:
+    - read-only code analysis;
+    - the 123.5 plan in `dev-phase123.md` (new section "Fix round 123.5");
+    - new or updated verifies and mutations under `scripts/` only.
+  - Forbidden in Stage A:
+    - any edit under `src/`, `supabase/`, `extension/`, `package.json` / `package-lock.json`;
+    - anything that changes the Owner's running app: no `npm install`, no `npm run build` / `npm run dev`, no git checkout / stash / reset / commit, no edit to files Vite watches, nothing on port 5173.
+  - Verifies may be run in Stage A only if they read `src/` and work in their own temp dirs / ports. New 123.5 checks are expected to FAIL against the unchanged `src/`; record that as the "before" state, not as a defect.
+  - Stage A ends with the plan in `dev-phase123.md`: per finding, the files / symbols to change, the planned checks + mutations, the G-3 rows, and any STOP item. Sarah then waits.
+- **Stage B — starts only when the Owner writes "סיימתי" (relayed by the Manager).**
+  - Late findings may be added: the Manager adds each one to this section (as O-123-9…) only after an Architect ruling. Sarah implements only findings listed here.
+  - Order: implement in `src/` → T-1 per change → freeze → final run.
+
+**Scope, exactly as ruled (no more):**
+- **O-123-1 Catalog cards one size:**
+  - every catalog card in the grid has the same size;
+  - long names clamp to 2 lines with an ellipsis, with the full name in `title`;
+  - the action / «✓ כבר בבית הדיגיטלי» sits at the card bottom.
+  - CSS + markup in the catalog only. No data-model change.
+- **O-123-2 Registration with an existing e-mail (Architect-approved narrow auth change, `src/auth/register.ts` ONLY):**
+  - if the signed-in account already has a profile row before registration completes → sign out immediately and show a Hebrew error that the address is already registered, with a way to the login screen;
+  - orphan recovery (an auth user WITHOUT a profile row) is kept;
+  - no change to login, unlock, crypto, `persistVault`, sync, RLS or schema.
+  - **Owner confirmed (2026-10-06):** she typed the existing account's correct password, which matches the Architect's trace. The ruling is unchanged.
+  - **Manager note from the code read (`register.ts`):** `recoverOrphanAuthRegistration` signs in, then calls `ensureProfileForSession`. That function returns an existing row as success (`loadProfileOrNull` → `assertActiveProfile`), and the same check also serves the fresh sign-up path, where a trigger-created row is the normal case ("prefer success"). The fix must therefore apply to the orphan-recovery path (a row that existed before this registration), and must not break a fresh sign-up whose row was created by the trigger. Stage A traces both paths and states the exact condition used.
+  - Copy: reuse the existing `AUTH_COPY.registerDuplicate` («כבר קיים חשבון עם כתובת אימייל זו. נסו להתחבר במסך «התחברות».»).
+  - If the "way to the login screen" needs a change outside `register.ts` (e.g. `copy.ts` or the register screen), STOP and report in Stage A. Do not edit those files without an Architect ruling.
+  - No credential values or e-mails in logs (the existing `logRegisterFailure` / `withDevHint` style only).
+- **O-123-3 Header add button:** hide the header «+ הוספת אפליקציה» while there are 0 apps. The empty state keeps its central button, and the header button returns from the first app on.
+- **O-123-4 Remove confirm with 0 profiles:**
+  - 0 profiles → the title «להסיר את <name>?» and the buttons only, without the paragraph in `RemoveAppConfirmDialog.tsx`;
+  - ≥ 1 profile → the current text stays.
+  - The order, Undo and commit path (AD-123-11) are unchanged.
+- **O-123-5 Floating-window menu (⋮):** closes on any other action in the window, an outside click, Escape and window close.
+- **O-123-6 First profile without a name (Owner product rule):**
+  - **0 profiles:** the add form has no name field, and the profile is stored with the internal name «ראשי» (existing field).
+  - **1 profile:** no profile name is shown anywhere (no chips; the name field is hidden in edit).
+  - **Adding a second profile:** a name is required and must differ from the existing names. Then the chips show «ראשי» and the new name, and the first profile can be renamed via «עריכת פרופיל».
+  - **Existing data:** named profiles keep their names (no migration). A profile left alone after deletions keeps its name, hidden while it is the only one.
+  - Writes only through the existing credential reducers + `persistVault`. No schema, crypto or sync change; no new stored field.
+  - Validation messages are Hebrew and inline (no browser dialog).
+- **O-123-7 Hint:** remove «אפשר לשמור פרופיל גם בלי פרטי כניסה ולהוסיף אותם אחר כך.» (`MSG_ADD_OPTIONAL`, `ServiceProfileManagementModal.tsx`) from the user side entirely. Saving without credentials stays allowed.
+- **O-123-8 Autofill / open outcome messages:**
+  - Messages tied to one app are shown only in its floating window, never in the Digital Home top banner.
+  - The top banner keeps the messages not tied to one app: catalog unavailable, remove failure, selection error. The "removed elsewhere" notice is unchanged.
+  - **Failure:**
+    - a red error line with `role="alert"`, staying until the next action in the window or window close;
+    - the window background turns soft red and fades back over ~2 s;
+    - with `prefers-reduced-motion: reduce` → no animation, the red line only.
+  - Neutral / success messages keep the neutral style.
+  - Execution stays unchanged (`src/execution/**` frozen; Digital Home reaches it only through `assistanceActions`, ruling (b) of 123.4).
+- **O-123-9 Regular user cannot add a custom site (late finding, BLOCKER; Architect ruling 2026-10-06, arch Review Notes "O-123-9 Regular user cannot add a custom site"):**
+  - **Cause:** a non-admin's custom-site upsert fails with RLS `42501`. `upsertCustomServiceRegistryRow` writes a `pending_review` row with INSERT … ON CONFLICT DO UPDATE, which is checked against the SELECT policies, and the owner's own pending row is not selectable. This is P-1 / AD-123-16. The same gap makes removal step 5 delete 0 rows silently for regular users, and own pending rows do not hydrate on a second device.
+  - **Correction:** the 123.3 Step 0 "DELETED, no migration" result came from an admin account (`service_registry_admin_select_all`) and does not hold for regular users. **The AD-123-16 conditional branch is triggered** (Owner-approved conditionally 2026-10-03). The Owner has applied the policy live in the SQL editor.
+  - **Change — one new file only:** `supabase/migrations/<timestamp>_phase123_registry_owner_select.sql`, with a timestamp later than `20261005120000`. It must be byte-equivalent to the ruling:
+    - `drop policy if exists "service_registry_select_own_user_rows" on public.service_registry;`
+    - `create policy "service_registry_select_own_user_rows" on public.service_registry for select to authenticated using (owner_user_id = auth.uid() and source_type = 'user');`
+  - No other policy, table, function or `src/` change for this finding. Admin policies are unchanged.
+  - **Allowed in Stage A:** a new file under `supabase/` does not affect the running app.
+  - **PGlite check in `verifyPhase123OwnerFixes`:**
+    - non-admin: upsert of an own pending row OK, read of an own pending row OK, delete of an own pending row removes exactly 1 row;
+    - a non-admin cannot read another user's pending row;
+    - anon cannot read pending rows;
+    - admin policies unchanged.
+    - **Mutation:** the policy without the owner condition must fail the check.
+  - **G-3 (O-123-9):** the "`supabase/` = only the AD-123-15 migration" assertions (Navigation N-1, D8OwnSite `checkHydrateScope`) are extended to allow exactly this one file. Every other `supabase/` path stays required unchanged.
+  - **Owner re-check:** a regular (non-admin) user adds a custom site, then removes it to the end (wait out the 5 s Undo). The step 15 SQL returns 0 rows.
+- **O-123-10 Address that does not open without `www.` (late finding; Architect ruling + Owner decision 2026-10-06, arch Review Notes "O-123-10 Address that does not open without www."):**
+  - **Background:** a site's host form is site configuration and cannot be known in advance. **D-123-7 stands:** the app never adds or removes `www.`.
+  - **Change:** a small «פתיחה לבדיקה» button next to the URL field, in the custom-site add form AND in «עריכת פרטי האתר».
+    - It opens, in a new tab with `noopener,noreferrer`, the address exactly as it will be stored (after scheme completion, the same function the save path uses; no second normalisation).
+    - It is enabled only when the address is valid, and disabled otherwise.
+  - **Constraints:**
+    - no network probe and no automatic `www.` suggestion;
+    - no site / hostname branch;
+    - no change to what is stored (D-123-7);
+    - Hebrew RTL, no browser dialog.
+  - **Check group in `verifyPhase123OwnerFixes`**, covering both forms. Mutations:
+    - the button is absent;
+    - the button opens a URL different from the stored one;
+    - the button is enabled for an invalid address.
+  - **Owner re-check:** in both forms, type an address with and without `www.` → «פתיחה לבדיקה» opens exactly the typed address (with `https://` added if missing) in a new tab; an invalid address → the button is disabled; the saved address equals the opened one.
+- **O-123-11 "Removed elsewhere" notice only when it matters (late finding; Owner product decision + Architect ruling 2026-10-06, arch Review Notes "O-123-11 'Removed elsewhere' notice only when it matters"):**
+  - **Show the notice only** when an open window of the affected app was closed because of the deletion: its floating window, or the profile modal of that app / profile.
+  - **Silent sync in every other case:** plain home, catalog open, or a window of a different app open. The tile / profile just disappears.
+  - Remove the plain variant `MSG_REMOVED_ELSEWHERE_PLAIN` if it becomes unused. That reverses part of 123.4 ruling (b) (3) by Owner decision; the constant lives in `loginAssistance/messages.ts`.
+  - **Unchanged:** the closed-window variant, `role="status"`, RTL, z-order above the catalog, no browser dialog. `cloudReconcile.ts` unchanged.
+  - Supersedes the 123.4 binding "notice on the plain home / above the catalog". It also narrows O-123-8's "the 'removed elsewhere' notice is unchanged" to the closed-window case.
+  - **G-3 under O-123-11:**
+    - invert the Navigation assertions "notice on the plain home / above the catalog";
+    - invert mutation M10 ("notice only when a window closed"). The new mutation is "notice shown although no affected window was open".
+    - `verifyPhase123Navigation` becomes a touched verify (full sweep in the final run).
+  - **Checks:**
+    - notice when the affected app's floating window or its profile modal was open and closed;
+    - no notice on the plain home, with the catalog open, or with a different app's window open;
+    - `MSG_REMOVED_ELSEWHERE_PLAIN` absent if unused;
+    - `git diff e91b5b12 -- src/digitalHome/cloudReconcile.ts` empty, except the one O-123-16 string line.
+  - **Owner re-check (two windows, A and B):**
+    - B on the plain home → delete in A → B: the tile disappears, no notice;
+    - B with the catalog open → same;
+    - B with a different app's window open → same;
+    - B with the affected app's window (or its profile modal) open → the window closes and the notice appears.
+- **O-123-12 "Not saved yet" line together with the fields-updated notice (late finding; Architect ruling 2026-10-06, arch Review Notes "Owner run step 10 / O-123-12"):**
+  - **Case:** an own site with stored values is approved after the admin mapped different login fields. The D-123-8 notice «שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.» is correct (ruling 5). But «עדיין לא שמרת פרטי כניסה לאתר זה.» (`launchKind === 'missing-user-credentials'`, because no stored value matches a current field id) was shown with it.
+  - **Fix:** while the fields-updated notice is shown, the "not saved yet" line is not shown. The window shows the notice with «עריכת פרופיל» and the normal actions only.
+  - Stored values stay untouched (kept under the old field ids until the user saves the profile). No change to the notice trigger, the resolver, hydrate, execution or what is stored. No site branch.
+  - **Tests:** one check plus one mutation, "both messages shown together". When the notice is absent, the "not saved yet" line behaves as today. T-1 only for now, per the sequencing ruling below.
+  - **Owner re-check:** repeat checklist step 10. Only the notice + «עריכת פרופיל» is shown, without «עדיין לא שמרת…», and the stored values are kept.
+- **Owner findings batch 3 — O-123-13…17 (Architect rulings, arch Review Notes "Owner findings batch 3 (2026-10-06 15:40)"; T-1 only, per the sequencing ruling):**
+  - **O-123-13 Custom add matches a catalog site (offer `catalog_service_available`):**
+    - The custom-site form is NOT closed. It stays behind the offer with the typed values, dimmed and inert (not focusable), and the offer modal is shown above it.
+    - Copy, with name = the catalog site's display name (never the name the user typed):
+      - title «מצאנו את <name> בחנות האתרים»;
+      - text «<name> כבר נתמך, ולכן אין צורך להוסיף אותו כאתר מותאם אישית.»
+    - Buttons:
+      - «הוספה לבית הדיגיטלי» adds the catalog site as today, then closes the offer and the form;
+      - «חזרה לחנות האתרים» closes the offer and the form, back to the catalog.
+    - Escape / × close only the offer and return focus to the still-filled form.
+    - The new strings go in the user-side catalog layer (e.g. a catalog messages module). `src/supabase/**` stays byte-identical. Old constants in `registryPersistence.ts` may stay if still pinned (dead-code backlog).
+    - Check group + mutations: form closed when the offer appears; typed name used instead of the catalog name; Escape closes the form too; form focusable while the offer is open.
+  - **O-123-14 Custom add of a site already in the home (`already_in_user_home` / `same_user_custom_duplicate`):**
+    - Same layering as O-123-13: the form stays behind, dimmed and inert, with the typed values.
+    - The existing offer copy and «סגור» stay. «סגור» / Escape close only the offer and return focus to the filled form.
+    - Check group + mutation: «סגור» / Escape closes the form or loses the typed values.
+  - **O-123-15 Button rename:** `LABEL_TRY_AUTO` «נסה מילוי אוטומטי» → «מילוי פרטים אוטומטי». Behaviour unchanged. Check + mutation (old label restored).
+  - **O-123-16 Notice wording:** `MSG_REMOVED_ELSEWHERE` → «האתר או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.» (only this string; the app → site wording elsewhere is a later change).
+    - **Narrow N-2 exception, copy only:** this one string line in `src/digitalHome/cloudReconcile.ts`. Every other line stays byte-identical.
+    - **G-3 (O-123-16):** the D8OwnSite / Navigation unchanged-file checks are updated to allow exactly this line.
+    - Check + mutations: old wording; any other line of `cloudReconcile.ts` changed.
+  - **O-123-17 Last profile deleted, dot and profile buttons remain (possible regression, PRIORITY):**
+    - **Expected:** after deleting the last profile, no green dot, and the floating window returns to the empty state: «עדיין אין פרופיל לאתר זה.» with «הוסף פרופיל» and «פתח אתר» only.
+    - **Step 1, read-only, before any fix:**
+      - reproduce with the real modal path in one tab and in two tabs;
+      - state whether the profile is really still in the vault / cloud (resurrection, D-123-1 / AD-123-18 territory) or only stale UI state (e.g. `activeProfileId` / O-123-6 lone-profile handling);
+      - compare against BASE `e91b5b12` to state whether it is a 123.5 regression.
+    - A fix limited to UI state may proceed. **STOP and report** if it needs sync, hydrate, outbox, `persistVault` or crypto changes.
+    - Check + mutation: "dot / edit buttons remain after the last profile is deleted".
+- **Late findings batch 4 — O-123-18…21 (Architect rulings, arch Review Notes "O-123-18 Return to the floating window" and "O-123-19…21"; T-1 only; relayed after Sarah finishes batch 3 = O-123-17 + O-123-13…16):**
+  - **O-123-18 Return to the floating window (Owner decision 2026-10-06 19:47):**
+    - **Reopen the window:** when the profile modal («עריכת פרופיל» / «הוספת פרופיל» / «הוסף פרופיל») or «עריכת פרטי האתר» closes — after save AND after cancel / × / Escape — the floating window of the same app reopens.
+      - It is refreshed from the current state (e.g. the empty state after the last profile was deleted, per O-123-17; the new name after a site edit) and anchored to the app's tile.
+    - **Focus** goes into the window: on the button that opened the modal when it exists, otherwise on the window itself.
+    - **Exceptions (focus returns to the tile, as today):**
+      - the app is no longer in the home (removed here or elsewhere; the O-123-11 notice rules apply);
+      - the vault is locked / logged out;
+      - the modal was not opened from the floating window.
+    - Remove app is unchanged (the app leaves the home). No change to the modals' own logic, persistence or sync.
+    - **G-3 (O-123-18):** the 123.4 re-homing of AC-113-45 (focus to the tile) for these modals is superseded. Focus to the tile remains when the window cannot reopen.
+    - **Mutations:** window not reopened after save; not reopened after cancel; reopened although the app was removed.
+  - **O-123-19 «פתיחה לבדיקה» layout:**
+    - The button moves below the URL field, so the URL field keeps the full width.
+    - Label «↗ פתח» (the ↗ icon on the right of «פתח» in RTL). The accessible name stays descriptive (e.g. «פתיחת הכתובת לבדיקה בכרטיסייה חדשה»).
+    - Behaviour unchanged: the same URL as stored, `noopener,noreferrer`, disabled for an invalid address.
+    - Applies to both forms that use `AddSiteModal`.
+    - The O-123-10 check group is updated to the new label / position, and its three mutations stay.
+    - Check + mutation: button beside the field / old label / no descriptive accessible name.
+  - **O-123-20:** floating-window menu item «הסרת אפליקציה» → «הסרת אתר». Behaviour unchanged. Check + mutation (old label).
+  - **O-123-21:** remove-confirm paragraph (≥ 1 profile) → «כל הפרופילים ופרטי ההתחברות של האתר יימחקו מכל המכשירים שלך.» The title and the 0-profile variant (O-123-4) are unchanged. Check + mutation (old «…של האפליקציה…» text).
+  - **G-3:** rows cite O-123-18 / -19 / -20 / -21 wherever existing verifies pin the old strings, focus target or layout (e.g. AppContext / Catalog / RemoveApp / Navigation / OwnerFixes O-123-4 and O-123-10 groups). The wider app → site wording change stays a later, separate item.
+- **Sequencing ruling (Architect, 2026-10-06; arch "123.5 progress (2026-10-06 14:52)"):**
+  - While the Owner run is still producing findings, each new batch is implemented with T-1 only.
+  - The single final run (per the 123.5 test policy) is repeated once, only after the Owner writes **"סיימתי את כל רשימת הבדיקה"** and the last batch is in.
+  - The Manager review and the Architect review happen once, on that final tree.
+  - Sarah's 14:52 final run (94/94, O-123-1…10 + O-2) is superseded by O-123-11 / O-123-12 and is not review evidence.
+- **Harness ruling H-2 (Architect, 2026-10-06; answer to Sarah's Stage A question):** applies as written in arch. In short:
+  - serve the page through Playwright routing (no socket) in the six browser verifies (AdminWorkspace, Catalog, AppContext, D8OwnSite, Navigation, RemoveApp), with the same origin and `window.isSecureContext === true` asserted;
+  - assertions, mutation lists and anchors byte-identical, and the diff shown;
+  - a harness-only change is not "touched": `--no-mutations` + 3 sampled mutation ids each;
+  - recorded in G-3 as environment change H-2;
+  - random `127.0.0.1` failures are never BLOCKED evidence.
+- **Carried: O-2** — move the misplaced doc comment in `src/loginAssistance/messages.ts` (Architect: "fix O-2 with the next code-touching change"). Comment placement only; no copy or logic change.
+
+**Owner rules (binding, all findings):**
+- no site / hostname / serviceId branches (N-5);
+- no browser dialogs (N-4);
+- Hebrew RTL (N-6);
+- `src/admin/**` unchanged (N-1);
+- fail-closed (N-7);
+- N-2 / N-3 as before, with the single exception of `src/auth/register.ts` for O-123-2;
+- no extension / manifest change, no dependency, no migration except the one O-123-9 file.
+
+**Verifies (Stage A writes them; Stage B makes them pass):**
+- New `scripts/verifyPhase123OwnerFixes.mjs` (T-1 switches, H-1 bounds), at least one check group plus at least one mutation per finding:
+  - **O-123-1:** equal card size with a long-name fixture (test data only), plus the 2-line clamp, the `title` and the bottom action. Mutations: clamp removed; action not at the bottom / sizes differ.
+  - **O-123-2:** with a stubbed client:
+    - orphan path + an existing row → sign-out called, throws `registerDuplicate`, no `ensure_app_user_profile` call, no session left;
+    - orphan path without a row → profile created (recovery kept);
+    - fresh sign-up with a trigger-created row → success unchanged;
+    - wrong password → `registerDuplicate` as today.
+    - Mutations: sign-out removed; the existing row returned as success; orphan recovery removed.
+  - **O-123-3:** header button absent at 0 apps, present at ≥ 1, central button at 0. Mutation: header button shown at 0.
+  - **O-123-4:** no paragraph at 0 profiles; paragraph at ≥ 1; same commit path. Mutations: paragraph at 0; paragraph missing at ≥ 1.
+  - **O-123-5:** the menu closes on another window action, an outside click, Escape and window close. One mutation per close path.
+  - **O-123-6:**
+    - 0 profiles: no name field, stored as «ראשי»;
+    - 1 profile: no chips and no name shown;
+    - second add: name required and distinct (Hebrew inline error);
+    - 2 profiles: chips «ראשי» + new name, and the first can be renamed;
+    - a lone named profile: name kept, hidden;
+    - writes only via the existing reducers + `persistVault`.
+    - Mutations: name field shown at 0; chips at 1; duplicate name accepted; empty name accepted on the second add; a name rewritten on delete.
+  - **O-123-7:** the hint string is absent from user `src/`; save without credentials still works. Mutations: hint restored; save blocked without credentials.
+  - **O-123-8:**
+    - an app outcome message appears in the window, not in the top banner;
+    - the top banner keeps catalog unavailable / remove failure / selection error;
+    - "removed elsewhere" unchanged;
+    - failure → `role="alert"` red line that clears on the next action / close;
+    - the fade animation is ~2 s and is disabled under `prefers-reduced-motion`;
+    - neutral / success messages stay neutral.
+    - Mutations: message routed to the banner; `role="alert"` removed; reduced-motion rule removed; line not cleared on the next action.
+  - **N-checks:** `git diff e91b5b12 -- src/auth` limited to `register.ts`; no other N-2 file changed; no `confirm` / `alert` / `prompt`; no serviceId / hostname literals in the changed product code.
+- **Touched existing verifies:** update only the assertions superseded by an O-123-n ruling (G-13).
+
+**Test policy for 123.5 (Architect decision, binding):**
+- **T-1 per change:**
+  - `verifyPhase123OwnerFixes --no-mutations` plus the new / changed mutation ids;
+  - the directly touched verifies (`rg -l "<changed basename>" scripts --glob "verify*.mjs"`, not `scripts/retired/**`) with `--no-mutations` where supported;
+  - `npx tsc -b`.
+- **Final run:** ONE clean sequential run on ONE frozen tree, no concurrent runs:
+  - full mutation sweeps ONLY for the new / touched verifies (`verifyPhase123OwnerFixes` + every existing verify whose file or assertions changed in 123.5);
+  - every other top-level `scripts/verify*.mjs` (not `scripts/retired/**`) with `--no-mutations`, or plain where T-1 is not supported;
+  - `npx tsc -b`; `npm run build`.
+  - The admin full sweep is skipped when `git diff e91b5b12 -- src/admin` is empty; paste that empty output. The admin verifies still run with `--no-mutations` as "other top-level verifies".
+- **Fingerprint:** BASE `e91b5b12`, scope `-- src scripts supabase`, helper `%TEMP%\pv-fingerprint-123-5.mjs`. Taken immediately before and after the final run, identical.
+- **H-1 bounds:** a timeout is a FAIL, never "caught". Pages are closed in `finally`, and the server close is bounded.
+- **Report:** each job with its PASS line and elapsed time, plus the list of full-sweep vs `--no-mutations` scripts with the reason.
+
+**Required evidence (section "Fix round 123.5" in `dev-phase123.md`):**
+- Stage A plan + "before" results;
+- per finding: files / symbols changed and the check groups + mutations;
+- the O-123-2 path trace and the exact condition;
+- the G-3 / G-13 table;
+- N-1…N-8 + the `register.ts`-only auth diff (`git diff --stat e91b5b12 -- src/auth src/admin src/vault src/supabase src/execution extension supabase`);
+- the final run + fingerprints;
+- Owner manual re-check steps for O-123-1…8 (Hebrew, for the Manager's checklist);
+- Known Issues (STOP items BLOCKED);
+- the declaration.
+
 ## Acceptance / Gating Criteria
 - **G-1:** every slice satisfies N-1…N-8 and the T-1 command set, with PASS lines and elapsed times in `dev-phase123.md`.
 - **G-2:** each slice's verify covers its FR rows (FR table below), and every listed mutation fails the script when applied.
 - **G-3:** the only superseded legacy assertions edited are those of AD-123-5 / AD-123-11 (AC-104-16) / AD-123-13 / AD-123-1. Each is listed with its AD.
-- **G-4:** 123.3 Step 0 report present and accepted before any 123.3 product code or migration. Migrations in the phase are limited to the AD-123-15 aggregate and, only if BLOCKED was reported and accepted, the AD-123-16 policy.
+- **G-4:** 123.3 Step 0 report present and accepted before any 123.3 product code or migration. **Corrected 2026-10-06 (O-123-9):** the Step 0 result was admin-only; the AD-123-16 branch is triggered and its migration lands in 123.5. Migrations in the phase are limited to the AD-123-15 aggregate and, only if BLOCKED was reported and accepted, the AD-123-16 policy.
 - **G-5:** 123.4 parity matrix complete before `ManageServices.tsx` is deleted.
 - **G-6:** END OF ROUND after 123.4: full sweep + `runOfflineRegression.mjs` PASS.
 - **G-8 (AD-123-17):** from 123.2 on, the app-actions menu is reachable for every launch kind, enforced by a check plus a mutation in `verifyPhase123Catalog.mjs`. 123.3 extends both to «הסרת אפליקציה».
@@ -732,6 +977,19 @@ Context:
 - **G-11 (joint resubmission):** one frozen tree, with a fingerprint that is identical before and after the Manager review. H-1 is met: every browser verify is bounded, a timeout fails the run, the bite proof is shown, and the M1–M13 single run and the M7–M9 chain ×3 complete.
 - **G-12 (amendment A / 123.2b):** amendment A rules (i)–(iii) each covered by a check plus a mutation, with the crypto.ts / vault.ts diff limited to the outbox field. The AD-123-19 listing / add gate is covered by a check plus a mutation, the admin diff is a re-export only, and the hidden-site count is reported.
 - **G-10 (C-123.1-1):** the Owner's combined manual run (123.1 + 123.2 tables) is recorded in `dev-phase123.md` before 123.3 opens.
+- **G-13 (fix round 123.5):** the superseded assertions of 123.5 are only those replaced by an O-123-n ruling — e.g.:
+  - the removed hint text (O-123-7);
+  - the profile-name requirement on the first profile (O-123-6);
+  - the remove-dialog paragraph at 0 profiles (O-123-4);
+  - the app outcome messages in the top banner (O-123-8);
+  - the header add button at 0 apps (O-123-3);
+  - the "`supabase/` = only the AD-123-15 migration" assertions in Navigation N-1 and D8OwnSite, extended to the one O-123-9 migration file (O-123-9);
+  - the Navigation assertions "notice on the plain home / above the catalog" and mutation M10, inverted (O-123-11);
+  - the D8OwnSite / Navigation unchanged-file checks of `src/digitalHome/cloudReconcile.ts`, allowing exactly the one string line (O-123-16);
+  - any assertion on the old offer layering (form closed on offer), the old offer copy for `catalog_service_available`, or the old `LABEL_TRY_AUTO` text (O-123-13 / O-123-14 / O-123-15);
+  - the 123.4 AC-113-45 focus-to-tile re-homing for the profile modal and «עריכת פרטי האתר» (O-123-18), plus the old «פתיחה לבדיקה» label / position, «הסרת אפליקציה» and the «…של האפליקציה…» remove paragraph (O-123-19 / -20 / -21);
+  - the H-2 harness change, recorded as an environment change, not a superseded assertion.
+  Each row in the G-3 table cites its O-123-n (script / assertion / O-123-n), with a code comment naming it. Weakening any other assertion is forbidden. The auth diff is `src/auth/register.ts` only; Stage A has no `src/` / `supabase/` / `extension/` / package diff.
 - **G-7:** stop rule respected. No PRD behaviour changes for technical reasons without Architect approval.
 
 ### FR traceability (from arch; slice that delivers / verifies)
@@ -821,9 +1079,109 @@ Context:
 - **Manager note:** non-form credential entries (`resolveCredentialEntry(...).kind !== 'form'`) keep today's gating of profile UI. If PRD FRs require profile UI for them, apply the stop rule.
 
 ## Manager Review
-MANAGER_REVIEW_STATUS: APPROVED (round 1, 2026-10-05) — slice 123.4 + END OF ROUND, frozen tree sha256=fef52c66c81fe5c8a95661f0a0cb5172ccc1df7cb536c3554e1e5a84611a3ac6 (BASE WIP `c700cd60`, scope `-- src scripts supabase`). Handed to the Architect. The consolidated Owner run is a carried condition before phase close. Previous: slice 123.3 CHANGES REQUIRED round 1 (documentation only) → RC-1 closed by dev KI-7 → Architect PASS (2026-10-05) — slice 123.3 on frozen tree sha256=664646a004d28fe107964527e69b2dfc6c5ec9e88aa9d5e87f2060a8d6c318af (BASE `0dfb9de7`, scope `-- src scripts supabase`). Code and tests pass all review criteria; one Known Issue required by the Architect is missing from the evidence (RC-1). No code change and no re-run are needed (team docs are outside the fingerprint scope). Then hand off to the Architect. Previous: fix round D-123-6…8 APPROVED (round 1), Architect PASS (2026-10-05), frozen tree sha256=1de67427489e2d49eb5d6a8ff377c2ab17572e420e316d8a738bd4b6af49e387; Owner re-check moved to the consolidated end-of-phase run. Previous: APPROVED (round 2), Architect PASS (conditional) — joint resubmission: fix round D-123-1…5 + AD-123-18 + amendment A + H-1 + Known Issue 5, and slice 123.2b (AD-123-19 + addenda (a)/(b)), frozen tree sha256=c06950a50486cfef9fcfd041622aebbd3e5dfaa7a3d85e99038d9dff93ff1c21. Handed to the Architect. Owner items are carried as conditions. (Earlier: fix round round 1 BLOCKED; slice 123.2 + R-123-1 APPROVED round 1; slice 123.1 APPROVED round 2.)
+MANAGER_REVIEW_STATUS: APPROVED (2026-10-07 14:xx) — fix round 123.5 LAST BATCH (RC-123.5-1, O-123-39…44, Phase 126 Part A G-3 helper, F-1/F-2), frozen tree sha256=690c850b20c8f8fecbce4654157658029fb0c0484088cd0f6a8a4fc54d69e9dc (BASE `e91b5b12`, scope `-- src scripts supabase`), recomputed by the Manager and identical. Next: the Owner's visual check of O-123-43/44, then the commit prompt. One documentation correction for Sarah (RC-123.5-2, non-blocking). Previous: APPROVED (2026-10-07) — fix round 123.5 final run (reduced policy, Owner option "quick_parallel"; Architect ruling "Final run 123.5" 09:50 ACCEPTED). Frozen tree sha256=4226bdac1118aef05463af17c65780cb477d0a38db3e0bd041d03ee9ace5a086 (BASE `e91b5b12`, scope `-- src scripts supabase`), recomputed by the Manager and identical. Next: the Owner's «סיימתי את כל רשימת הבדיקה», the Owner-authorised final commit, phase close. One report-text correction for Sarah (RC-123.5-1, non-blocking). Previous: PLANNED (2026-10-06) — fix round 123.5 (O-123-1…21; batch 3 O-123-13…17 added 15:40; batch 4 O-123-18…21 added 19:52; late findings O-123-9 (AD-123-16 triggered), O-123-10 («פתיחה לבדיקה»), O-123-11 (notice only when a window closed), O-123-12 (no "not saved yet" line with the fields-updated notice)) opened; T-1 per batch, ONE final run after the Owner's "סיימתי את כל רשימת הבדיקה"; Owner step 10 PASS apart from O-123-12; backlog F-123-1; Owner checklist steps 4–5 PASS; the Owner wrote "סיימתי" at 11:28, so Stage A then Stage B are released together (no late findings). No Developer evidence yet. Previous: APPROVED (round 1, 2026-10-05) → Architect PASS (2026-10-05) — slice 123.4 + END OF ROUND, frozen tree sha256=fef52c66c81fe5c8a95661f0a0cb5172ccc1df7cb536c3554e1e5a84611a3ac6 (BASE WIP `c700cd60`, scope `-- src scripts supabase`). Awaiting the consolidated Owner run (checklist issued 2026-10-05) before phase close. Previous: slice 123.3 CHANGES REQUIRED round 1 (documentation only) → RC-1 closed by dev KI-7 → Architect PASS (2026-10-05) — slice 123.3 on frozen tree sha256=664646a004d28fe107964527e69b2dfc6c5ec9e88aa9d5e87f2060a8d6c318af (BASE `0dfb9de7`, scope `-- src scripts supabase`). Code and tests pass all review criteria; one Known Issue required by the Architect is missing from the evidence (RC-1). No code change and no re-run are needed (team docs are outside the fingerprint scope). Then hand off to the Architect. Previous: fix round D-123-6…8 APPROVED (round 1), Architect PASS (2026-10-05), frozen tree sha256=1de67427489e2d49eb5d6a8ff377c2ab17572e420e316d8a738bd4b6af49e387; Owner re-check moved to the consolidated end-of-phase run. Previous: APPROVED (round 2), Architect PASS (conditional) — joint resubmission: fix round D-123-1…5 + AD-123-18 + amendment A + H-1 + Known Issue 5, and slice 123.2b (AD-123-19 + addenda (a)/(b)), frozen tree sha256=c06950a50486cfef9fcfd041622aebbd3e5dfaa7a3d85e99038d9dff93ff1c21. Handed to the Architect. Owner items are carried as conditions. (Earlier: fix round round 1 BLOCKED; slice 123.2 + R-123-1 APPROVED round 1; slice 123.1 APPROVED round 2.)
 
 ### Review Notes
+2026-10-07 (after 14:11): **Fix round 123.5 last batch — Manager review: APPROVED.** Sources: dev "Last batch 123.5 — RC-123.5-1 + O-123-39…42", "Phase 126 Part A G-3 rows + O-123-43 / O-123-44 + re-run", "F-1 / F-2 test-robustness fixes + re-run", and arch from "Final run 123.5 — Architect ruling" to "Last batch (14:11)".
+- **Fingerprint:** the Manager re-ran `pv-fingerprint-123-5.mjs`: `690c850b…69e9dc`, `diff_bytes=217681 tracked_changed=45 untracked=5`. `fc pv-f12run-fp-before.txt pv-f12run-fp-after.txt`: no differences.
+- **Run** (`%TEMP%\pv-f12run-summary.txt`, 13:59:47 → 14:09:38):
+  - OwnerFixes `--no-mutations` exit 0 twice (39 groups, 1m 26s / 1m 25s);
+  - `--mutations=M24,M97,M100,M103,M143..M171` exit 0, "39 check groups, 33 selected mutations caught" (33 caught lines, including M24 / M97 / M100);
+  - `tsc exit 0` (empty log); `build exit 0` (`✓ built in 3.48s`).
+- **RC-123.5-1:**
+  - (a) the E-1 bullet now names the `persistence.ts` O-123-17 change and the O-123-9 migration, and keeps the classification;
+  - (b) and (c) were added as new Declaration lines (Owner applied the policy live; implemented set O-123-1…42 + O-2).
+  - Accepted. Non-blocking: the older Declaration block still carries the old wording ("O-123-1…27", "not applied to any database") as history, and (c) predates O-123-43/44. Covered by RC-123.5-2.
+- **O-123-39…44 match the rulings** (code read):
+  - **O-123-39:** a created custom add calls `onAddSequenceDone([definition.id])`, the same path as the store add; the O-123-28 constants / status line are gone from `src/`; the failure path keeps the form.
+  - **O-123-40:** `.sm-pick--in-home` has no opacity; only the icon / name are at 0.55; the label is 700, `#166534` on `#f1f5f9` (≈ 6.5:1).
+  - **O-123-41:** `HOME_JUST_ADDED_MS = 5000`, the single constant.
+  - **O-123-42:** `la-panel-failure-fade 5s` (hold 0–60 %, ease-out to 100 %); reduced motion `la-panel-failure-hold 3s`.
+  - **O-123-43:** `dh-home-just-added 5s ease-in-out`, 100 / 40 % at a 16 % step (1.6 s cycle), green (34, 197, 94) only, 80 → 100 % fade to 0; reduced motion `animation: none`.
+  - **O-123-44:** `CATALOG_FADE_MS = 500`; `dh-catalog-exit` opacity 1 → 0, scale 1 → 0.98, `500ms ease-out`; reduced motion `animation: none`.
+- **Phase 126 Part A helper (`scripts/lib/phase126PartA.mjs`):**
+  - `PHASE126_PART_A` = exactly `extension/manifest.json` and `extension/_locales/{he,en}/messages.json`;
+  - `withoutPhase126PartA` drops those exact strings only (no prefix / glob);
+  - `revertPhase126PartAManifest` reverts only the four Part A lines, each at most once, so any other manifest change survives the revert and fails the pin.
+  - **Users:** exactly 13 verifies (OwnerFixes, Catalog, AppContext + 10 Phase 121).
+    - In the three Phase 123 verifies, the path lists drop the three paths and a reverted-manifest-equals-BASE assertion is added.
+    - In the Phase 121 verifies, "manifest diff empty" became "reverted manifest equals `HEAD`". RemoveFieldRow / StepButtons dropped only the manifest from the `--stat` list and added the revert assertion; the four `src/loginContract` paths are kept. Runtime hashes the reverted text against the existing pin.
+  - Nothing broader. Working tree `extension/` = modified `manifest.json` + untracked `_locales/{en,he}/messages.json` only.
+- **F-1 / F-2 do not weaken coverage:**
+  - **F-1:** the per-sample exact-RGB flag became green hue family (90–160°, saturation ≥ 0.3) for every colour with alpha > 0.05; alpha ≤ 0.05 is the end of the fade. Exact `34, 197, 94` is still pinned by the static keyframe row, the reduced-motion row and the `midShadow` check. The alpha-based breathing, jump, floor and tail rows, and `samples ≥ 20`, are unchanged. M166 (colour jump) is caught.
+  - **F-2:** the single read became a poll of at most 1.5 s for a non-transparent, stable fill. The dominance assertion is unchanged and now also fails explicitly on a transparent active fill.
+- **No credentials / identifiers:** none in the three new dev sections or in the `pv-f12run-*` logs.
+- **No commit:** HEAD `e91b5b1`.
+- **`src/supabase` + `supabase` + `extension` diff vs BASE:** `persistence.ts` (O-123-17), the O-123-9 migration (untracked), and the Phase 126 Part A manifest only. The `extension/` Part A files stay out of the Phase 123 commit (Architect).
+- **RC-123.5-2 (documentation only, non-blocking):** see Required Corrections.
+
+2026-10-07: **Fix round 123.5 final run — Manager review: APPROVED.** Sources: `dev-phase123.md` "Final run 123.5 (reduced …)" and arch "Final run 123.5 — Architect ruling (2026-10-07 09:50)".
+- **Fingerprint:** the Manager re-ran `%TEMP%\pv-fingerprint-123-5.mjs`: `sha256=4226bdac…a5a086`, `diff_bytes=200006 tracked_changed=35 untracked=4`. It equals the reported before / after. `fc pv-final2-fp1.txt pv-final2-fp2.txt`: no differences.
+- **Run files:** 96 `%TEMP%\pv-final2-*` files (90 per-verify logs + fp1, fp2, summary, table, tsc, build), written 09:18:28 → 09:30:39. The newest `pv-final-*` file is 09:15:09, before the run start (09:18:37), so the old files were not used.
+- **Results:**
+  - 90 active `scripts/verifyPhase*.mjs` (count confirmed); the summary has 88 × `exit=0` and 2 × `exit=1` (101Supabase, 102Registry). The dev table lists all 90 rows and matches.
+  - `tsc exit=0` (empty log); `build exit=0`, `✓ built in 3.75s`, only the existing chunk-size warning.
+- **E-1 classification confirmed:** both failure logs stop at `signInAnonymously A` (`verifyPhase101Supabase.mjs:96`, `verifyPhase102Registry.mjs:88`) with `fetch failed` / `code: 'SELF_SIGNED_CERT_IN_CHAIN'` inside `@supabase/auth-js` fetch, before any project code. This matches R-72-1. Live coverage of the changed `src/supabase` paths comes from the Owner's checks and the O-123-17 T-1 mocks, per the Architect.
+- **Credentials / identifiers:**
+  - the final-run section has no e-mails, tokens, passwords or real user ids;
+  - the run logs contain only fixture ids (`00000000-0000-4000-8000-…`) and PowerShell temp-script names;
+  - one old local profile id remains at dev line 310 (D-123-1 era): a local vault profile id, not a user id or credential. Not blocking.
+- **No commit:** HEAD is still `e91b5b1` on `wip/phase123-recovered`. All changes are uncommitted (35 tracked + 4 untracked in scope).
+- **Observations (non-blocking):**
+  - a few legacy verifies (e.g. `verifyPhase121DeleteService`, `verifyPhase122AdminNotes`, `verifyPhase122SubmitterProfiles`) ignore `--no-mutations` and ran their mutations anyway. That is more coverage, not less;
+  - the manager plan section lists findings through O-123-21; O-123-22…36 were ruled directly in arch Review Notes and are covered by the dev evidence.
+- **RC-123.5-1 (report text only, non-blocking):** see Required Corrections.
+
+2026-10-06: **Fix round 123.5 opened** (arch Review Notes "2026-10-06 — Consolidated Owner run, early findings O-123-1…8").
+- The consolidated Owner run is in progress; findings O-123-1…8 are ruled. Late findings join 123.5 only after an Architect ruling, and are added to the plan first.
+- Two stages: Stage A (analysis + plan + `scripts/` only, nothing that touches the Owner's running app); Stage B after the Owner's "סיימתי".
+- O-123-2 is the only auth change (`register.ts` only). Manager note: the existing-row check is shared with the fresh sign-up trigger path, so the condition must target orphan recovery only; Stage A proves it.
+- **Late findings batch 4 added (2026-10-06 19:52): O-123-18…21**, T-1 only. The prompt is to be given to Sarah after batch 3 is finished.
+  - O-123-18: the floating window reopens after the profile modal / «עריכת פרטי האתר» closes (save or cancel), with focus inside. Exceptions: app gone, vault locked, not opened from the window. Supersedes the 123.4 AC-113-45 re-homing for these modals (G-3).
+  - O-123-19: «↗ פתח» below the URL field.
+  - O-123-20: «הסרת אתר».
+  - O-123-21: «…של האתר…» remove paragraph.
+- **Owner findings batch 3 added (2026-10-06 15:40): O-123-13…17**, T-1 only:
+  - O-123-13: catalog offer layered over the filled custom form, with new copy in the user-side catalog layer;
+  - O-123-14: same layering for already-in-home;
+  - O-123-15: `LABEL_TRY_AUTO` renamed;
+  - O-123-16: one string line in `cloudReconcile.ts` (narrow N-2 exception, G-3);
+  - O-123-17: dot / buttons remain after the last profile is deleted. Priority; read-only Step 1 first; STOP if sync / hydrate / outbox / `persistVault` / crypto would change.
+  - Manager correction: the O-123-11 check path was written as `src/supabase/cloudReconcile.ts`; the file is `src/digitalHome/cloudReconcile.ts`.
+- **Late finding O-123-12 added (2026-10-06):** hide «עדיין לא שמרת פרטי כניסה לאתר זה.» while the D-123-8 fields-updated notice is shown. Stored values are untouched. One check + mutation ("both messages shown together"), T-1 only.
+- **Owner run step 10 (D-123-8, approval with changed fields): PASS apart from O-123-12.** The admin version is shown, data is not deleted, and the notice + «עריכת פרופיל» appear (ruling 5).
+- **Sequencing ruling recorded:** T-1 per batch while findings keep coming. ONE final run only after the Owner's "סיימתי את כל רשימת הבדיקה" and the last batch; then a single Manager + Architect review. Sarah's 14:52 run (94/94) is superseded.
+- **Backlog F-123-1 (Owner wish, future phase; not in Phase 123):** automatic carry-over of stored values to the admin's final mapping when its fields correspond to what the user filled (e.g. the same number and kinds: identifier + password). Matched by field kind, never by site; needs its own design. Precondition kept today: stored values are never deleted by any admin change, sync, hydrate or load.
+- **Late finding O-123-11 added (2026-10-06):** the "removed elsewhere" notice is shown only when an open window of the affected app (its floating window or profile modal) was closed by the deletion; otherwise the change syncs silently. `MSG_REMOVED_ELSEWHERE_PLAIN` is removed if unused, and `cloudReconcile.ts` is unchanged. G-3: the Navigation plain-home / catalog assertions and M10 are inverted. Combined prompt to Sarah issued: O-123-9, O-123-10 and H-2 had not been recorded in `dev-phase123.md` yet, so all are relayed together.
+- **Late finding O-123-10 added (2026-10-06):** «פתיחה לבדיקה» button next to the URL field in the custom-site add form and «עריכת פרטי האתר». It opens the address exactly as it will be stored, in a new tab (`noopener,noreferrer`), and is enabled only for a valid address. No probe, no `www.` suggestion, no site branch, no stored-value change (D-123-7 stands). One check group + 3 mutations in `verifyPhase123OwnerFixes`.
+- **Owner run, part B (2026-10-06): consolidated checklist steps 4 and 5 (D-123-7: URL stored as typed; www / non-www recognition) PASS.** The other steps' results are still to be sent.
+- **Late finding O-123-9 added (2026-10-06):** a regular user cannot add a custom site (RLS `42501`; the own pending row is not selectable). The 123.3 Step 0 acceptance is corrected (it ran with an admin account), and AD-123-16 is triggered. The Owner applied the policy live. Sarah adds the byte-equivalent migration file (allowed in Stage A), the PGlite check + owner-condition mutation, and the G-3 extension of the Navigation N-1 / D8OwnSite `supabase/` assertions. The Owner re-checks with a regular user (add → remove to the end → step 15 SQL = 0 rows).
+- **Owner "סיימתי" (2026-10-06 11:28): Stage B released.** Sarah had not started Stage A yet, so both stages go in one prompt. Stage A runs first, and Stage B follows without a further wait. No late findings are ruled, so the scope stays O-123-1…8 + O-2. The Owner's step-by-step results of the consolidated checklist are still to be sent to the Manager and recorded; they do not block 123.5.
+- **O-123-2 Owner confirmation (2026-10-06):** the Owner confirmed she typed the existing account's correct password. This matches the Architect's trace (orphan recovery signs in with the typed password; a wrong password ends in `registerDuplicate`). The ruling stands as written; no data exposure, no scope change.
+- O-2 (doc comment) is carried into Stage B, per the Architect's 123.4 ruling.
+- Test policy per the Architect: T-1 per change; final run with full sweeps for new / touched verifies only, others `--no-mutations`; admin full sweep skipped on an empty `src/admin` diff; BASE `e91b5b12`.
+- After 123.5 PASS, the Owner re-checks the O-123-n items together with the remaining checklist steps.
+
+2026-10-05: **slice 123.4 + END OF ROUND Architect PASS** (arch Review Notes "Slice 123.4 … Architect review: PASS").
+- **(a)** D8OwnSite `checkHydrateScope` superseded assertion ACCEPTED. G-3 is extended by AD-123-15 for this one assertion only: `supabase/` may differ only by `supabase/migrations/20261005120000_phase123_admin_apps_without_profile.sql`.
+- **(b)** The Developer's three own-call deviations are ACCEPTED: focus return to the tile (AC-113-45, M15); the `credentials_missing` copy override in `assistanceActions.ts` (M14); `MSG_REMOVED_ELSEWHERE_PLAIN` in `loginAssistance/messages.ts`.
+- **(c)** Cleanup P1 / P2: design ACCEPTED. Owner decision: backlog, not in Phase 123.
+- Known Issues KI-1…KI-4 accepted; KI-2 and KI-3 go to the backlog.
+- Manager O-1 noted. O-2 (misplaced doc comment) is deferred to the next code-touching change, so the frozen tree stays valid.
+- Backlog (Owner): KI-1 owner edit vs admin draft (from D-123-8), cleanup P1 / P2, KI-2 notice ×, KI-3 dead code, O-2.
+- **Next:** the ONE consolidated Owner run (checklist below, Hebrew). Phase 123 closes after it is recorded without unexplained differences.
+
+**Consolidated Owner run — checklist (issued 2026-10-05; Hebrew copy given to the Owner in the Manager's response):**
+- **Scope:**
+  - D-123-6 / D-123-7 / D-123-8 re-checks;
+  - the live `[catalog-gate]` count (dev console line after login);
+  - C-123.1-1 two windows;
+  - 123.3 steps 1–5;
+  - 123.4 steps 1–5;
+  - AD-123-15 apply + admin call + three refusals.
+- **Rules:** no passwords, user ids or credential values in anything sent back; screenshots are optional and must not show them.
+- **Result:** the Owner returns PASS / FAIL + a short note per step, plus the `[catalog-gate]` numbers and the AD-123-15 row / errors. The Manager records the run, then Architect phase close.
+
 Slice 123.4 + END OF ROUND, Manager review round 1 (2026-10-05) — **APPROVED → Architect review.**
 - **Frozen tree:**
   - HEAD `c700cd60` (WIP 123.4 baseline), no commit after it.
@@ -1187,6 +1545,22 @@ Slice 123.1, round 1:
 - **Known Issue 1 (BLOCKED, Architect):** profile UI stays gated on form credential entries, with behaviour unchanged. This is the stop rule applied correctly. For the Architect at review: does AD-123-2 apply to `no-stored-credentials` / `not-configured` apps?
 
 ### Required Corrections
+Fix round 123.5 last batch (2026-10-07): APPROVED; one documentation correction, non-blocking (team docs only, outside the fingerprint scope; no code, no re-run):
+1. **RC-123.5-2:** in `dev-phase123.md`:
+   - **(a)** Owner re-check step 36 (O-123-39): "כרבע שנייה" → about half a second (O-123-44, 500 ms, with a slight shrink). Step 38 (O-123-41): add that the frame breathes softly and fades out in the last second (O-123-43).
+   - **(b)** add Hebrew Owner steps for O-123-43 and O-123-44 (the Owner's visual check is next).
+   - **(c)** in the Declaration line RC-123.5-1 c, update the implemented set to O-123-1…44 + O-2 (O-123-37 / 38 deferred to Phase 125).
+   - **(d)** mark the older Declaration lines "O-123-1…27" and "not applied to any database" as superseded by RC-123.5-1 b / c.
+
+Fix round 123.5 final run (2026-10-07): APPROVED; one report-text correction, non-blocking (no code change, no re-run; team docs are outside the fingerprint scope):
+1. **RC-123.5-1:** in `dev-phase123.md`, "Final run 123.5", E-1, correct "Phase 123 made no `src/supabase` change" (Architect ruling 09:50):
+   - `src/supabase/persistence.ts` changed for O-123-17 (`.select('id')` + `PROFILE_DELETE_UNCONFIRMED` in `deleteAccessProfileFromCloud`);
+   - `supabase/migrations/20261006120000_phase123_registry_owner_select.sql` was added for O-123-9.
+   - Keep the classification: the failure happens at the TLS handshake, before that code.
+   Two related wording fixes in the same pass:
+   - the Declaration line "the one O-123-9 migration file (not applied to any database)" should say that the Developer applied it nowhere, but the Owner applied the identical policy live in the SQL editor;
+   - "Implemented only the findings … O-123-1…27 and O-2" should list the full set (O-123-1…36, minus the deferred O-123-37 / 38, plus O-2).
+
 Slice 123.4 + END OF ROUND, round 1: none. O-1 (wording) and O-2 (doc-comment placement) are non-blocking observations; the consolidated Owner run is a carried condition.
 
 Slice 123.3, round 1 (documentation only; no code change, no re-run), CLOSED 2026-10-05 by dev KI-7:

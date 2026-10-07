@@ -10,7 +10,9 @@ import {
   bumpDualWriteGeneration,
   deleteAccessProfileFromCloud,
   deleteCloudEncryptedCredentialByLocalProfileId,
+  PROFILE_DELETE_UNCONFIRMED,
 } from '../supabase/persistence';
+import { outboxOf } from '../vault/syncOutbox';
 import { offersCredentialManagementPanel } from '../service/credentialSchema';
 import {
   deleteAccessProfile,
@@ -128,16 +130,21 @@ export default function DigitalHomeCredentialModal({
           setProfileError(friendly);
           throw new Error(friendly);
         }
+        // O-123-17: only a profile still waiting for its first cloud insert may have no row to remove.
+        const neverInCloud = outboxOf(vaultState).profileIds.includes(profileId);
         try {
           // AD-123-18 (4): an in-flight background save must not write the row back.
           bumpDualWriteGeneration();
           await deleteAccessProfileFromCloud(profileId);
         } catch (error) {
-          if (import.meta.env.DEV) {
-            console.warn('[vault] cloud delete-profile failed:', error);
+          const noRow = (error as { code?: unknown } | null)?.code === PROFILE_DELETE_UNCONFIRMED;
+          if (!(noRow && neverInCloud)) {
+            if (import.meta.env.DEV) {
+              console.warn('[vault] cloud delete-profile failed:', error);
+            }
+            setProfileError(PROFILE_DELETE_CLOUD_FAILED_MESSAGE);
+            throw new Error(PROFILE_DELETE_CLOUD_FAILED_MESSAGE);
           }
-          setProfileError(PROFILE_DELETE_CLOUD_FAILED_MESSAGE);
-          throw new Error(PROFILE_DELETE_CLOUD_FAILED_MESSAGE);
         }
         await applyVaultUpdate((state) =>
           deleteAccessProfile(state, profileId, replacementDefaultId),

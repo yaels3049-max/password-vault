@@ -107,7 +107,7 @@ import { ProfileResolution } from './profile';
 import { AppVaultShell } from './trust';
 import DigitalHomeCredentialModal from './loginAssistance/DigitalHomeCredentialModal';
 import { offersCredentialManagementPanel } from './service/credentialSchema';
-import { isUserCustomApp, type ProfileManagementRequest } from './digitalHome/appContext';
+import { appHasProfile, isUserCustomApp, type ProfileManagementRequest } from './digitalHome/appContext';
 import { userFacingCategories, type AddOutcome } from './digitalHome/catalogModel';
 import AppCatalogModal from './digitalHome/AppCatalogModal';
 import EditSiteDetailsModal from './digitalHome/EditSiteDetailsModal';
@@ -262,6 +262,8 @@ function App() {
   /** AD-123-3 — the single profile-management host (one per app). */
   const [profileRequest, setProfileRequest] = useState<ProfileManagementRequest | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  /** O-123-35 — apps just added from the catalog; their home tiles are highlighted briefly. */
+  const [justAddedIds, setJustAddedIds] = useState<string[]>([]);
   const [siteEditServiceId, setSiteEditServiceId] = useState<string | null>(null);
   /** AD-123-18 (3) — apps changed by a cloud reconcile; Digital Home closes its window on them. */
   const [homeReconcile, setHomeReconcile] = useState<{
@@ -975,6 +977,65 @@ function App() {
       : { status: 'failed', message: SELECTION_PERSIST_FAILED_MESSAGE };
   }
 
+  /**
+   * O-123-35 — catalog picker: the selected apps in ONE vault update and ONE persistVault, through
+   * the same add steps as changeSelection(id, 'add') (outbox via recordLocalCreations, AD-123-18).
+   * All-or-nothing: on failure no app is added.
+   */
+  async function addApps(ids: string[]): Promise<AddOutcome> {
+    const removalId = pendingRemovalRef.current?.serviceId;
+    if (removalId && ids.includes(removalId) && (await commitPendingRemoval()) === 'failed') {
+      return { status: 'failed', message: SELECTION_REMOVE_CLOUD_FAILED_MESSAGE };
+    }
+    const toAdd = [...new Set(ids)].filter(
+      (id) => !vaultStateRef.current.selectedIds.includes(id) && !selectionLockRef.current.has(id),
+    );
+    if (toAdd.length === 0) {
+      return { status: 'already_added' };
+    }
+    toAdd.forEach((id) => selectionLockRef.current.add(id));
+    setPendingIds((prev) => new Set([...prev, ...toAdd]));
+    setSelectionError(null);
+    try {
+      const knownBuiltins = toAdd
+        .filter((id) => isKnownBuiltinServiceId(id))
+        .map((id) => getKnownBuiltinDefinition(id))
+        .filter((known) => known !== undefined && known !== null);
+      if (knownBuiltins.length > 0) {
+        for (const known of knownBuiltins) {
+          await ensureKnownBuiltinRegistryRow(known);
+        }
+        clearRegistryCatalogCache();
+        const refreshed = await loadBuiltinCatalogDefinitions();
+        setRuntimeCategoryCatalog(await loadRegistryCategories());
+        setCatalogDefinitions(refreshed);
+      }
+      toAdd.forEach((id) => noteDeliberateAdd(id));
+      const vaultState = vaultStateRef.current;
+      const next = recordLocalCreations(
+        vaultState,
+        toAdd.reduce((state, id) => addToSelection(state, id), vaultState),
+      );
+      await persistSelectionState(next);
+      vaultStateRef.current = next;
+      setVaultState(next);
+      return { status: 'added' };
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('[serviceManagement] multi-add persist failed:', error);
+      }
+      setSelectionError(SELECTION_PERSIST_FAILED_MESSAGE);
+      return { status: 'failed', message: SELECTION_PERSIST_FAILED_MESSAGE };
+    } finally {
+      toAdd.forEach((id) => selectionLockRef.current.delete(id));
+      setPendingIds((prev) => {
+        const nextPending = new Set(prev);
+        toAdd.forEach((id) => nextPending.delete(id));
+        return nextPending;
+      });
+    }
+  }
+
   /** AD-123-11 — a failed removal leaves local as it was, also after the local write (steps 3–4). */
   async function restoreLocalAfterFailedRemove(previous: VaultState) {
     try {
@@ -1379,8 +1440,13 @@ function App() {
       catalogError={catalogError}
       onRetryCatalog={() => void retryCatalogLoad()}
       onAddApp={addApp}
+      onAddApps={addApps}
       onAddCustom={addCustomService}
       onClose={() => setCatalogOpen(false)}
+      onAdded={(ids) => {
+        setCatalogOpen(false);
+        setJustAddedIds(ids);
+      }}
     />
   ) : null;
 
@@ -1423,6 +1489,7 @@ function App() {
       {removeRequestService && (
         <RemoveAppConfirmDialog
           serviceName={removeRequestService.name}
+          hasProfiles={appHasProfile(vaultState, removeRequestService.id)}
           onConfirm={() => beginPendingRemoval(removeRequestService.id)}
           onCancel={() => setRemoveRequestId(null)}
         />
@@ -1509,7 +1576,13 @@ function App() {
 
               onRemoveApp={(service) => void requestRemoveApp(service.id)}
 
+              windowModalOpen={profileHost !== null || siteEditHost !== null}
+
               cloudReconcile={homeReconcile}
+
+              justAddedIds={justAddedIds}
+
+              onJustAddedShown={() => setJustAddedIds([])}
 
             />
 

@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { withTempDir } from './lib/tempDir.mjs';
+import { revertPhase126PartAManifest } from './lib/phase126PartA.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
@@ -332,8 +333,9 @@ console.log('  ✓ 5. editor: tested action stays; follow-up in its own panel; m
     }
   }
   assertNotIncludes(uiSrc.toLowerCase(), 'mizrahi', 'editor site-agnostic');
-  const manifestDiff = execSync('git diff HEAD -- extension/manifest.json', { cwd: root }).toString();
-  assert(manifestDiff.trim() === '', 'manifest unchanged');
+  // Phase 126 Part A (G-3): the manifest may differ only by the Part A lines (was: git diff empty).
+  const manifestHead = execSync('git show HEAD:extension/manifest.json', { cwd: root }).toString().replace(/\r\n/g, '\n');
+  assert(revertPhase126PartAManifest(readFileSync(join(root, 'extension/manifest.json'), 'utf8')) === manifestHead, 'manifest unchanged');
 }
 console.log('  ✓ 6. no site / hostname / serviceId branches; final_submit untouched; manifest unchanged');
 

@@ -20,6 +20,7 @@ import { revertD12168LocatorEdits } from './lib/phase121D68LocatorEdits.mjs';
 import { revertD12170ValidatedAutofillEdits } from './lib/phase121D70ValidatedAutofillEdits.mjs';
 import { revertD12171EligibilityEdits } from './lib/phase121D71Edits.mjs';
 import { withTempDir } from './lib/tempDir.mjs';
+import { revertPhase126PartAManifest } from './lib/phase126PartA.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
@@ -290,7 +291,8 @@ function checkScope(c) {
           : read(rel);
     assert(sha(bytes) === pin, `${rel} byte-identical (runtime fill / locator rules unchanged)`);
   }
-  assert(git('show HEAD:extension/manifest.json') === read('extension/manifest.json'), 'manifest unchanged');
+  // Phase 126 Part A (G-3): the manifest may differ only by the Part A lines.
+  assert(git('show HEAD:extension/manifest.json') === revertPhase126PartAManifest(read('extension/manifest.json')), 'manifest unchanged');
   const bg = read('extension/background.js');
   assert(bg.includes('ADMIN_INSPECT_READINESS_MAX_WAIT_MS = 10000') && bg.includes('ADMIN_INSPECT_READINESS_POLL_MS = 250'), 'existing bounds 10 s / 250 ms unchanged');
   for (const files of [bg.match(/SPECIAL_INSPECT_FILES\s*=\s*\[[^\]]*\]/), bg.match(/files:\s*\[[^\]]*page-structure-inspect\.js[^\]]*\]/)]) {

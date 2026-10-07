@@ -34,6 +34,7 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { makeTempDir, removeTempDir } from './lib/tempDir.mjs';
 import { formatElapsed, mutationId, parseMutationArgs, selectMutations } from './lib/mutationArgs.mjs';
+import { assertSecureContext, registerHarnessDir, routeHarness } from './lib/routeHarness.mjs';
 import { checkTimeoutMessage, closeServer, failRun, isTimeout, mutationTimeoutMessage, withTimeout } from './lib/withTimeout.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -518,8 +519,19 @@ function withoutKi3(src, edits, rel) {
   return out;
 }
 
+/**
+ * O-123-17 (Phase 123.5, G-3): removes deleteAccessProfileFromCloud's delete-proof hunks; their exact
+ * text is pinned by verifyPhase123OwnerFixes (O17_PERSIST_HUNKS).
+ */
+function withoutO17DeleteProof(src) {
+  return src
+    .replace(/\/\*\* O-123-17: `code` of the error thrown when the cloud delete removed no row\. \*\/\nexport const PROFILE_DELETE_UNCONFIRMED = '[^']+';\n\n/, '')
+    .replace("  const { data, error } = await supabase\n    .from('access_profiles')\n    .delete()\n    .eq('user_id', userId)\n    .eq('local_profile_id', trimmed)\n    .select('id');\n", "  const { error } = await supabase\n    .from('access_profiles')\n    .delete()\n    .eq('user_id', userId)\n    .eq('local_profile_id', trimmed);\n")
+    .replace(/  \/\/ O-123-17: a delete that matched no row proves nothing[^\n]*\n  if \(!data \|\| data\.length === 0\) \{\n    throw Object\.assign\(new Error\('Cloud profile delete removed no row'\), \{\n      code: PROFILE_DELETE_UNCONFIRMED,\n    \}\);\n  \}\n/, '');
+}
+
 function checkKi5SharedPredicate(overrides) {
-  const now = withoutKi3(source(overrides, PERSISTENCE), KI3_PERSISTENCE, PERSISTENCE);
+  const now = withoutO17DeleteProof(withoutKi3(source(overrides, PERSISTENCE), KI3_PERSISTENCE, PERSISTENCE));
   const ki5Base = git('show', `${KI5_BASE}:${PERSISTENCE}`).replace(/\r\n/g, '\n');
   assert(now.replace(D8_IMPORT, D8_ACCEPTED_IMPORT).replace(D8_HYDRATE_BLOCK, D8_ACCEPTED_BLOCK) === ki5Base, `KI-5: persistence.ts identical to ${KI5_BASE.slice(0, 8)} apart from the own-site block predicate / comment and its import`);
   const own = source(overrides, OWN_SITE);
@@ -537,22 +549,37 @@ function checkHydrateScope(overrides) {
   const hydrateNow = topLevelFunction(now, 'hydrateWorkspaceFromCloud') ?? '';
   assert(hydrateNow.includes(D8_HYDRATE_BLOCK), 'N-2: the D-123-8 block sits inside hydrateWorkspaceFromCloud');
   assert(hydrateNow.indexOf(D8_HYDRATE_BLOCK) > hydrateNow.indexOf("for (const row of (customRows ?? []) as ServiceRegistryRow[])"), 'N-2: the block is in the own-site (customRows) merge');
-  assert(now.replace(D8_IMPORT, '').replace(D8_HYDRATE_BLOCK, '') === baseSource(PERSISTENCE), `N-2: persistence.ts identical to ${BASE.slice(0, 8)} apart from the D-123-8 import + own-site block`);
+  assert(withoutO17DeleteProof(now).replace(D8_IMPORT, '').replace(D8_HYDRATE_BLOCK, '') === baseSource(PERSISTENCE), `N-2: persistence.ts identical to ${BASE.slice(0, 8)} apart from the D-123-8 import + own-site block (and the O-123-17 delete proof)`);
   // Superseded by the KI-3 ruling (was: sessionSyncScope.ts unchanged): only the KI-3 edits.
   const scopeRel = 'src/supabase/sessionSyncScope.ts';
   assert(withoutKi3(source(overrides, scopeRel), KI3_SCOPE, scopeRel) === baseSource(scopeRel), `N-2: ${scopeRel} identical to ${BASE.slice(0, 8)} apart from the KI-3 seen-in-cloud set`);
-  const others = ['src/vault/crypto.ts', 'src/vault/vault.ts', 'src/supabase/registryPersistence.ts', 'src/registry/registryMapper.ts', 'src/digitalHome/cloudReconcile.ts'];
+  const others = ['src/vault/crypto.ts', 'src/vault/vault.ts', 'src/supabase/registryPersistence.ts', 'src/registry/registryMapper.ts'];
   for (const rel of others) assert(git('diff', '--name-only', BASE, '--', rel).trim() === '' && git('ls-files', '--others', '--exclude-standard', '--', rel).trim() === '', `N-2: ${rel} unchanged vs ${BASE.slice(0, 8)}`);
+  // O-123-16 (G-3, narrow N-2 copy exception): cloudReconcile.ts may differ by the MSG_REMOVED_ELSEWHERE line only.
+  const reconcileRel = 'src/digitalHome/cloudReconcile.ts';
+  const o16 = [
+    "export const MSG_REMOVED_ELSEWHERE = 'האתר או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.';",
+    "export const MSG_REMOVED_ELSEWHERE = 'האפליקציה או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.';",
+  ];
+  const reconcile = source(overrides, reconcileRel).replace(/\r\n/g, '\n');
+  assert(reconcile.split(o16[0]).length === 2 && reconcile.replace(o16[0], () => o16[1]) === baseSource(reconcileRel), `N-2: ${reconcileRel} identical to ${BASE.slice(0, 8)} apart from the O-123-16 MSG_REMOVED_ELSEWHERE line`);
   // AD-123-15 (Phase 123.4): the admin-only aggregate migration is the one allowed supabase/ change;
   // its content is checked by verifyPhase123Navigation. Every other supabase/ path stays unchanged.
   const AD_123_15_MIGRATION = 'supabase/migrations/20261005120000_phase123_admin_apps_without_profile.sql';
+  // O-123-9 (Phase 123.5, G-3): the owner-select registry policy is the one further allowed file;
+  // its content is checked by verifyPhase123OwnerFixes.
+  const O_123_9_MIGRATION = 'supabase/migrations/20261006120000_phase123_registry_owner_select.sql';
   const supa = [
     ...git('diff', '--name-only', BASE, '--', 'supabase').split('\n'),
     ...git('ls-files', '--others', '--exclude-standard', '--', 'supabase').split('\n'),
   ].map((p) => p.trim()).filter(Boolean);
-  assert(supa.every((p) => p === AD_123_15_MIGRATION), `N-2: supabase unchanged vs ${BASE.slice(0, 8)} apart from the AD-123-15 migration (${supa.join(', ')})`);
+  assert(supa.every((p) => p === AD_123_15_MIGRATION || p === O_123_9_MIGRATION), `N-2: supabase unchanged vs ${BASE.slice(0, 8)} apart from the AD-123-15 and O-123-9 migrations (${supa.join(', ')})`);
+  // O-123-23 (KI-123.5-5, G-3): AdminGate.tsx / admin.css also allowed — content pinned by verifyPhase123OwnerFixes checkAdminLoginScreen.
+  const O23_ADMIN = ['src/admin/AdminGate.tsx', 'src/admin/admin.css'];
+  // O-123-29…32 (G-3): Owner-excepted admin shell / RegistryAdmin / fill-test grid — pinned by verifyPhase123OwnerFixes.
+  O23_ADMIN.push('src/admin/AdminApp.tsx', 'src/admin/RegistryAdmin.tsx', 'src/admin/AdminFillTestGrid.tsx');
   const admin = git('diff', '--name-only', BASE, '--', 'src/admin').split('\n').filter(Boolean);
-  assert(admin.every((p) => p === 'src/admin/ApprovalQueue.tsx'), `N-2: src/admin unchanged apart from the D-123-6 line (${admin.join(', ')})`);
+  assert(admin.every((p) => p === 'src/admin/ApprovalQueue.tsx' || O23_ADMIN.includes(p)), `N-2: src/admin unchanged apart from the D-123-6 line (${admin.join(', ')})`);
   return `N-2: persistence.ts vs ${BASE.slice(0, 8)} = D-123-8 import + own-site block (+ KI-3 refresh rule) only; sync scope = KI-3 set only; crypto / vault / registry / mapper / reconcile / supabase / src/admin unchanged`;
 }
 
@@ -685,7 +712,11 @@ function serve(dir) {
       res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
       res.end(readFileSync(file));
     });
-    server.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${server.address().port}/`, close: () => closeServer(server) }));
+    server.listen(0, '127.0.0.1', () => {
+      const url = `http://127.0.0.1:${server.address().port}/`;
+      registerHarnessDir(url, dir);
+      resolve({ url, close: () => closeServer(server) });
+    });
   });
 }
 
@@ -693,6 +724,7 @@ let browser = null;
 async function checkBrowser(url, fixture) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'he-IL' });
   try {
+    await routeHarness(context, url);
     const page = await context.newPage();
     const errors = [];
     const native = [];
@@ -702,6 +734,7 @@ async function checkBrowser(url, fixture) {
       await d.dismiss();
     });
     await page.goto(url);
+    await assertSecureContext(page);
     await page.waitForFunction(() => window.__pvReady, null, { timeout: 30000 });
     await page.waitForSelector('[data-service-tile]', { timeout: 10000 });
     assert((await page.evaluate(() => document.documentElement.dir)) === 'rtl', 'Hebrew RTL document');

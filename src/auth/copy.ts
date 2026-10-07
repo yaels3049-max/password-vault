@@ -1,7 +1,7 @@
 /** Friendly Hebrew auth errors — never expose stack / DB jargon (AC-109-25). */
 
 export const AUTH_COPY = {
-  productTitle: 'כספת דיגיטלית',
+  productTitle: 'הבית הדיגיטלי',
   loginTab: 'התחברות',
   registerTab: 'יצירת חשבון',
   email: 'אימייל',
@@ -30,7 +30,9 @@ export const AUTH_COPY = {
   vaultUnlockFailed:
     'הסיסמה לא פתחה את הכספת במכשיר זה. בדקו את הסיסמה ונסו שוב.',
   registerGenericFailure: 'לא ניתן ליצור את החשבון כרגע. נסו שוב מאוחר יותר.',
-  registerDuplicate: 'כבר קיים חשבון עם כתובת אימייל זו. נסו להתחבר במסך «התחברות».',
+  registerDuplicate: 'כבר קיים חשבון עם כתובת אימייל זו. נסו להתחבר במסך התחברות.',
+  /** O-123-33: the single button of the duplicate-e-mail dialog. */
+  registerDuplicateClose: 'סגור',
   registerDatabaseError:
     'יצירת החשבון נכשלה בשרת (פרופיל). ודאו שמיגרציות Phase 109 הורצו, או מחקו משתמש ישן ב-Authentication ונסו שוב.',
   registerConfirmEmail:

@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { AccessProfile } from '../profile';
 import { profilesForService } from '../profile';
-import type { Credential } from '../credentials';
+import { hasCompleteCredentials, type Credential } from '../credentials';
 import { appContextActions, initialActiveProfile, isUserCustomApp } from '../digitalHome/appContext';
 import { hiddenCredentialFieldIds } from '../digitalHome/ownSiteDefinition';
 import type { Service } from '../mockServices';
@@ -27,6 +27,7 @@ import {
   LABEL_ADD_PROFILE,
   LABEL_APP_ACTIONS,
   LABEL_CLOSE,
+  LABEL_COMPLETE_CREDENTIALS,
   LABEL_COPY,
   LABEL_EDIT_PROFILE,
   LABEL_EDIT_SITE_DETAILS,
@@ -53,6 +54,8 @@ import {
 const COPY_CONFIRM_MS = 2200;
 const STATUS_MS = 8000;
 
+type PanelStatus = { message: string; failure: boolean };
+
 export interface LoginAssistancePanelProps {
   service: Service;
   accessProfiles: AccessProfile[];
@@ -62,8 +65,6 @@ export interface LoginAssistancePanelProps {
   /** Same logo URL as the Home tile (when resolved). */
   logoSrc?: string | null;
   onClose: () => void;
-  /** Bubble non-blocking status to Digital Home banner (optional). */
-  onStatus?: (message: string, tone?: 'info' | 'warn' | 'success') => void;
   /** App is in the vault `customServices` (AD-123-14). */
   isCustom?: boolean;
   /** D-123-8 — own site following its approved registry entry (fields may have changed). */
@@ -85,7 +86,6 @@ export default function LoginAssistancePanel({
   anchorRect,
   logoSrc = null,
   onClose,
-  onStatus,
   isCustom = false,
   ownSiteApproved = false,
   onEditProfile,
@@ -115,6 +115,7 @@ export default function LoginAssistancePanel({
   const profileIdsKey = profiles.map((profile) => profile.id).join('|');
 
   const panelRef = useRef<HTMLElement | null>(null);
+  const appMenuRef = useRef<HTMLDivElement | null>(null);
   const [coords, setCoords] = useState<FloatingPanelCoords>(() =>
     computeFloatingPanelPosition(anchorRect),
   );
@@ -127,7 +128,8 @@ export default function LoginAssistancePanel({
   const [copyFlashFieldId, setCopyFlashFieldId] = useState<string | null>(null);
   const [autoBusyProfileId, setAutoBusyProfileId] = useState<string | null>(null);
 
-  const [panelStatus, setPanelStatus] = useState<string | null>(null);
+  const [panelStatus, setPanelStatus] = useState<PanelStatus | null>(null);
+  const [failureFlash, setFailureFlash] = useState(0);
   const [logoFailed, setLogoFailed] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
 
@@ -137,6 +139,7 @@ export default function LoginAssistancePanel({
     setPasswordVisible(false);
     setCopyFlashFieldId(null);
     setPanelStatus(null);
+    setFailureFlash(0);
     setLogoFailed(false);
     setAppMenuOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset per service only
@@ -166,6 +169,12 @@ export default function LoginAssistancePanel({
     activeProfileId !== null &&
     entry.kind === 'form' &&
     hiddenCredentialFieldIds(activeCredential, entry.fields.map((field) => field.id)).length > 0;
+  // O-123-26: same building blocks as the tile dot (O-123-25); no-stored-credentials counts as complete.
+  const activeProfileComplete =
+    entry.kind === 'no-stored-credentials' ||
+    (entry.kind === 'form' &&
+      activeProfileId !== null &&
+      hasCompleteCredentials(credentialsByProfileId[activeProfileId], entry.fields));
 
   useLayoutEffect(() => {
     function liveAnchor(): DOMRect {
@@ -220,10 +229,27 @@ export default function LoginAssistancePanel({
   }, [onClose, service.id]);
 
   function showPanelStatus(message: string) {
-    setPanelStatus(message);
+    const next: PanelStatus = { message, failure: false };
+    setPanelStatus(next);
     window.setTimeout(() => {
-      setPanelStatus((current) => (current === message ? null : current));
+      setPanelStatus((current) => (current === next ? null : current));
     }, STATUS_MS);
+  }
+
+  // A failure stays until the next action in this window or its close.
+  function showPanelFailure(message: string) {
+    setPanelStatus({ message, failure: true });
+    setFailureFlash((n) => n + 1);
+  }
+
+  function handleWindowClickCapture(event: ReactMouseEvent<HTMLElement>) {
+    const target = event.target as Element;
+    if (appMenuOpen && !appMenuRef.current?.contains(target)) {
+      setAppMenuOpen(false);
+    }
+    if (panelStatus?.failure && target.closest('button')) {
+      setPanelStatus(null);
+    }
   }
 
   function selectProfile(profileId: string) {
@@ -235,12 +261,10 @@ export default function LoginAssistancePanel({
   function handleOpenSite() {
     const result = openAssistanceUrl(service);
     if (result.status === 'unavailable') {
-      showPanelStatus(result.message);
-      onStatus?.(result.message, 'warn');
+      showPanelFailure(result.message);
       return;
     }
     showPanelStatus(result.message);
-    onStatus?.(result.message, 'success');
   }
 
   async function handleCopy(fieldId: string, value: string) {
@@ -252,8 +276,7 @@ export default function LoginAssistancePanel({
       }, COPY_CONFIRM_MS);
       return;
     }
-    showPanelStatus(MSG_COPY_FAILED);
-    onStatus?.(MSG_COPY_FAILED, 'warn');
+    showPanelFailure(MSG_COPY_FAILED);
   }
 
   async function handleTryAuto() {
@@ -277,7 +300,6 @@ export default function LoginAssistancePanel({
     // D-117-18 — in-progress scoped to this execution only.
     if (managedClaim) {
       showPanelStatus(MSG_MANAGED_IN_PROGRESS);
-      onStatus?.(MSG_MANAGED_IN_PROGRESS, 'info');
     }
     try {
       const result = await attemptExistingAutomaticCompletion(
@@ -285,14 +307,11 @@ export default function LoginAssistancePanel({
         runningProfileId,
         credentialsByProfileId,
       );
-      showPanelStatus(result.message);
-      const tone =
-        result.outcome === 'success'
-          ? 'success'
-          : result.outcome === 'opened'
-            ? 'info'
-            : 'warn';
-      onStatus?.(result.message, tone);
+      if (result.outcome === 'success' || result.outcome === 'opened') {
+        showPanelStatus(result.message);
+      } else {
+        showPanelFailure(result.message);
+      }
     } finally {
       setAutoBusyProfileId((current) =>
         current === runningProfileId ? null : current,
@@ -309,13 +328,16 @@ export default function LoginAssistancePanel({
       data-support-level={level}
       data-launch-kind={launchKind}
       data-floating="true"
+      tabIndex={-1}
       style={{
         top: coords.top,
         left: coords.left,
         width: coords.width,
         maxHeight: coords.maxHeight,
       }}
+      onClickCapture={handleWindowClickCapture}
     >
+      {failureFlash > 0 && <span key={failureFlash} className="la-panel-failure-flash" aria-hidden="true" />}
       <header className="la-panel-header">
         <div className="la-panel-heading">
           <h2 className="la-panel-title">
@@ -335,7 +357,7 @@ export default function LoginAssistancePanel({
           </h2>
         </div>
         {showAppMenu && (
-          <div className="la-app-menu" data-app-menu="true">
+          <div className="la-app-menu" data-app-menu="true" ref={appMenuRef}>
             <button
               type="button"
               className="la-icon-btn la-app-menu-btn"
@@ -459,9 +481,12 @@ export default function LoginAssistancePanel({
           )}
         </div>
       ) : launchKind === 'missing-user-credentials' ? (
-        <div className="la-fields" role="status">
-          <p className="la-empty la-empty--notice">{MSG_MISSING_USER_CREDENTIALS_LAUNCH}</p>
-        </div>
+        // O-123-12: the fields-updated notice already says what to do; no "not saved yet" line with it.
+        !showFieldsUpdated && (
+          <div className="la-fields" role="status">
+            <p className="la-empty la-empty--notice">{MSG_MISSING_USER_CREDENTIALS_LAUNCH}</p>
+          </div>
+        )
       ) : (
       <div className="la-fields">
         {loginFields.map((field) => {
@@ -526,7 +551,7 @@ export default function LoginAssistancePanel({
             data-action="edit-profile"
             onClick={() => onEditProfile(service, activeProfileId)}
           >
-            {LABEL_EDIT_PROFILE}
+            {activeProfileComplete ? LABEL_EDIT_PROFILE : LABEL_COMPLETE_CREDENTIALS}
           </button>
         )}
         {profileUi && actions.add_profile && !actions.empty_state && onAddProfile && (
@@ -556,9 +581,14 @@ export default function LoginAssistancePanel({
         )}
       </div>
 
-      {panelStatus && (
+      {panelStatus?.failure && (
+        <p className="la-panel-status la-panel-status--error" role="alert">
+          {panelStatus.message}
+        </p>
+      )}
+      {panelStatus && !panelStatus.failure && (
         <p className="la-panel-status" role="status" aria-live="polite">
-          {panelStatus}
+          {panelStatus.message}
         </p>
       )}
     </section>

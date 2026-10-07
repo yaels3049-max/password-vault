@@ -357,6 +357,9 @@ export async function deleteCloudEncryptedCredentialByLocalProfileId(
   }
 }
 
+/** O-123-17: `code` of the error thrown when the cloud delete removed no row. */
+export const PROFILE_DELETE_UNCONFIRMED = 'profile_delete_unconfirmed';
+
 /**
  * Explicit user delete-profile only (D-109-26 / AC-109-41).
  * Cascades encrypted_credentials via FK. Dual-write must NOT delete profiles by omission.
@@ -380,14 +383,21 @@ export async function deleteAccessProfileFromCloud(
     throw new Error(CLOUD_REMOVE_UNAVAILABLE_MESSAGE);
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('access_profiles')
     .delete()
     .eq('user_id', userId)
-    .eq('local_profile_id', trimmed);
+    .eq('local_profile_id', trimmed)
+    .select('id');
 
   if (error) {
     throw error;
+  }
+  // O-123-17: a delete that matched no row proves nothing — a surviving row would come back.
+  if (!data || data.length === 0) {
+    throw Object.assign(new Error('Cloud profile delete removed no row'), {
+      code: PROFILE_DELETE_UNCONFIRMED,
+    });
   }
   forgetProfile(userId, trimmed);
 }

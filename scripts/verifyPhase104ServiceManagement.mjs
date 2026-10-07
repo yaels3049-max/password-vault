@@ -81,9 +81,10 @@ function main() {
     !manage.includes('גילוי שירותים'),
     'Legacy "גילוי שירותים" section title must be replaced',
   );
+  // O-123-35 (G-3): the passive in-home label is «✓ כבר נוסף» (catalogMessages), was «כבר בבית הדיגיטלי».
   assert(
-    manage.includes('כבר בבית הדיגיטלי'),
-    'Added services in add section must show passive "כבר בבית הדיגיטלי" state',
+    manage.includes('LABEL_ALREADY_IN_HOME') && read('src/digitalHome/catalogMessages.ts').includes("'✓ כבר נוסף'"),
+    'Added services in add section must show the passive «✓ כבר נוסף» state',
   );
 
   // AC-104-4 — exactly one custom-add entry point; legacy per-category button removed
@@ -204,9 +205,12 @@ function main() {
     'App must persist before committing selection to state (no optimistic tile)',
   );
   // Superseded by AD-123-9: the catalog disables an add while it is pending.
+  // O-123-35 (G-3): the card itself is the control — aria-disabled and not selectable unless
+  // available (was a disabled «הוספה» button while pending).
   assert(
     manage.includes('catalogItemState(service.id, selectedIds, pendingIds)') &&
-      manage.includes("disabled={itemState === 'pending'}"),
+      manage.includes("aria-disabled={itemState !== 'available' ? true : undefined}") &&
+      manage.includes("if (catalogItemState(serviceId, selectedIds, pendingIds) !== 'available') return;"),
     'Catalog must disable controls during pending operations (AD-123-9)',
   );
 
@@ -287,8 +291,10 @@ function main() {
     manage.includes('catalogServiceAlreadyInHomeMessage(catalogOffer.displayName)'),
     'already-in-home UI must use matched catalog displayName',
   );
+  // O-123-13 (G-3): the catalog-available title moved to catalogOfferFoundTitle (src/digitalHome/catalogMessages.ts).
   assert(
-    manage.includes('catalogServiceAvailableTitle(catalogOffer.displayName)'),
+    manage.includes('catalogOfferFoundTitle(catalogOffer.displayName)') &&
+      manage.includes('catalogOfferSupportedText(catalogOffer.displayName)'),
     'catalog-available UI must use matched catalog displayName',
   );
   assert(

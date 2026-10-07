@@ -25,6 +25,7 @@ import { chromium } from 'playwright';
 import { PGlite } from '@electric-sql/pglite';
 import { makeTempDir, removeTempDir } from './lib/tempDir.mjs';
 import { formatElapsed, mutationId, parseMutationArgs, selectMutations } from './lib/mutationArgs.mjs';
+import { assertSecureContext, registerHarnessDir, routeHarness } from './lib/routeHarness.mjs';
 import { checkTimeoutMessage, closeServer, failRun, isTimeout, mutationTimeoutMessage, withTimeout } from './lib/withTimeout.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -63,7 +64,9 @@ const HE = {
   catalogDownEmpty: 'קטלוג האפליקציות אינו זמין כרגע.',
   fullScreenError: 'לא ניתן לטעון את קטלוג האתרים מהרשת.',
   retry: 'נסו שוב',
-  removedClosed: 'האפליקציה או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.',
+  // O-123-16 (G-3): was «האפליקציה או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.».
+  removedClosed: 'האתר או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.',
+  removedClosedBase: 'האפליקציה או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.',
   removedPlain: 'האפליקציה או הפרופיל נמחקו בחלון אחר.',
 };
 
@@ -267,16 +270,26 @@ function checkNChecks(overrides) {
   }
   const dash = source(overrides, DASH);
   assert(/className="dh-reconcile-notice" role="status" dir="rtl"/.test(dash), 'N-6 / AD-123-18: the notice is an RTL status');
-  assert(source(overrides, LA_MESSAGES).includes(`'${HE.removedPlain}'`) && source(overrides, RECONCILE).includes(`'${HE.removedClosed}'`), 'N-6: Hebrew notice copy');
-  assert(git('diff', '--name-only', BASE, '--', RECONCILE).trim() === '', `N-2: ${RECONCILE} unchanged since ${BASE.slice(0, 8)} (frozen by verifyPhase123D8OwnSite)`);
+  // Superseded by O-123-11 (Phase 123.5): the plain variant is removed; only the closed-window copy stays.
+  assert(!source(overrides, LA_MESSAGES).includes(`'${HE.removedPlain}'`) && source(overrides, RECONCILE).includes(`'${HE.removedClosed}'`), 'N-6 / O-123-11: Hebrew closed-window notice copy only (plain variant removed)');
+  // O-123-16 (G-3, narrow N-2 copy exception): the MSG_REMOVED_ELSEWHERE line is the only allowed difference.
+  const reconcileLine = (copy) => `export const MSG_REMOVED_ELSEWHERE = '${copy}';`;
+  const reconcile = source(overrides, RECONCILE).replace(/\r\n/g, '\n');
+  assert(reconcile.split(reconcileLine(HE.removedClosed)).length === 2 && reconcile.replace(reconcileLine(HE.removedClosed), () => reconcileLine(HE.removedClosedBase)) === git('show', `${BASE}:${RECONCILE}`).replace(/\r\n/g, '\n'), `N-2: ${RECONCILE} unchanged since ${BASE.slice(0, 8)} apart from the O-123-16 copy line (frozen by verifyPhase123D8OwnSite)`);
   assert(source(overrides, 'src/digitalHome/AppCatalogModal.tsx').includes(`'${HE.addApp}'`), 'N-6: «+ הוספת אפליקציה»');
-  const adminChanged = git('diff', '--name-only', BASE, '--', 'src/admin').trim();
+  // O-123-23 (KI-123.5-5, G-3): AdminGate.tsx / admin.css allowed — content pinned by verifyPhase123OwnerFixes checkAdminLoginScreen.
+  const O23_ADMIN = ['src/admin/AdminGate.tsx', 'src/admin/admin.css'];
+  // O-123-29…32 (G-3): Owner-excepted admin shell / RegistryAdmin / fill-test grid — pinned by verifyPhase123OwnerFixes.
+  O23_ADMIN.push('src/admin/AdminApp.tsx', 'src/admin/RegistryAdmin.tsx', 'src/admin/AdminFillTestGrid.tsx');
+  const adminChanged = git('diff', '--name-only', BASE, '--', 'src/admin').split('\n').filter(Boolean).filter((p) => !O23_ADMIN.includes(p)).join(', ');
   assert(adminChanged === '' && git('ls-files', '--others', '--exclude-standard', '--', 'src/admin').trim() === '', `N-1 / STOP rule: src/admin unchanged since ${BASE} (${adminChanged})`);
   const supa = [
     ...git('diff', '--name-only', BASE, '--', 'supabase').split('\n'),
     ...git('ls-files', '--others', '--exclude-standard', '--', 'supabase').split('\n'),
   ].map((p) => p.trim()).filter(Boolean);
-  assert(supa.every((p) => p === MIGRATION) && git('diff', '--name-only', '--diff-filter=MDR', BASE, '--', 'supabase').trim() === '', `AD-123-15: the only supabase change is the aggregate migration (${supa.join(', ')})`);
+  // O-123-9 (Phase 123.5, G-3): the owner-select registry policy is the one further allowed new file.
+  const O_123_9_MIGRATION = 'supabase/migrations/20261006120000_phase123_registry_owner_select.sql';
+  assert(supa.every((p) => p === MIGRATION || p === O_123_9_MIGRATION) && git('diff', '--name-only', '--diff-filter=MDR', BASE, '--', 'supabase').trim() === '', `AD-123-15 / O-123-9: the only supabase changes are the aggregate and owner-select migrations (${supa.join(', ')})`);
   return `N-1 (src/admin unchanged since ${BASE}; supabase = the one migration) / N-4 / N-5 / N-6 / N-8`;
 }
 
@@ -585,7 +598,11 @@ function serve(dir) {
       res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
       res.end(readFileSync(file));
     });
-    server.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${server.address().port}/`, close: () => closeServer(server) }));
+    server.listen(0, '127.0.0.1', () => {
+      const url = `http://127.0.0.1:${server.address().port}/`;
+      registerHarnessDir(url, dir);
+      resolve({ url, close: () => closeServer(server) });
+    });
   });
 }
 
@@ -606,6 +623,7 @@ let browser = null;
 async function openPage(url, { vault = null, catalogFail = false } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'he-IL' });
   openContexts.add(context);
+  await routeHarness(context, url);
   const page = await context.newPage();
   const s = { page, context, errors: [], native: [] };
   page.on('pageerror', (e) => s.errors.push(String(e)));
@@ -614,6 +632,7 @@ async function openPage(url, { vault = null, catalogFail = false } = {}) {
     await d.dismiss();
   });
   await page.goto(url);
+  await assertSecureContext(page);
   await page.waitForFunction(() => window.__pvReady || window.__pvBootError, null, { timeout: 30000, polling: 100 });
   const bootError = await page.evaluate(() => window.__pvBootError ?? null);
   assert(!bootError, `fixture: harness boot failed: ${bootError}`);
@@ -668,22 +687,25 @@ async function checkZeroAppsLogin(url) {
   assert((await empty.textContent()).includes(HE.empty), 'FR-30: Hebrew empty state');
   const cta = empty.locator('[data-action="open-catalog-empty"]');
   assert((await cta.count()) === 1 && (await cta.textContent()) === HE.addApp, 'FR-30: central «+ הוספת אפליקציה» in the empty state');
-  assert((await s.page.locator('[data-action="open-catalog"]').count()) === 1, 'FR-30: header «+ הוספת אפליקציה» too');
+  // Superseded by O-123-3 (Phase 123.5): at 0 apps only the central button is shown; the header one returns after the first add.
+  assert((await s.page.locator('[data-action="open-catalog"]').count()) === 0, 'O-123-3: no header «+ הוספת אפליקציה» at 0 apps');
   await s.page.waitForTimeout(600);
   assert((await catalog(s).count()) === 0, 'FR-30: the catalog does not open by itself on an empty home');
   assert((await s.page.locator('.dashboard-banner--hint').count()) === 0, 'the open-an-app hint waits for the first app');
   await cta.click();
   await catalog(s).waitFor({ state: 'visible', timeout: 5000 });
-  await catalog(s).locator('[data-catalog-item="svc-avail"] button', { hasText: 'הוספה' }).click();
-  await s.page.waitForFunction(() => document.querySelector('[data-catalog-item="svc-avail"]')?.getAttribute('data-catalog-state') === 'added', null, { timeout: 8000 });
-  await s.page.keyboard.press('Escape');
-  await catalog(s).waitFor({ state: 'detached', timeout: 5000 });
+  // O-123-35 (G-3): select the card + CTA «הוספת האתר» (was the per-card «הוספה»); the catalog
+  // closes itself after the add (was: stays until Escape).
+  await catalog(s).locator('[data-catalog-item="svc-avail"]').click();
+  await catalog(s).locator('[data-action="catalog-add-selected"]', { hasText: 'הוספת האתר' }).click();
+  await catalog(s).waitFor({ state: 'detached', timeout: 8000 });
   await s.page.locator('[data-service-id="svc-avail"]').waitFor({ timeout: 5000 });
   const hint = s.page.locator('.dashboard-banner--hint');
   assert((await hint.count()) === 1 && (await hint.textContent()).includes(HE.hint), 'first app added → the updated Hebrew hint (no «ניהול אתרים»)');
   await assertOnDigitalHome(s, 'after the first add');
+  assert((await s.page.locator('[data-action="open-catalog"]').count()) === 1, 'O-123-3: the header «+ הוספת אפליקציה» returns after the first add');
   await closePage(s);
-  return 'browser: 0 apps → login lands on Digital Home; Hebrew empty state + central and header «+ הוספת אפליקציה»; no auto catalog; first add from the empty state → tile + updated hint';
+  return 'browser: 0 apps → login lands on Digital Home; Hebrew empty state + central «+ הוספת אפליקציה» only (O-123-3); no auto catalog; first add from the empty state → tile + updated hint + header button';
 }
 
 async function checkAppsLoginReachability(url) {
@@ -708,15 +730,22 @@ async function checkAppsLoginReachability(url) {
   await s.page.locator('[role="dialog"]').first().waitFor({ state: 'visible', timeout: 5000 });
   await s.page.keyboard.press('Escape');
   await s.page.locator('[role="dialog"]').first().waitFor({ state: 'detached', timeout: 5000 });
-  await s.page.waitForTimeout(100);
-  const focusedTile = await s.page.evaluate(() => document.activeElement?.closest('[data-service-tile]')?.getAttribute('data-service-id') ?? null);
-  assert(focusedTile === 'svc-cred', `AC-113-45 parity: focus returns to the app tile after the profile host closes (got ${focusedTile})`);
+  // O-123-18 (G-3): supersedes the AC-113-45 re-homing (focus to the tile) — the window of the same app
+  // reopens with focus on the button that opened the host. Focus to the tile stays for the exceptions
+  // (checked in verifyPhase123OwnerFixes).
+  await panel(s).waitFor({ state: 'visible', timeout: 5000 });
+  const focusedOpener = await s.page.evaluate(() => {
+    const el = document.activeElement;
+    return el?.closest('section[data-login-assistance]') ? el.getAttribute('data-action') : null;
+  });
+  assert(focusedOpener === 'edit-profile', `O-123-18: the window reopens after the profile host closes, focus on «עריכת פרופיל» (got ${focusedOpener})`);
   await s.page.locator('[data-action="open-catalog"]').click();
   await catalog(s).waitFor({ state: 'visible', timeout: 5000 });
   assert((await catalog(s).locator('[data-action="add-custom-site"]').count()) === 1, 'FR-01 reachability: custom add from the catalog');
-  assert((await catalog(s).locator('[data-catalog-item="svc-avail"] button', { hasText: 'הוספה' }).count()) === 1, 'FR-01 reachability: catalog add');
+  // O-123-35 (G-3): the selectable card is the add entry (was a «הוספה» button inside the card).
+  assert((await catalog(s).locator('button[data-catalog-item="svc-avail"][aria-pressed="false"]').count()) === 1, 'FR-01 reachability: catalog add');
   await closePage(s);
-  return 'browser: > 0 apps → login lands on Digital Home; every FR action reachable (open / edit / add profile, remove, edit own site, catalog add, custom add, lock); focus returns to the tile after the profile host';
+  return 'browser: > 0 apps → login lands on Digital Home; every FR action reachable (open / edit / add profile, remove, edit own site, catalog add, custom add, lock); the window reopens after the profile host with focus on its opener (O-123-18)';
 }
 
 async function checkCatalogFailureZeroApps(url) {
@@ -757,39 +786,55 @@ async function dismissNotice(s) {
   await notice(s).waitFor({ state: 'detached', timeout: 5000 });
 }
 
+/** O-123-11: the tile leaves the home and, after the same render, no notice is shown. */
+async function expectSilentDrop(s, id, label) {
+  await dropElsewhere(s, [id]);
+  await s.page.locator(`[data-service-id="${id}"]`).waitFor({ state: 'detached', timeout: 5000 });
+  await s.page.waitForTimeout(300);
+  assert((await notice(s).count()) === 0, `O-123-11: ${label} → the tile disappears silently (no notice)`);
+}
+
+// Superseded by O-123-11 (Phase 123.5): was "notice on the plain home / above the catalog / with
+// another app's window open". Now the notice appears only when a window of the affected app closed.
 async function checkRemovedElsewhereNotice(url) {
   const s = await openPage(url);
-  await dropElsewhere(s, ['svc-extra']);
-  await notice(s).waitFor({ state: 'visible', timeout: 5000 });
-  assert((await notice(s).textContent()).includes(HE.removedPlain) && (await notice(s).getAttribute('dir')) === 'rtl', 'AD-123-18: Digital Home → Hebrew RTL status notice');
-  assert((await s.page.locator('[data-service-id="svc-extra"]').count()) === 0, 'KI-3 drop path: the tile left the home');
-  await dismissNotice(s);
+  await expectSilentDrop(s, 'svc-extra', 'plain Digital Home');
 
   await s.page.locator('[data-action="open-catalog"]').click();
   await catalog(s).waitFor({ state: 'visible', timeout: 5000 });
-  await dropElsewhere(s, ['svc-third']);
-  await notice(s).waitFor({ state: 'visible', timeout: 5000 });
-  assert(await noticeOnTop(s), 'AD-123-18: the notice is visible above the open catalog modal');
+  await expectSilentDrop(s, 'svc-third', 'catalog open');
   assert((await catalog(s).count()) === 1, 'the catalog modal stays open');
-  await dismissNotice(s);
   await s.page.keyboard.press('Escape');
   await catalog(s).waitFor({ state: 'detached', timeout: 5000 });
 
   await openTile(s, 'svc-cred');
-  await dropElsewhere(s, ['svc-four']);
-  await notice(s).waitFor({ state: 'visible', timeout: 5000 });
+  await expectSilentDrop(s, 'svc-four', "a different app's window open");
   assert(await panel(s).isVisible(), 'a window on an unaffected app stays open');
-  assert(await noticeOnTop(s), 'AD-123-18: the notice is visible with the floating window open');
-  await dismissNotice(s);
 
-  if ((await panel(s).count()) === 0) await openTile(s, 'svc-cred');
   await dropElsewhere(s, ['svc-cred']);
   await panel(s).waitFor({ state: 'detached', timeout: 5000 });
   await notice(s).waitFor({ state: 'visible', timeout: 5000 });
   const closedText = await notice(s).textContent();
-  assert(closedText.includes(HE.removedClosed), `AD-123-18: window on the removed app closes with the "window closed" notice (got "${closedText}")`);
+  assert(closedText.includes(HE.removedClosed) && (await notice(s).getAttribute('dir')) === 'rtl', `AD-123-18 / O-123-11: the affected floating window closes with the Hebrew RTL "window closed" notice (got "${closedText}")`);
+  // z-order unchanged: the notice stays above the catalog modal opened while it is shown.
+  await s.page.locator('[data-action="open-catalog"]').click();
+  await catalog(s).waitFor({ state: 'visible', timeout: 5000 });
+  assert(await noticeOnTop(s), 'AD-123-18: the notice is visible above the open catalog modal');
+  await dismissNotice(s);
+  await s.page.keyboard.press('Escape');
+  await catalog(s).waitFor({ state: 'detached', timeout: 5000 });
+
+  await openTile(s, 'svc-own');
+  await panel(s).locator('[data-action="add-first-profile"]').click();
+  const profileModal = s.page.locator('[role="dialog"]').first();
+  await profileModal.waitFor({ state: 'visible', timeout: 5000 });
+  assert((await panel(s).count()) === 0, 'fixture: the profile modal is open without the floating window');
+  await dropElsewhere(s, ['svc-own']);
+  await profileModal.waitFor({ state: 'detached', timeout: 5000 });
+  await notice(s).waitFor({ state: 'visible', timeout: 5000 });
+  assert((await notice(s).textContent()).includes(HE.removedClosed), 'O-123-11: the affected profile modal closes with the "window closed" notice');
   await closePage(s);
-  return 'browser: "removed elsewhere" (KI-3 drop path) → Hebrew RTL role="status" notice on Digital Home, above the open catalog modal and with the floating window open; affected window closes with its variant; no browser dialog';
+  return 'browser O-123-11: plain home / catalog open / another app\'s window open → the tile disappears silently; affected floating window or profile modal → closes with the Hebrew RTL role="status" "window closed" notice, shown above the catalog; no browser dialog';
 }
 
 // ─── Runner ───────────────────────────────────────────────────────────────────
@@ -858,9 +903,10 @@ const MUTATIONS = [
     '      {reconcileNotice && (', '      {reconcileNotice && false && ('), ['browser']],
   ['M9 notice hidden under the catalog modal', edit(CSS,
     '  bottom: 5.5rem;\n  z-index: 100;', '  bottom: 5.5rem;\n  z-index: 80;'), ['browser']],
-  ['M10 notice only when a window closed (drop path silent)', edit(DASH,
-    '    setReconcileNotice(message);',
-    '    if (closesPanel || cloudReconcile.closedOtherSurface) setReconcileNotice(message);'), ['browser']],
+  // Inverted by O-123-11 (Phase 123.5): was "notice only when a window closed (drop path silent)".
+  ['M10 notice shown although no affected window was open', edit(DASH,
+    '    if (!closesPanel && !cloudReconcile.closedOtherSurface) {\n      return;\n    }\n',
+    ''), ['browser']],
   ['M11 second "custom" rule for edit-site', edit(APP,
     '    if (!service || !isUserCustomApp(service, true)) {',
     "    if (!service || service.source !== 'user-created') {"), ['browser']],

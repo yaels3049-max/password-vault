@@ -25,7 +25,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { makeTempDir, removeTempDir } from './lib/tempDir.mjs';
+import { revertPhase126PartAManifest, withoutPhase126PartA } from './lib/phase126PartA.mjs';
 import { formatElapsed, mutationId, parseMutationArgs, selectMutations } from './lib/mutationArgs.mjs';
+import { assertSecureContext, registerHarnessDir, routeHarness } from './lib/routeHarness.mjs';
 import { checkTimeoutMessage, closeServer, failRun, isTimeout, mutationTimeoutMessage, withTimeout } from './lib/withTimeout.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -51,7 +53,8 @@ const HE = {
   cancel: 'ביטול',
   discard: 'יציאה ללא שמירה',
   cloudFailed: 'לא הצלחנו למחוק את הפרופיל מהחשבון. בדקו חיבור לרשת ונסו שוב.',
-  removedElsewhere: 'האפליקציה או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.',
+  // O-123-16 (G-3): was «האפליקציה או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.».
+  removedElsewhere: 'האתר או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.',
 };
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -365,10 +368,18 @@ function checkPanelStatic(overrides) {
 
 function checkDashboardDot(overrides) {
   const dash = source(overrides, 'src/Dashboard.tsx');
-  assert(/hasCredentials=\{appHasProfile\(\{ accessProfiles \}, service\.id\)\}/.test(dash), 'AD-123-6: Dashboard tile input = appHasProfile(...)');
+  // O-123-25 (G-3): the tile dot = profile exists AND the existing management state is 'added' (was: appHasProfile(...) only).
+  assert(dash.includes(DASH_DOT), 'O-123-25: Dashboard tile input = appHasProfile(...) && deriveServiceManagementState(...) === \'added\'');
   assert(!/hasCompleteCredentials/.test(dash), 'AD-123-6: Dashboard no longer reads hasCompleteCredentials');
-  assert(source(overrides, 'src/Tile.tsx') === headSource('src/Tile.tsx'), 'N-6: Tile.tsx markup unchanged');
-  return 'AD-123-6: tile dot = appHasProfile; Tile.tsx unchanged (no count / text)';
+  // O-123-35 (G-3): the only Tile.tsx change allowed is the optional `justAdded` highlight (class +
+  // data attribute; no count / text).
+  const withoutO35 = (src) => src
+    .replace("${justAdded ? ' app-icon-wrap--just-added' : ''}", '')
+    .split('\n')
+    .filter((line) => !/justAdded|O-123-35/.test(line))
+    .join('\n');
+  assert(withoutO35(source(overrides, 'src/Tile.tsx')) === headSource('src/Tile.tsx'), 'N-6: Tile.tsx markup unchanged (apart from the O-123-35 highlight)');
+  return 'O-123-25: tile dot = appHasProfile && management state "added" (no second completeness rule in Dashboard); Tile.tsx unchanged (no count / text)';
 }
 
 function checkNoBrowserDialogs(overrides) {
@@ -398,16 +409,24 @@ function checkProtectedUnchanged() {
     ...manifests,
   ];
   assert(manifests.length >= 1, 'N-2: at least one tracked manifest file found');
+  // Phase 126 Part A (G-3, KI-126-1 ruling): exactly the three Part A extension paths are excluded here;
+  // the manifest is pinned below to BASE apart from the Part A lines.
   for (const p of protectedPaths) {
     assert(existsSync(join(root, p)), `N-2: protected path exists (${p})`);
-    assert(git('diff', '--name-only', BASE, '--', p).trim() === '', `N-2: ${p} unchanged vs HEAD`);
-    assert(git('ls-files', '--others', '--exclude-standard', '--', p).trim() === '', `N-2: no new files under ${p}`);
+    assert(withoutPhase126PartA(git('diff', '--name-only', BASE, '--', p).split('\n')).length === 0, `N-2: ${p} unchanged vs HEAD`);
+    assert(withoutPhase126PartA(git('ls-files', '--others', '--exclude-standard', '--', p).split('\n')).length === 0, `N-2: no new files under ${p}`);
   }
+  assert(revertPhase126PartAManifest(readFileSync(join(root, 'extension/manifest.json'), 'utf8')) === git('show', `${BASE}:extension/manifest.json`).replace(/\r\n/g, '\n'), `Phase 126 Part A (G-3): extension/manifest.json identical to ${BASE} apart from the Part A lines (key, default_locale, __MSG_ name / description)`);
   // AD-123-19 (was: src/admin diff empty): src/admin/userApproval.ts becomes a re-export of the
   // shared helper — content checked by verifyPhase123CatalogGate. D-123-6 (N-1 copy exception):
   // ApprovalQueue.tsx success line — content checked by verifyPhase123FixD6D8.
   const adminChanged = git('diff', '--name-only', BASE, '--', 'src/admin').split('\n').filter(Boolean);
-  assert(adminChanged.every((p) => p === 'src/admin/userApproval.ts' || p === 'src/admin/ApprovalQueue.tsx'), `N-1: only the AD-123-19 re-export (+ D-123-6 copy line) changes under src/admin (${adminChanged.join(', ')})`);
+  // O-123-23 (G-3, Owner admin exception): AdminGate.tsx need_login branch + the unused admin-gate-home-link CSS —
+  // pinned hunk by hunk against e91b5b12 by verifyPhase123OwnerFixes checkAdminLoginScreen.
+  const adminAllowed = ['src/admin/userApproval.ts', 'src/admin/ApprovalQueue.tsx', 'src/admin/AdminGate.tsx', 'src/admin/admin.css'];
+  // O-123-29…32 (G-3, Owner admin exception): admin shell / RegistryAdmin / fill-test grid — pinned by verifyPhase123OwnerFixes.
+  adminAllowed.push('src/admin/AdminApp.tsx', 'src/admin/RegistryAdmin.tsx', 'src/admin/AdminFillTestGrid.tsx');
+  assert(adminChanged.every((p) => adminAllowed.includes(p)), `N-1: only the AD-123-19 re-export, the D-123-6 copy line and the O-123-23 admin login change under src/admin (${adminChanged.join(', ')})`);
   assert(git('ls-files', '--others', '--exclude-standard', '--', 'src/admin').trim() === '', 'N-1: no new files under src/admin');
   return `N-1 / N-2: src/admin (apart from the AD-123-19 re-export) and ${protectedPaths.length} protected paths unchanged vs HEAD (${protectedPaths.join(', ')})`;
 }
@@ -541,7 +560,8 @@ const DH_FILES = [
 const EXTRACTED_FROM_MANAGE = ['src/digitalHome/AppCatalog.tsx', 'src/digitalHome/EditSiteDetailsModal.tsx', 'src/digitalHome/customSiteForm.ts'];
 /** AD-123-18 — the only Supabase imports the fix round may add (sync rule wiring). */
 const AD_123_18_IMPORTS = {
-  'src/loginAssistance/DigitalHomeCredentialModal.tsx': ['bumpDualWriteGeneration'],
+  // O-123-17 (Phase 123.5): the error code of a cloud profile delete that removed no row.
+  'src/loginAssistance/DigitalHomeCredentialModal.tsx': ['bumpDualWriteGeneration', 'PROFILE_DELETE_UNCONFIRMED'],
   'src/App.tsx': [
     'refreshWorkspaceFromCloud',
     'setCloudGoneListener',
@@ -730,7 +750,11 @@ function serve(dir) {
       res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
       res.end(readFileSync(file));
     });
-    server.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${server.address().port}/`, close: () => closeServer(server) }));
+    server.listen(0, '127.0.0.1', () => {
+      const url = `http://127.0.0.1:${server.address().port}/`;
+      registerHarnessDir(url, dir);
+      resolve({ url, close: () => closeServer(server) });
+    });
   });
 }
 
@@ -751,6 +775,7 @@ let browser = null;
 async function openPage(url) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'he-IL' });
   openContexts.add(context);
+  await routeHarness(context, url);
   const page = await context.newPage();
   const s = { page, context, errors: [], native: [] };
   page.on('pageerror', (e) => s.errors.push(String(e)));
@@ -759,6 +784,7 @@ async function openPage(url) {
     await d.dismiss();
   });
   await page.goto(url);
+  await assertSecureContext(page);
   await page.waitForFunction(() => window.__pvReady || window.__pvBootError, null, { timeout: 30000 });
   const bootError = await page.evaluate(() => window.__pvBootError ?? null);
   assert(!bootError, `fixture: harness boot failed: ${bootError}`);
@@ -803,12 +829,13 @@ const profilesIn = (st, id) => st.accessProfiles.filter((p) => p.serviceId === i
 async function checkGreenDotUi(url) {
   const s = await openPage(url);
   const badge = (id) => s.page.locator(`[data-service-id="${id}"] .app-icon-badge`);
-  for (const [id, want] of [['svc-zero', 0], ['svc-custom', 0], ['svc-one', 1], ['svc-two', 1], ['svc-three', 1]]) {
-    assert((await badge(id).count()) === want, `AD-123-6: ${id} dot ${want ? 'shown' : 'hidden'} (FR-21/22: profile without credentials counts)`);
+  // O-123-25 (G-3): a profile without complete default credentials no longer counts (was: FR-21/22 dot on every app with ≥ 1 profile).
+  // svc-two: only the non-default «אלף» has credentials, so the default is incomplete → no dot.
+  for (const [id, want] of [['svc-zero', 0], ['svc-custom', 0], ['svc-one', 0], ['svc-two', 0], ['svc-three', 0]]) {
+    assert((await badge(id).count()) === want, `O-123-25: ${id} dot ${want ? 'shown' : 'hidden'} (dot only when ready to use)`);
   }
-  assert((await badge('svc-one').textContent()) === '', 'FR-23: dot has no count / text');
   await closePage(s);
-  return 'browser: dot on every app with ≥ 1 profile (also without credentials), none for 0 profiles, no count / text';
+  return 'browser: no dot for 0 profiles or for profiles without complete default credentials (O-123-25); FR-23 no-text check after the first complete profile';
 }
 
 async function checkZeroProfileAndAdd(url) {
@@ -829,7 +856,8 @@ async function checkZeroProfileAndAdd(url) {
   // Close with typed values → discard prompt → zero writes.
   await openTile(s, 'svc-zero');
   await panel(s).locator('[data-action="add-first-profile"]').click();
-  await modal(s).locator('input[aria-label="שם פרופיל חדש"]').fill('טיוטה');
+  // Superseded by O-123-6 (Phase 123.5): the first profile has no name field, so a typed credential value makes the form dirty.
+  await modal(s).locator('[data-mode="add-profile"] input.cd-field-input').first().fill('טיוטה');
   await s.page.keyboard.press('Escape');
   await modal(s).locator('[role="alertdialog"]').waitFor({ state: 'visible', timeout: 5000 });
   await modalButton(s, HE.discard).click();
@@ -840,22 +868,27 @@ async function checkZeroProfileAndAdd(url) {
   await panel(s).locator('[data-action="add-first-profile"]').click();
   const form = modal(s).locator('[data-mode="add-profile"]');
   const inputs = form.locator('input.cd-field-input');
-  await inputs.nth(0).fill('עבודה');
-  await inputs.nth(1).fill('fixture-user-new');
-  await inputs.nth(2).focus();
-  await inputs.nth(2).fill('fixture-pass-new');
+  // Superseded by O-123-6 (Phase 123.5): no name field for the first profile (stored as «ראשי»), and no chip / name at 1 profile.
+  assert((await form.locator('input[aria-label="שם פרופיל חדש"]').count()) === 0, 'O-123-6: no name field for the first profile');
+  await inputs.nth(0).fill('fixture-user-new');
+  await inputs.nth(1).focus();
+  await inputs.nth(1).fill('fixture-pass-new');
   await modalButton(s, HE.saveProfile).click();
   await waitFor(s, () => window.__pv.state().accessProfiles.some((p) => p.serviceId === 'svc-zero'), null, 'add: profile saved');
-  await modal(s).locator('.cd-chip--static', { hasText: 'עבודה' }).waitFor({ state: 'visible', timeout: 5000 });
+  await form.waitFor({ state: 'detached', timeout: 5000 });
+  assert((await modal(s).locator('.cd-chip').count()) === 0, 'O-123-6: 1 profile → no profile chip / name');
   let st = await state(s);
   const created = profilesIn(st, 'svc-zero');
   assert(created.length === 1, 'FR-09: one save → exactly one profile');
+  assert(created[0].displayName === 'ראשי', 'O-123-6: the first profile is stored as «ראשי»');
   assert(created[0].isDefault === true, 'FR-04 / MC-2: first profile of a 0-profile app is the default');
   assert(st.credentials[created[0].id]?.username === 'fixture-user-new', 'add: credential saved with the profile');
   assert((await writes(s)).length === 1, 'add: one persist per save');
   await modal(s).locator('button[aria-label="סגירה"]').click();
   await modal(s).waitFor({ state: 'detached', timeout: 5000 });
-  assert((await s.page.locator('[data-service-id="svc-zero"] .app-icon-badge').count()) === 1, 'FR-21: dot appears after the first profile');
+  assert((await s.page.locator('[data-service-id="svc-zero"] .app-icon-badge').count()) === 1, 'FR-21 / O-123-25: dot appears after the first profile with complete credentials');
+  // O-123-25 (G-3): FR-23 moved here (svc-one no longer has a dot).
+  assert((await s.page.locator('[data-service-id="svc-zero"] .app-icon-badge').textContent()) === '', 'FR-23: dot has no count / text');
   // Add a profile without credentials from a 1-profile app (FR-21).
   await openTile(s, 'svc-one');
   assert((await panel(s).locator('[data-action="edit-profile"]').count()) === 1, '1 profile: «עריכת פרופיל» shown');
@@ -970,7 +1003,9 @@ async function checkDeleteFlows(url) {
   st = await state(s);
   assert(profilesIn(st, 'svc-two')[0].id === 'p-two-a' && profilesIn(st, 'svc-two')[0].isDefault === true, 'FR-13: the remaining profile becomes the default');
   // Last profile (FR-10/11/12).
-  await modal(s).locator('.cd-chip--static', { hasText: 'אלף' }).waitFor({ timeout: 5000 });
+  // Superseded by O-123-6 (Phase 123.5): the lone remaining profile keeps its name, but no chip / name is shown.
+  await modal(s).locator('.cd-chip').first().waitFor({ state: 'detached', timeout: 5000 });
+  assert(profilesIn(await state(s), 'svc-two')[0].displayName === 'אלף', 'O-123-6: the remaining profile keeps its name (no migration)');
   await deleteSelectedProfile(s);
   await modal(s).locator('.cd-delete-confirm').click();
   await waitFor(s, () => window.__pv.state().accessProfiles.every((p) => p.serviceId !== 'svc-two'), null, 'FR-11: last profile delete allowed');
@@ -1018,7 +1053,8 @@ async function checkProfileDialogBackdrop(url) {
   const s = await openPage(url);
   await openTile(s, 'svc-zero');
   await panel(s).locator('[data-action="add-first-profile"]').click();
-  const name = modal(s).locator('input[aria-label="שם פרופיל חדש"]');
+  // Superseded by O-123-6 (Phase 123.5): a 0-profile add form has no name field; the drag starts from its first credential input.
+  const name = modal(s).locator('[data-mode="add-profile"] input.cd-field-input').first();
   await name.waitFor({ state: 'visible', timeout: 5000 });
   await name.fill('טיוטה בגרירה');
   const box = await name.boundingBox();
@@ -1098,7 +1134,8 @@ async function runAll(overrides, log) {
   }
 }
 
-const DASH_DOT = 'hasCredentials={appHasProfile({ accessProfiles }, service.id)}';
+// O-123-25 (G-3): the dot expression (was: 'hasCredentials={appHasProfile({ accessProfiles }, service.id)}'); M4 keeps targeting it.
+const DASH_DOT = "hasCredentials={\n          appHasProfile({ accessProfiles }, service.id) &&\n          deriveServiceManagementState(service, { selectedIds: homeIds, accessProfiles, credentials: credentialsByProfileId }) === 'added'\n        }";
 const MUTATIONS = [
   ['M1 last-profile guard restored (AD-123-13)', (o) => ({
     'src/vault/profileManagement.ts': replaceOnce(read('src/vault/profileManagement.ts'),

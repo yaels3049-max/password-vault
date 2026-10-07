@@ -92,9 +92,12 @@ function checkD6Copy(overrides) {
 }
 
 function checkD6DiffScope() {
-  const diff = git('diff', '-U0', BASE, '--', 'src/admin').replace(/\r\n/g, '\n');
+  // O-123-23 (KI-123.5-5, G-3): AdminGate.tsx / admin.css are left out here — content pinned by verifyPhase123OwnerFixes checkAdminLoginScreen.
+  // O-123-29…32 (G-3): Owner-excepted admin shell / RegistryAdmin / fill-test grid — pinned by verifyPhase123OwnerFixes.
+  const scope = ['src/admin', ':(exclude)src/admin/AdminGate.tsx', ':(exclude)src/admin/admin.css', ':(exclude)src/admin/AdminApp.tsx', ':(exclude)src/admin/RegistryAdmin.tsx', ':(exclude)src/admin/AdminFillTestGrid.tsx'];
+  const diff = git('diff', '-U0', BASE, '--', ...scope).replace(/\r\n/g, '\n');
   const changed = diff.split('\n').filter((l) => /^[+-](?![+-]{2} )/.test(l));
-  const files = git('diff', '--name-only', BASE, '--', 'src/admin').trim().split('\n').filter(Boolean);
+  const files = git('diff', '--name-only', BASE, '--', ...scope).trim().split('\n').filter(Boolean);
   assert(files.length === 1 && files[0] === APPROVAL_QUEUE, `D-123-6: only ${APPROVAL_QUEUE} changed under src/admin (got ${files.join(', ') || 'none'})`);
   assert(changed.length === 2, `D-123-6: admin diff is one line replaced (got ${changed.length} changed lines)`);
   assert(changed[0].startsWith('-') && changed[0].includes('setSuccess(') && changed[1] === `+${D6_LINE}`, 'D-123-6: the replaced line is the success copy');

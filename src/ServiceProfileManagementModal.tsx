@@ -69,8 +69,10 @@ const MSG_DELETE_LAST_PROFILE_BODY =
   'הפרופיל ופרטי הכניסה שלו יימחקו, ולאתר לא יישאר פרופיל. פעולה זו אינה ניתנת לביטול.';
 const MSG_CHOOSE_NEW_DEFAULT = 'בחרו איזה פרופיל יהיה ברירת המחדל במקומו:';
 const MSG_ADD_TITLE = 'פרופיל חדש';
-const MSG_ADD_OPTIONAL = 'אפשר לשמור פרופיל גם בלי פרטי כניסה ולהוסיף אותם אחר כך.';
 const MSG_PROFILE_NAME_REQUIRED = 'יש להזין שם פרופיל';
+const MSG_PROFILE_NAME_TAKEN = 'כבר קיים פרופיל בשם הזה. בחרו שם אחר.';
+/** The first profile is stored under this name; names are shown only from the second profile on. */
+const FIRST_PROFILE_NAME = 'ראשי';
 const MSG_ADD_FIELDS_INCOMPLETE =
   'יש למלא את כל שדות החובה של פרטי הכניסה, או להשאיר את כולם ריקים.';
 
@@ -164,6 +166,7 @@ export default function ServiceProfileManagementModal({
   const showProfileManagement = allowsCredentialProfileManagement(entry);
 
   const isMultiProfile = sortedProfiles.length > 1;
+  const isFirstProfile = sortedProfiles.length === 0;
   const selectedProfile =
     sortedProfiles.find((profile) => profile.id === selectedProfileId) ?? null;
   const dirty =
@@ -257,8 +260,8 @@ export default function ServiceProfileManagementModal({
   }, [storedCredentialKey, loginFieldKey, selectedProfileId, saving]);
 
   useEffect(() => {
-    if (adding && showProfileManagement) {
-      addNameRef.current?.focus();
+    if (adding && showProfileManagement && addNameRef.current) {
+      addNameRef.current.focus();
     } else {
       closeBtnRef.current?.focus();
     }
@@ -426,10 +429,15 @@ export default function ServiceProfileManagementModal({
   async function handleCreateProfile(e: React.FormEvent) {
     e.preventDefault();
     if (!showProfileManagement || saving) return;
-    const name = newProfileName.trim();
+    const name = isFirstProfile ? FIRST_PROFILE_NAME : newProfileName.trim();
     if (!name) {
       setStatusTone('err');
       setStatusMessage(MSG_PROFILE_NAME_REQUIRED);
+      return;
+    }
+    if (sortedProfiles.some((profile) => profile.displayName.trim() === name)) {
+      setStatusTone('err');
+      setStatusMessage(MSG_PROFILE_NAME_TAKEN);
       return;
     }
     let credential: Credential | null = null;
@@ -558,33 +566,27 @@ export default function ServiceProfileManagementModal({
             </div>
           )}
 
-          {showProfileManagement && selectedProfile && !adding && (
+          {showProfileManagement && selectedProfile && !adding && isMultiProfile && (
             <div className="cd-profiles" role="tablist" aria-label="פרופילים">
-              {isMultiProfile ? (
-                sortedProfiles.map((profile) => (
-                  <button
-                    key={profile.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={profile.id === selectedProfileId}
-                    className={`cd-chip${
-                      profile.id === selectedProfileId ? ' cd-chip--active' : ''
-                    }`}
-                    onClick={() => requestSwitchProfile(profile.id)}
-                  >
-                    {profile.displayName}
-                    {profile.isDefault ? ' · ברירת מחדל' : ''}
-                  </button>
-                ))
-              ) : (
-                <span className="cd-chip cd-chip--active cd-chip--static">
-                  {selectedProfile.displayName}
-                </span>
-              )}
+              {sortedProfiles.map((profile) => (
+                <button
+                  key={profile.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={profile.id === selectedProfileId}
+                  className={`cd-chip${
+                    profile.id === selectedProfileId ? ' cd-chip--active' : ''
+                  }`}
+                  onClick={() => requestSwitchProfile(profile.id)}
+                >
+                  {profile.displayName}
+                  {profile.isDefault ? ' · ברירת מחדל' : ''}
+                </button>
+              ))}
             </div>
           )}
 
-          {showProfileManagement && selectedProfile && isRenaming && !adding && (
+          {showProfileManagement && selectedProfile && isRenaming && !adding && isMultiProfile && (
             <form className="cd-rename" onSubmit={handleRenameSubmit} autoComplete="off">
               <input
                 type="text"
@@ -718,7 +720,7 @@ export default function ServiceProfileManagementModal({
                     קבע כברירת מחדל
                   </button>
                 )}
-                {selectedProfile && !isRenaming && (
+                {selectedProfile && !isRenaming && isMultiProfile && (
                   <button
                     type="button"
                     className="cd-secondary-btn"
@@ -773,23 +775,25 @@ export default function ServiceProfileManagementModal({
               autoComplete="off"
             >
               <h3 className="cd-add-title">{MSG_ADD_TITLE}</h3>
-              <label className="cd-field">
-                <span className="cd-field-label">שם פרופיל</span>
-                <input
-                  ref={addNameRef}
-                  type="text"
-                  className="cd-field-input"
-                  value={newProfileName}
-                  onChange={(e) => {
-                    setNewProfileName(e.target.value);
-                    if (statusMessage) setStatusMessage(null);
-                  }}
-                  placeholder="שם פרופיל חדש"
-                  aria-label="שם פרופיל חדש"
-                  autoComplete="off"
-                  disabled={saving}
-                />
-              </label>
+              {!isFirstProfile && (
+                <label className="cd-field">
+                  <span className="cd-field-label">שם פרופיל</span>
+                  <input
+                    ref={addNameRef}
+                    type="text"
+                    className="cd-field-input"
+                    value={newProfileName}
+                    onChange={(e) => {
+                      setNewProfileName(e.target.value);
+                      if (statusMessage) setStatusMessage(null);
+                    }}
+                    placeholder="שם פרופיל חדש"
+                    aria-label="שם פרופיל חדש"
+                    autoComplete="off"
+                    disabled={saving}
+                  />
+                </label>
+              )}
               {loginFields.map((field) => {
                 const masked = isFieldMasked(field);
                 return (
@@ -828,7 +832,6 @@ export default function ServiceProfileManagementModal({
                   </label>
                 );
               })}
-              <p className="cd-empty">{MSG_ADD_OPTIONAL}</p>
               <button type="submit" className="cd-save" disabled={saving}>
                 {saving ? 'שומר…' : 'שמירת פרופיל'}
               </button>

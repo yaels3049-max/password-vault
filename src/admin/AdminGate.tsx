@@ -113,15 +113,9 @@ export default function AdminGate({ children }: AdminGateProps) {
         ) : null}
         <AuthEntryScreen
           loginOnly
-          heading="מרכז הבקרה"
-          subtitle="התחבר כדי לנהל את שירותי המערכת, המשתמשים, ההרשאות ותצורת הכספת."
+          heading="הבית הדיגיטלי - ניהול"
           onAuthenticated={handleAdminAuthenticated}
         />
-        <p className="admin-gate-home-link">
-          <a className="admin-link" href="#/">
-            חזרה לבית הדיגיטלי
-          </a>
-        </p>
       </div>
     );
   }

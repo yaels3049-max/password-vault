@@ -20,6 +20,7 @@ import { build } from 'esbuild';
 import { revertD12149EligibilityEdits } from './lib/phase121D49EligibilityEdits.mjs';
 import { revertD12171EligibilityEdits } from './lib/phase121D71Edits.mjs';
 import { withTempDir } from './lib/tempDir.mjs';
+import { revertPhase126PartAManifest } from './lib/phase126PartA.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(join(root, rel), 'utf8');
@@ -1070,7 +1071,8 @@ console.log('  ✓ 9. genericity grep gate: no fixture names / hostnames / servi
 // ─── 10. STANDARD freeze (AC-IF-16, AC-IF-18) ───────────────────────────────
 {
   const git = (cmd) => execSync(`git ${cmd}`, { cwd: root, encoding: 'utf8' });
-  assert(git('show HEAD:extension/manifest.json').replace(/\r\n/g, '\n') === read('extension/manifest.json').replace(/\r\n/g, '\n'), 'manifest.json unchanged (permissions, minimum_chrome_version)');
+  // Phase 126 Part A (G-3): the manifest may differ only by the Part A lines.
+  assert(git('show HEAD:extension/manifest.json').replace(/\r\n/g, '\n') === revertPhase126PartAManifest(read('extension/manifest.json')), 'manifest.json unchanged (permissions, minimum_chrome_version)');
   const manifest = JSON.parse(read('extension/manifest.json'));
   assert(JSON.stringify(manifest.permissions) === JSON.stringify(['tabs', 'scripting']), 'permissions = tabs, scripting');
   assert(git('diff --name-only HEAD -- src/autofill/validatedProfile.ts').trim() === '', 'src/autofill/validatedProfile.ts untouched');

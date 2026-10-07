@@ -32,6 +32,8 @@ export const LABEL_ADD_CREDENTIALS = 'הוסף פרטי כניסה';
 
 /** Phase 123.1 — app context (AD-123-2). */
 export const LABEL_EDIT_PROFILE = 'עריכת פרופיל';
+/** O-123-26 — the same edit action when the profile it opens has incomplete credentials. */
+export const LABEL_COMPLETE_CREDENTIALS = 'השלמת פרטי כניסה';
 /** D-123-8 — own site approved with changed login fields; the profile still holds other values. */
 export const MSG_LOGIN_FIELDS_UPDATED = 'שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.';
 export const LABEL_ADD_PROFILE = 'הוספת פרופיל';
@@ -41,7 +43,7 @@ export const MSG_NO_PROFILES = 'עדיין אין פרופיל לאתר זה.';
 export const LABEL_APP_ACTIONS = 'פעולות אפליקציה';
 export const LABEL_EDIT_SITE_DETAILS = 'עריכת פרטי האתר';
 /** Phase 123.3 — remove app (AD-123-11). */
-export const LABEL_REMOVE_APP = 'הסרת אפליקציה';
+export const LABEL_REMOVE_APP = 'הסרת אתר';
 
 /** Launch Card copy for resolved NO_STORED_CREDENTIALS (informational — not an error). */
 export const MSG_NO_STORED_CREDENTIALS_LAUNCH =
@@ -57,7 +59,7 @@ export const LABEL_SUPPORT_MANUAL = 'מילוי ידני בלבד';
 
 /** Launch Card service-open CTA — action only; service identity is the card header. */
 export const LABEL_OPEN_SITE = 'פתח אתר';
-export const LABEL_TRY_AUTO = 'נסה מילוי אוטומטי';
+export const LABEL_TRY_AUTO = 'מילוי פרטים אוטומטי';
 export const LABEL_COPY = 'העתק';
 export const LABEL_SHOW_PASSWORD = 'הצג סיסמה';
 export const LABEL_HIDE_PASSWORD = 'הסתר סיסמה';
@@ -70,8 +72,5 @@ export const MSG_SELECT_PROFILE = 'בחרו פרופיל לפני ניסיון �
  * AD-123-1: replaces the execution-layer credentials_missing copy, which still names the removed
  * manage screen (src/execution is frozen, N-2).
  */
-/** Removed-elsewhere notice when no open window closed (e.g. a tile left the home). */
-export const MSG_REMOVED_ELSEWHERE_PLAIN = 'האפליקציה או הפרופיל נמחקו בחלון אחר.';
-
 export const MSG_AUTOFILL_CREDENTIALS_MISSING =
-  'פרטי הכניסה בפרופיל הזה חסרים. לחצו «עריכת פרופיל» בחלון האפליקציה והשלימו אותם.';
+  'פרטי הכניסה בפרופיל הזה חסרים. לחצו «השלמת פרטי כניסה» בחלון האתר והשלימו אותם.';

@@ -22,6 +22,8 @@ PHASE=123
   - END OF ROUND: one clean sequential run, 63/63 PASS, on frozen tree `fef52c66…3ac6` (identical before / after).
   - Live migration apply / call and the Owner manual steps: awaiting Owner.
   - Stopping for Manager → Architect review. See section "Slice 123.4".
+  - Architect PASS (2026-10-05). WIP commit `e91b5b1245891b889f01b7ecbd01ccb3065ddb9c` on `wip/phase123-recovered`. See "123.4 WIP commit (approved tree)" at the end of section "Slice 123.4".
+- Fix round 123.5 (BASE `e91b5b12`): O-123-1…27 + O-2 implemented, T-1 only. The final run is waiting for the Owner's «סיימתי את כל רשימת הבדיקה» and the last batch of findings. See section "Fix round 123.5".
 
 ## Source References
 - `team-Yuri/manager-phase123.md` — sections "Slice 123.1", "Slice 123.2", "Task R-123-1", N-1…N-8, Test Policy (T-1).
@@ -2278,3 +2280,1780 @@ Per-job logs: `%TEMP%\pv-eor-123-4d\` (`summary.log` + `<n>.out` / `<n>.err`). T
 6. **Cleanup proposal (KI-7 / 123.3 KI-3):** proposal only, nothing implemented. Awaiting the Architect's decision.
 
 Stopping for Manager → Architect review.
+
+### 123.4 WIP commit (approved tree)
+- Architect PASS 2026-10-05; the Owner authorized the commit.
+- The fingerprint was recomputed before staging and matched (BASE `c700cd60`, scope `-- src scripts supabase`): `fef52c66c81fe5c8a95661f0a0cb5172ccc1df7cb536c3554e1e5a84611a3ac6`.
+- Commit `e91b5b1245891b889f01b7ecbd01ccb3065ddb9c` on local branch `wip/phase123-recovered`, on top of `c700cd60`. Message: "WIP Phase 123: slice 123.4 + END OF ROUND approved tree (Architect PASS 2026-10-05), not reviewed for merge".
+- 27 files, staged by explicit path:
+  - 23 under `src` / `scripts` / `supabase`: 20 modified, `src/ManageServices.tsx` deleted, and new `scripts/verifyPhase123Navigation.mjs` and the AD-123-15 migration;
+  - `team-yuri/PLAN.md`, `team-yuri/arch-phase123.md`, `team-yuri/dev-phase123.md`, `team-yuri/manager-phase123.md` (lowercase path only).
+- After the commit, `git diff e91b5b12 -- src scripts supabase` is empty (0 lines), and there are no untracked files in that scope.
+- Not used: `git add -A` / `.`, push, merge, amend, `--no-verify`, checkout / restore / reset / stash / clean. No code changes.
+- This status update in `dev-phase123.md` was written after the commit, so it is the only uncommitted change.
+
+## Fix round 123.5 — Owner run findings O-123-1…8 + O-2 (BASE `e91b5b12`)
+
+### Stage A — plan (read-only analysis; no `src/` edit before this section)
+Sources: arch Review Notes "2026-10-06 — Consolidated Owner run, early findings O-123-1…8"; `manager-phase123.md` "Fix round 123.5" and G-13. New verify: `scripts/verifyPhase123OwnerFixes.mjs` (T-1 switches, H-1 bounds, `--report-groups` prints every group's result for the "before" state).
+
+**STOP items: none.** The O-123-2 "way to the login screen" already exists: the register form in `AuthEntryScreen.tsx` is shown under the «התחברות» / «הרשמה» tabs (`data-testid="auth-tab-login"`, always visible when not `loginOnly`), and `AUTH_COPY.registerDuplicate` names that tab («נסו להתחבר במסך «התחברות».»). So no change is needed outside `register.ts`.
+
+**O-123-2 trace and exact condition (`src/auth/register.ts`).**
+- `registerAccount` → `supabase.auth.signUp`. Four outcomes:
+  1. error / no user + "already registered" → `recoverOrphanAuthRegistration`;
+  2. user, no session, `identities.length === 0` (Supabase's "address taken" reply) → `establishSessionAfterSignUp` → `recoverOrphanAuthRegistration`;
+  3. user, no session, identities > 0 (new auth user) → sign in → `ensureProfileForSession`;
+  4. user + session (new auth user) → `ensureProfileForSession`.
+- `ensureProfileForSession` returns an existing row as success ("trigger may have already created the row"). That is correct for paths 3–4, where the row was just created by the `auth.users` INSERT trigger of this sign-up.
+- Paths 1–2 are reached only when sign-up reports the address as already taken. This registration inserted no auth user, so no trigger ran. Any row found there existed before this registration.
+- **Condition:** in `recoverOrphanAuthRegistration`, after a successful `signInWithPassword` and before `ensureProfileForSession`: `if (await loadProfileOrNull())` → `await signOutAccount()` and `throw new Error(AUTH_COPY.registerDuplicate)`. No `ensure_app_user_profile` RPC is made, and the log is the existing `logRegisterFailure` with a fixed stage text (no e-mail / password).
+- A wrong password still ends in `registerDuplicate` (unchanged), and an auth user without a row still goes to `ensureProfileForSession` (recovery kept). Paths 3–4 are untouched.
+
+**Per finding (files / symbols → checks + mutations):**
+
+| Finding | Files / symbols | Check groups | Mutations |
+|---|---|---|---|
+| O-123-1 | `ServiceCard.tsx` compact name `title={name}`; `App.css` rules scoped to `.app-catalog` (`grid-auto-rows`, card `height: 100%`, name `-webkit-line-clamp: 2`, actions `margin-top: auto`) | static markup / CSS; browser: long-name fixture (test data), every card the same height / width, name ≤ 2 lines with an ellipsis + full `title`, action bottoms aligned at the card bottom (also «✓ כבר בבית הדיגיטלי») | M1 clamp removed; M2 sizes differ (equal rows removed); M3 action not at the bottom; M4 `title` removed |
+| O-123-2 | `register.ts` `recoverOrphanAuthRegistration` | unit (esbuild bundle of the real `register.ts` + `session.ts` + `copy.ts`, stubbed client): orphan + row (both orphan entries) → sign-out, `registerDuplicate`, no RPC, no session; orphan without row → recovered via RPC; fresh sign-up with a trigger row (session and no-session) → success, no sign-out; wrong password → `registerDuplicate` | M5 sign-out removed; M6 existing row returned as success; M7 orphan recovery removed |
+| O-123-3 | `Dashboard.tsx` header `data-action="open-catalog"` gated on `services.length > 0` | browser: 0 apps → no header button, central button present; after the first add → header button; ≥ 1 apps → header button | M8 header button shown at 0 |
+| O-123-4 | `RemoveAppConfirmDialog.tsx` new prop `hasProfiles` (no paragraph / no `aria-describedby` when false); `App.tsx` passes `appHasProfile(...)` | browser: 0-profile app → title + buttons only; ≥ 1 → paragraph unchanged; 0-profile confirm → Undo toast → same commit (cloud remove + persist) | M9 paragraph at 0; M10 paragraph missing at ≥ 1 |
+| O-123-5 | `LoginAssistancePanel.tsx`: a click anywhere in the window outside `[data-app-menu]` closes the menu (`onClickCapture`); Escape / outside click / × close the window (existing), so the menu goes with it | browser: menu closes on another window action (eye button), a click on the window body, Escape, an outside click, × ; reopen → menu closed | M11 other action keeps it open; M12 Escape path; M13 outside-click path; M14 window-close path |
+| O-123-6 | `ServiceProfileManagementModal.tsx`: `FIRST_PROFILE_NAME = 'ראשי'`; no name field while 0 profiles (stored as «ראשי» through the same `onCreateProfile`); name required + distinct (new Hebrew inline error) from the 2nd profile on; chips, static chip and «שינוי שם פרופיל» only when `isMultiProfile` | browser: 0 → no name field, stored «ראשי», 1 persist; 1 → no chips / name in window and modal; 2nd add: empty → Hebrew error, duplicate → Hebrew error, 0 writes; then chips «ראשי» + new name and rename of the first; a lone named profile keeps its name, hidden; delete leaves the other name unchanged; static: no diff in reducers / `DigitalHomeCredentialModal` / vault | M15 name field at 0; M16 chips at 1; M17 duplicate accepted; M18 empty name accepted on the 2nd add; M19 name rewritten on delete |
+| O-123-7 | `ServiceProfileManagementModal.tsx` `MSG_ADD_OPTIONAL` removed | static: string absent from user `src/`; browser: save without credentials still creates the profile | M20 hint restored; M21 save blocked without credentials |
+| O-123-8 | `LoginAssistancePanel.tsx`: `onStatus` removed; panel status `{ message, failure }`; failure → `role="alert"` red line, no timer, cleared by the next button in the window / close; flash element (`la-panel-failure-flash`, 2 s fade); `Dashboard.tsx`: `statusMessage` banner + `onStatus` wiring removed; `App.css` red line, flash, `prefers-reduced-motion` rule | static: no `onStatus` route, catalog / remove / selection banners and the reconcile notice unchanged vs BASE; browser (stubbed `assistanceActions` results): failure in the window not the banner, `role="alert"` until the next action / close, 2 s fade, none under reduced motion, neutral stays `role="status"` | M22 message routed to the banner; M23 `role="alert"` removed; M24 reduced-motion rule removed; M25 line not cleared on the next action |
+| O-2 | `messages.ts`: the AD-123-1 doc comment moves above `MSG_AUTOFILL_CREDENTIALS_MISSING` | static: each doc comment directly above its constant | M26 comment misplaced again |
+| N-checks | — | `git diff e91b5b12 -- src/auth` = `register.ts` only; no diff in `src/admin`, `src/vault`, `src/supabase`, `src/execution`, `cloudReconcile.ts`, `extension`, `supabase`; no `confirm` / `alert` / `prompt` call and no catalog id / host literal in added product lines | (covered by the static group) |
+
+**Planned G-3 / G-13 rows (touched existing verifies; only superseded assertions):**
+- `verifyPhase113LoginAssistance`: `dash.includes('la-home-notice')` and `dash.includes('setStatusMessage(null)')` → O-123-8 (no app outcome banner on the Digital Home).
+- `verifyPhase123Navigation` `checkZeroAppsLogin`: "header «+ הוספת אפליקציה» too" at 0 apps → O-123-3 (absent at 0, back after the first add).
+- `verifyPhase123RemoveApp`: none expected (its fixture app `svc-cred` has profiles; the paragraph stays).
+- `verifyPhase123AppContext`: name typed into the first profile of a 0-profile app (lines 832, 843, 1021) and the static chip with the name at 1 profile (lines 849, 973) → O-123-6.
+
+**Decision recorded (O-123-5):** Escape keeps its AC-113 meaning (it closes the window, and the menu with it). `verifyPhase123RemoveApp` asserts that one Escape after opening the menu closes the window; no O-123 ruling supersedes that.
+
+**Known limit (O-123-2):** `loadAppUserProfile` returns `null` on a read error, so a failed profile read during orphan recovery falls through to the existing RPC path. That path signs out on any RPC error (`registerDuplicate` on a duplicate). Changing this needs `session.ts` (N-2), so it stays out of scope.
+
+### Stage A — "before" results (unchanged `src/`, `node scripts/verifyPhase123OwnerFixes.mjs --report-groups`)
+`GROUP REPORT — 13 of 14 check groups failing — 22s`. Each group fails on its own finding; only the N-checks pass (nothing changed yet):
+
+| Group | Before |
+|---|---|
+| `checkCatalogCardStatic` | ✗ O-123-1: compact card name carries the full name in `title` |
+| `checkHintRemoved` | ✗ O-123-7: hint still in `src/ServiceProfileManagementModal.tsx` |
+| `checkMessagesComments` | ✗ O-2: the AD-123-1 doc comment is not directly above `MSG_AUTOFILL_CREDENTIALS_MISSING` |
+| `checkFailureCss` | ✗ O-123-8: no 2 s failure fade |
+| `checkBannerRouting` | ✗ O-123-8: `onStatus` route from the window to the Digital Home banner exists |
+| static N-checks | ✓ (0 changed product files) |
+| `checkProfileWritesStatic` | ✗ O-123-6: the first profile is not stored as «ראשי» |
+| `checkRegisterExistingAccount` (unit) | ✗ O-123-2: existing account + correct password → got success |
+| `checkCatalogCards` | ✗ O-123-1: card heights 159.2–259.2 px |
+| `checkHeaderAddButton` | ✗ O-123-3: header button present at 0 apps |
+| `checkRemoveDialog` | ✗ O-123-4: paragraph shown at 0 profiles |
+| `checkMenuCloses` | ✗ O-123-5: another window action leaves the menu open |
+| `checkProfileNames` | ✗ O-123-6: name field shown at 0 profiles |
+| `checkOutcomeMessages` | ✗ O-123-8: no `role="alert"` line in the window on an open failure |
+
+**Environment issue found during Stage A (machine, not code).** Edge 154.0.4258.37 headless intermittently refuses navigation to the loopback harness server with `net::ERR_NETWORK_ACCESS_DENIED`. Probes in `%TEMP%` (not project files):
+- Direct `http://127.0.0.1:<port>/` loads: denied at random (for example 3 of 10 in one 20 s run, 0 of 6 or 6 of 6 in others). Disabling Edge's Local / Private Network Access features made no consistent difference; the pattern changes run to run, which points to the machine (firewall / security software), not a browser flag.
+- The same page fulfilled through Playwright routing (`context.route`, no socket): 10 of 10 loaded in the same run.
+- The new verify therefore serves its bundle through `context.route` (harness only; assertions unchanged). The six existing browser verifies (`verifyPhase122AdminWorkspace`, `verifyPhase123Catalog`, `…AppContext`, `…D8OwnSite`, `…Navigation`, `…RemoveApp`) still use a `127.0.0.1` server, and `verifyPhase123Navigation --no-mutations` already failed on this error. See Known Issues and the Owner question.
+- **Update (Stage B, Architect ruling H-2):** Node's own loopback connections are refused the same way (`connect EACCES 127.0.0.1`), so `route.fetch` is not an option either. The final harness (`scripts/lib/routeHarness.mjs`) keeps the server listening and the page URL unchanged (`http://127.0.0.1:<port>/`); Playwright's `context.route` answers that same origin from the bundle directory on disk. Each page then asserts `window.isSecureContext === true`. Probe: 12 of 12 loads, secure context, `crypto.subtle` and `localStorage` available. An earlier `pv-harness.test` origin was dropped because it is not a secure context.
+
+### Stage A addendum — late findings O-123-9 and O-123-10
+The manager section "Fix round 123.5" lists two late findings (Architect rulings and Owner decision 2026-10-06), so they are in this round's scope. A first final run had started on the tree without them; it was stopped after its first job (only the loop and its child, by PID) and is **not** evidence.
+
+| Finding | Files / symbols | Check groups | Mutations |
+|---|---|---|---|
+| O-123-9 | new `supabase/migrations/20261006120000_phase123_registry_owner_select.sql` (the ruling's `drop policy if exists` + `create policy`, nothing else); no `src/` change | SQL (PGlite, unit layer) `checkRegistryOwnerSelectSql`: the real Phase 101 / 102 / 107 registry migrations, then the new file. Before it: a non-admin's own pending upsert is refused (`row-level security`, the live 42501). After it: own pending upsert (insert and conflict update) OK; own pending row readable; another user's pending row not readable and not deletable; anon reads no pending row; admin still reads every pending row; admin policies byte-identical in `pg_policies`; exactly one policy added; own delete removes exactly 1 row. Then the file is checked to contain exactly the ruling's two statements. Static N-checks: `supabase/` = this one new file | M27 policy without the owner condition |
+| O-123-10 | `src/AddSiteModal.tsx` (shared by the catalog add form, `mode="create"`, and «עריכת פרטי האתר», `EditSiteDetailsModal` → `mode="edit"`): «פתיחה לבדיקה» `type="button"` next to the URL input; `testUrl = validateCustomPrimaryUrl(primaryUrl)` (the same function the save path uses through `createCustomServiceDefinition`); `disabled={isSaving \|\| !testUrl.valid}`; click → existing `openUrlInNewTab(testUrl.normalizedUrl)` (= `window.open(url, '_blank', 'noopener,noreferrer')`). `src/App.css`: `.modal-url-row` / `.modal-url-test` layout only | browser `checkTestOpenButton` (both forms): button present, Hebrew label, `type="button"`, form RTL; disabled for empty, `localhost`, `ftp://…`, `https://`, a Hebrew word, `http://`; opens `https://site.example.test/`, `https://www.site.example.test/` (from `http://www.…`), `…/path?q=1` with `_blank` + `noopener,noreferrer`; the saved definition's `url` equals the last opened URL (add) and the edited URL (edit); edit opens the stored URL unchanged; no request to the typed host (no probe); no browser dialog | M28 button absent; M29 opens a different URL (a `www.` added on open); M30 enabled for an invalid address |
+
+"Before" for the two late findings: the source tree could not be put back to the pre-change state (no checkout / restore), so the before state is shown by the in-group reproduction (O-123-9: the own pending upsert is refused without the new policy, matching the live 42501) and by the mutations that restore the old behaviour (M27, M28), which the checks catch.
+
+Note on M29: the first form of M29 (open the raw field text) was **not** caught, for a real reason. The click blurs the URL field first, and the existing blur handler (`normalizeUrlField`) rewrites the field to the scheme-completed form, so the raw text already equals the stored address when the click runs. M29 now adds `www.` on open, which is the forbidden different-URL case.
+
+### Stage B — implementation (all findings)
+- **O-123-1** `ServiceCard.tsx` (compact name `title={name}`); `App.css` catalog-scoped rules: `.app-catalog .sm-grid--compact { grid-auto-rows: 1fr }`, item `display: flex`, card `flex: 1`, name 2-line clamp (`-webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; line-height: 1.35`), actions `margin-top: auto`.
+- **O-123-2** `register.ts` `recoverOrphanAuthRegistration`: after the successful sign-in, `if (await loadProfileOrNull())` → `logRegisterFailure('orphan recover', 'profile row already exists')`, `signOutAccount()`, `throw new Error(AUTH_COPY.registerDuplicate)` (trace above).
+- **O-123-3** `Dashboard.tsx` header button gated `onOpenCatalog && services.length > 0`.
+- **O-123-4** `RemoveAppConfirmDialog.tsx` prop `hasProfiles` (paragraph and `aria-describedby` only when true); `App.tsx` passes `appHasProfile(vaultState, id)`.
+- **O-123-5** `LoginAssistancePanel.tsx` `onClickCapture` on the window: a click outside `[data-app-menu]` closes the menu; Escape / outside click / × close the window (existing), and the menu with it.
+- **O-123-6** `ServiceProfileManagementModal.tsx`: `FIRST_PROFILE_NAME = 'ראשי'`; no name field at 0 profiles; name required and distinct from the 2nd profile (`MSG_PROFILE_NAME_TAKEN = 'כבר קיים פרופיל בשם הזה. בחרו שם אחר.'`, inline); chips / rename only when `isMultiProfile`. Same `onCreateProfile`; reducers, host and vault unchanged; no migration.
+- **O-123-7** `MSG_ADD_OPTIONAL` removed.
+- **O-123-8** `LoginAssistancePanel.tsx`: `onStatus` removed; status `{ message, failure }`; failure → `<p className="la-panel-status la-panel-status--error" role="alert">`, no timer, cleared by the next button in the window or close; `la-panel-failure-flash` (2 s fade, `aria-hidden`); neutral stays `role="status"`. `Dashboard.tsx`: the app-outcome banner and its wiring removed (catalog / remove / selection banners and the reconcile notice unchanged). `App.css`: red line, flash, `@keyframes`, `prefers-reduced-motion` → no animation.
+- **O-2** `messages.ts`: comment placement only.
+- **O-123-9 / O-123-10**: as in the addendum table.
+
+### Superseded assertions and environment changes (G-3 / G-13)
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase113LoginAssistance` | `dash.includes('setStatusMessage(null)')` → `!dash.includes('setStatusMessage') && !dash.includes('onStatus')`; `la-home-notice` present → absent | O-123-8 (superseded assertion) |
+| `verifyPhase123Navigation` `checkZeroAppsLogin` | header «+ הוספת אפליקציה» at 0 apps → count 0; header present after the first add | O-123-3 (superseded assertion) |
+| `verifyPhase123Navigation` N-1 | `supabase/` = the AD-123-15 file → that file **or** `20261006120000_phase123_registry_owner_select.sql`; modified / deleted paths still forbidden | O-123-9 (G-3) |
+| `verifyPhase123D8OwnSite` `checkHydrateScope` | same extension, exactly this one file | O-123-9 (G-3) |
+| `verifyPhase123AppContext` | first save of a 0-profile app: no name field, credentials as `nth(0)` / `nth(1)`, no `.cd-chip`, stored `displayName === 'ראשי'`; lone profile of `svc-two`: chip detached, name kept; draft / backdrop steps use the first credential input | O-123-6 (superseded assertions) |
+| `verifyPhase123Catalog`, `…RemoveApp`, `…D8OwnSite`, `…AppContext`, `…Navigation` | serving / navigation code only: import of `routeHarness.mjs`; `serve()` registers the bundle dir for its URL; `routeHarness(context, url)` before `newPage()`; `assertSecureContext(page)` after `goto` | **environment change H-2** (not a superseded assertion). Assertions, mutation lists and anchors byte-identical |
+| `verifyPhase122AdminWorkspace` | none (byte-identical) | H-2: it loads a `file://` page and opens no socket, so the loopback refusal does not reach it. Run under H-2 as `--no-mutations` + 3 sampled mutations |
+
+H-2 diff of the three scripts with no other change (`git diff -U0 e91b5b12`), identical shape in AppContext / Navigation / D8OwnSite:
+```text
++import { assertSecureContext, registerHarnessDir, routeHarness } from './lib/routeHarness.mjs';
+-    server.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${server.address().port}/`, close: () => closeServer(server) }));
++    server.listen(0, '127.0.0.1', () => {
++      const url = `http://127.0.0.1:${server.address().port}/`;
++      registerHarnessDir(url, dir);
++      resolve({ url, close: () => closeServer(server) });
++    });
++  await routeHarness(context, url);
++  await assertSecureContext(page);
+```
+`git diff --stat`: Catalog 9, RemoveApp 9 lines (H-2 only); D8OwnSite 14 (H-2 9 + O-123-9 5).
+
+### N-1…N-8 compliance
+```text
+git diff --stat e91b5b12 -- src/auth src/admin src/vault src/supabase src/execution extension supabase
+ src/auth/register.ts | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+untracked under supabase/: supabase/migrations/20261006120000_phase123_registry_owner_select.sql
+git diff e91b5b12 -- src/admin: (empty)
+```
+- N-1 `src/admin` unchanged (empty diff; admin full sweep therefore skipped, H-2 sample run instead).
+- N-2 / N-3 frozen paths unchanged except `register.ts` (O-123-2) and the one O-123-9 migration.
+- N-4 no `confirm` / `alert` / `prompt` in changed product files; every browser group fails on a native dialog.
+- N-5 no catalog id / host literal in added `src/` lines (static scan, whitespace-only re-indents ignored).
+- N-6 Hebrew copy, RTL dialogs (checked in the O-123-10 group).
+- N-7 fail-closed: O-123-2 signs out and refuses; the test button is disabled for any address the save path rejects.
+- N-8 no extension / manifest / dependency change; no migration apart from the O-123-9 file; nothing applied to a live database.
+
+Changed files vs `e91b5b12`: `src/` 10 (AddSiteModal, App.css, App.tsx, Dashboard.tsx, ServiceProfileManagementModal.tsx, auth/register.ts, components/ServiceCard.tsx, digitalHome/RemoveAppConfirmDialog.tsx, loginAssistance/LoginAssistancePanel.tsx, loginAssistance/messages.ts); `scripts/` 6 modified + 2 new (`lib/routeHarness.mjs`, `verifyPhase123OwnerFixes.mjs`); `supabase/` 1 new.
+
+### T-1 (per change; not final evidence)
+- O-123-1…8 + O-2: `verifyPhase123OwnerFixes` full sweep PASS (14 groups, 26 mutations, 3m 17s); `npx tsc -b` clean; 20 touched verifies PASS (AdminWorkspace `--no-mutations` 1m 52s, AppContext 23s, Catalog 31s, CatalogGate 1s, D8OwnSite 6s, Navigation 20s, RemoveApp 23s, Sync 1s; 102CredentialSchema, 103Execution, 104, 108BrowserIntegration, 108KnownServiceBootstrap, 108M1, 109, 111, 113, 116, 117, ServiceSourceOwnership plain, 0–1 s). Pre-freeze sweeps: Navigation 12 groups / 15 mutations 2m 22s; AppContext 23 groups / 15 mutations 1m 17s.
+- H-2 samples: Catalog M2, M7, M10 caught (53s); RemoveApp M2, M17, M20 (39s); D8OwnSite M8, M12, M17 (9s); AdminWorkspace M1, M4, M59 (2m 47s).
+- O-123-9 / O-123-10: `--report-groups` all 16 groups pass (29s); M27, M28 caught; M29 (new form), M30 caught (1m 06s); `npx tsc -b` clean; touched verifies (`rg -l` on AddSiteModal / App.css / the migration / the changed verifies): 108M1, 113, 104 plain PASS (0s); FixD6D8 1s, D8OwnSite 8s, Navigation 20s, AppContext 27s, Catalog 36s `--no-mutations` PASS. Lints clean on the edited files.
+
+### Final run — one frozen tree (2026-10-06 14:25:07 → 14:49:21, 24 min, 94 jobs, 0 failures) — SUPERSEDED
+**Superseded by O-123-11** (arch "123.5 progress", sequencing ruling): this run is on the tree before O-123-11 and is kept for the record only. The single final run will be repeated once, after the Owner writes "סיימתי את כל רשימת הבדיקה" and the last batch of findings is in.
+One sequential inline-PowerShell loop (`Start-Process`, H-1 bound per job, a timeout counts as FAIL), log `%TEMP%\pv-eor-123-5b\summary.log`. No other verify runner was active before the start ("runners before: 0").
+```text
+FP-BEFORE sha256=4d1ad76418237acc1f3ccb6b7fb1abfcd2776639bfe3ff4cfe5d883144ee8e56  diff_bytes=50458 tracked_changed=16 untracked=3
+FP-AFTER  sha256=4d1ad76418237acc1f3ccb6b7fb1abfcd2776639bfe3ff4cfe5d883144ee8e56  diff_bytes=50458 tracked_changed=16 untracked=3   (identical)
+git diff e91b5b12 -- src/admin: (empty, 0 lines) → AdminWorkspace full sweep skipped
+```
+(Fingerprint `%TEMP%\pv-fingerprint-123-5.mjs`, BASE `e91b5b1245891b889f01b7ecbd01ccb3065ddb9c`, scope `src/` + `scripts/` + `supabase/`, tracked diff + untracked file contents.)
+
+**Full sweeps** (verifies whose assertions changed in 123.5, plus the new verify):
+| Job | Result | Elapsed |
+|---|---|---|
+| `verifyPhase123OwnerFixes` | PASS — 16 check groups, 30 mutations caught | 4m 56s |
+| `verifyPhase123Navigation` (O-123-3, O-123-9) | PASS — 12 check groups, 15 mutations caught | 2m 22s |
+| `verifyPhase123AppContext` (O-123-6) | PASS — 23 check groups, 15 mutations caught | 1m 19s |
+| `verifyPhase123D8OwnSite` (O-123-9) | PASS — 10 check groups, 20 mutations caught | 0m 22s |
+| `verifyPhase113LoginAssistance` (O-123-8; no mutation switch, plain) | PASS | 0m 0s |
+
+**H-2 harness-only verifies** (`--no-mutations` + 3 sampled mutation ids each):
+| Job | Result | Elapsed |
+|---|---|---|
+| `verifyPhase123Catalog --no-mutations` | PASS — 19 check groups | 0m 34s |
+| `verifyPhase123Catalog --mutations=M2,M7,M10` | PASS — 3 selected mutations caught | 0m 57s |
+| `verifyPhase123RemoveApp --no-mutations` | PASS — 13 check groups | 0m 28s |
+| `verifyPhase123RemoveApp --mutations=M2,M17,M20` | PASS — 3 selected mutations caught | 0m 41s |
+| `verifyPhase122AdminWorkspace --no-mutations` | PASS — 32 check groups | 2m 31s |
+| `verifyPhase122AdminWorkspace --mutations=M1,M4,M59` | PASS — 3 selected mutations caught | 2m 7s |
+(AppContext, Navigation and D8OwnSite also carry the H-2 change and ran as full sweeps above.)
+
+**All other top-level `scripts/verify*.mjs`** (excluding `verifyPhase101Supabase` / `verifyPhase102Registry`): `--no-mutations` for the three that take the switch (`verifyPhase123CatalogGate` 0s, `verifyPhase123FixD6D8` 0s, `verifyPhase123Sync` 2s), plain for the 78 scripts without one (they run their built-in checks; the longest: `verifyPhase121ChoiceScreen` 52s, `verifyPhase122SubmitterProfiles` 40s, `verifyPhase122AdminNotes` 35s, `verifyPhase121DeleteService` 32s). Every one PASS; each job's last output line is in the summary log.
+
+**Build:** `npx tsc -b` PASS (24s); `npm run build` PASS (27s, "built in 5.68s").
+
+Why sweep vs `--no-mutations`: full sweeps only for the new verify and the verifies whose assertions changed (Navigation, AppContext, D8OwnSite; 113 has no mutation switch). Catalog, RemoveApp and AdminWorkspace changed only in serving code (H-2) or not at all, so they ran `--no-mutations` plus 3 sampled mutations per the H-2 ruling. Everything else is unchanged and ran `--no-mutations` / plain.
+
+### Late finding O-123-11 — "removed elsewhere" notice only when it matters (T-1 only; no final run yet)
+**Implementation.**
+- `src/Dashboard.tsx`, reconcile effect: after closing an affected floating window, `if (!closesPanel && !cloudReconcile.closedOtherSurface) return;`. Otherwise the existing `MSG_REMOVED_ELSEWHERE` ("…ולכן החלון נסגר.") is shown exactly as before (same element, `role="status"`, `dir="rtl"`, z-order, 8 s timer, × button). `closedOtherSurface` is the existing App flag: the profile modal of an affected app, or «עריכת פרטי האתר» of a removed app, was closed.
+- `src/loginAssistance/messages.ts`: `MSG_REMOVED_ELSEWHERE_PLAIN` and its doc comment removed (no other user: `rg -n "MSG_REMOVED_ELSEWHERE" src` → only `Dashboard.tsx` and `cloudReconcile.ts`). The import in `Dashboard.tsx` removed.
+- `src/digitalHome/cloudReconcile.ts` unchanged (`git diff --stat e91b5b12 -- src/digitalHome/cloudReconcile.ts` is empty). Note: the prompt names `src/supabase/cloudReconcile.ts`; the file lives at `src/digitalHome/cloudReconcile.ts` (no file of that name exists under `src/supabase/`, which is also unchanged).
+
+**Checks and mutations.**
+| Verify | Check | Mutation |
+|---|---|---|
+| `verifyPhase123Navigation` `checkRemovedElsewhereNotice` (rewritten, G-3) | plain home → tile gone, no notice; catalog open → tile gone, no notice, catalog stays; another app's floating window open → tile gone, no notice, window stays; affected floating window → closes + Hebrew RTL `role="status"` closed-window notice, still above a catalog opened while it is shown; affected profile modal (opened from «הוספת פרופיל», floating window already closed) → modal closes + the same notice | M10 inverted: "notice shown although no affected window was open" (removes the early return); M8 (notice not rendered) and M9 (notice under the catalog) still caught |
+| `verifyPhase123Navigation` static N-6 (G-3) | the plain copy is absent from `messages.ts`; the closed-window copy stays in `cloudReconcile.ts` | — |
+| `verifyPhase123OwnerFixes` `checkMessagesComments` | `MSG_REMOVED_ELSEWHERE_PLAIN` and its comment absent; the AD-123-1 comment still directly above its constant; every other constant unchanged vs BASE | M31 plain constant kept; M26 re-anchored (the AD-123-1 comment moved above `MSG_SELECT_PROFILE`, because its old anchor was the removed comment) |
+| `verifyPhase123OwnerFixes` static N-checks | `cloudReconcile.ts` in the frozen list (no diff) | — |
+
+**G-3 rows (O-123-11).**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123Navigation` `checkRemovedElsewhereNotice` | "notice on the plain home / above the catalog / with another app's window open" → silent in those three cases; the notice only for the affected floating window and (new) the affected profile modal; z-order checked with the closed-window notice | O-123-11 (superseded assertions) |
+| `verifyPhase123Navigation` M10 | "notice only when a window closed (drop path silent)" → "notice shown although no affected window was open" | O-123-11 (inverted mutation) |
+| `verifyPhase123Navigation` static N-6 | plain copy present → absent | O-123-11 |
+| `verifyPhase123OwnerFixes` (own, 123.5) | O-2 group: plain constant / comment present → absent; M26 anchor moved | O-123-11 narrows O-2 |
+
+**T-1 (O-123-11).**
+- `npx tsc -b` clean; lints clean on `Dashboard.tsx` / `messages.ts`.
+- `verifyPhase123Navigation --no-mutations` PASS, 12 groups (16s). `--mutations=M8,M9,M10` PASS, all caught (55s): M8 by the closed-window wait, M9 "the notice is visible above the open catalog modal", M10 "plain Digital Home → the tile disappears silently (no notice)".
+- `verifyPhase123OwnerFixes --mutations=M26,M31` PASS: baseline 16 groups green, both caught (22s).
+- Other verifies that read `Dashboard.tsx` / `messages.ts` / `cloudReconcile` (`rg -l`): 102CredentialSchema, 104, 103Execution, 108BrowserIntegration, 111, 113, 117ManagedAutofill, ServiceSourceOwnership plain PASS (0–1 s); CatalogGate 1s, Sync 2s, D8OwnSite 10s, RemoveApp 24s, AppContext 19s, Catalog 23s `--no-mutations` PASS.
+
+### Late finding O-123-12 — no "not saved yet" line under the fields-updated notice (T-1 only; no final run yet)
+**Implementation.**
+- `src/loginAssistance/LoginAssistancePanel.tsx`, JSX branch `launchKind === 'missing-user-credentials'`: the `MSG_MISSING_USER_CREDENTIALS_LAUNCH` block («עדיין לא שמרת פרטי כניסה לאתר זה.») is now wrapped in `!showFieldsUpdated && (…)`. While the D-123-8 notice «שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.» is shown, the window shows the notice with its single «עריכת פרופיל» and the normal actions only. When the notice is absent, the line renders exactly as before (same element, `role="status"`, class).
+- That 5-line block is the only O-123-12 change. In `git diff -U0 e91b5b12 -- src/loginAssistance/LoginAssistancePanel.tsx`, every other hunk belongs to O-123-5 (menu ref / click capture) or O-123-8 (failure status).
+
+**Nothing about stored values or the notice trigger changed.**
+- `const showFieldsUpdated = …` (panel lines 164–170) has no diff hunk. It still calls `hiddenCredentialFieldIds(activeCredential, entry.fields.map(…))`.
+- `git diff --stat e91b5b12 -- src/execution src/digitalHome/ownSiteDefinition.ts src/loginAssistance/credentialsGate.ts src/admin` is **empty**. The resolver (`resolveOwnSiteDefinition` / `ownSiteFollowsRegistry`), `hiddenCredentialFieldIds`, the `missing-user-credentials` derivation and `src/execution/**` are untouched.
+- Hydrate and the App merge are unchanged by O-123-12.
+- No credential write was added. Stored values stay under the old field ids until the user saves the profile.
+- No site / host / service-id branch, no browser dialog. Hebrew RTL is unchanged.
+
+**Check and mutation** (`scripts/verifyPhase123OwnerFixes.mjs`).
+| Check | Mutation |
+|---|---|
+| `checkFieldsUpdatedOnly` (browser, real App). Fixture: an own site whose approved registry entry with the same id maps one different field (`email`), and a profile whose stored values use only the old ids (`username` / `password`). Opening the tile shows the fields-updated notice, no «עדיין לא שמרת…», exactly one `edit-profile` (inside the notice) and the primary action. The stored credential keeps the same keys and values (compared in the page, never printed). Control: an own site with no registry entry and no stored values shows «עדיין לא שמרת…» as before. | **M32 both messages shown together** (`!showFieldsUpdated && (` → `(`): caught by "O-123-12: no «עדיין לא שמרת פרטי כניסה לאתר זה.» together with the fields-updated notice" |
+
+`openPage` gained an optional `catalogExtra` (registry rows added for one page only), so the other groups' catalog stays as it was. Fixture values are synthetic (`fixture-upd-*`).
+
+**T-1 (O-123-12).**
+- `npx tsc -b` clean. Lints clean on the panel and the verify.
+- `verifyPhase123OwnerFixes --no-mutations` PASS, 17 groups (31s). `--mutations=M32` PASS, caught (56s).
+- The other verifies that read `LoginAssistancePanel` (`rg -l`) all PASS:
+  - plain: 102CredentialSchema, 104, 103Execution, 117ManagedAutofill, 113, ServiceSourceOwnership;
+  - `--no-mutations`: RemoveApp (13 groups, 22s), Navigation (12, 17s), Catalog (19, 24s), AppContext (23, 16s), CatalogGate (8), D8OwnSite (10, 4s).
+
+**Backlog (not in scope):** F-123-1, automatic carry-over of stored values by field kind.
+
+### Owner findings batch 3 — O-123-17 Step 1 (read-only; no `src/` change) — 2026-10-06
+**Result: not reproduced in any client path, and not stale UI state. The dot and the window's profile buttons can only remain if the profile is really still in the vault state. No 123.5 hunk touches this path, so it is not a client regression vs `e91b5b12`. Any fix would be in delete / sync / hydrate territory → STOP, per the ruling.**
+
+**Where the dot and the buttons come from (code read):**
+- The dot is `Tile` `hasCredentials={appHasProfile({ accessProfiles }, service.id)}` (`Dashboard.tsx`), where `accessProfiles = vaultState.accessProfiles`. It has no state of its own.
+- The window's «עריכת פרופיל» / «הוספת פרופיל» / chips / empty state come from `appContextActions(service, profilesForService(accessProfiles, id))`, the same list. `activeProfileId` resets to `initialActiveProfile(profiles)` whenever the profile id set changes.
+- «עריכת פרופיל» closes the window (`setAssistance(null)`), so after the modal the window always remounts fresh.
+- The dot, the window and the modal all select an app's profiles with the same trimmed `serviceId` comparison.
+- So no stale React state can keep the dot and the buttons once the profile has left `vaultState.accessProfiles`.
+
+**Delete path (unchanged):** `DigitalHomeCredentialModal.onDeleteProfile` runs these steps:
+1. a local validation dry run (fail-closed);
+2. `bumpDualWriteGeneration()`, then `deleteAccessProfileFromCloud` (RLS `access_profiles_crud_own`; a delete that matches 0 rows is not an error);
+3. `deleteAccessProfile`;
+4. `handleVaultStateChange`, which does `setVaultState` + `saveVaultState`.
+
+If the cloud delete throws, nothing is deleted locally (by design). The modal then shows «לא הצלחנו למחוק את הפרופיל מהחשבון. בדקו חיבור לרשת ונסו שוב.» and «לא הצלחנו לשמור את השינויים…», and the dot correctly stays.
+
+**Reproduction with the real App (harness, synthetic data):** new group `checkLastProfileDeleted` in `scripts/verifyPhase123OwnerFixes.mjs`. The only harness change is that the stub `setCloudGoneListener` now keeps the listener, as in `verifyPhase123Navigation`. All five paths PASS on the current tree:
+
+| Path | Result |
+|---|---|
+| One tab: lone legacy profile → «עריכת פרופיל» → «מחיקת פרופיל» → confirm → ✕ | no dot; window «עדיין אין פרופיל לאתר זה.» + «הוסף פרופיל» + «פתח אתר» only |
+| One tab: lone «ראשי» with stored credentials (autofill app), same path | same |
+| One tab: «הוסף פרופיל» → save («ראשי», O-123-6) → delete in the same modal | same |
+| Two tabs: the other tab's deletion arrives through the cloud-gone listener (AD-123-18 (2)), window closed | same |
+| Two tabs: same, window of that app open | same |
+
+The existing `verifyPhase123AppContext` `checkDeleteFlows` (FR-11 / FR-12: no dot and an empty state after the last delete) also passes: in the 123.4 END OF ROUND run on the BASE tree, and in the O-123-12 T-1 on the current tree.
+
+**Compared with BASE `e91b5b12`:** `git diff e91b5b12` has no hunk in any of the following:
+- `Tile.tsx`, `appContext.ts`, `profileManagement.ts`, `profileResolution.ts`, `DigitalHomeCredentialModal.tsx`, `persistence.ts`, `syncOutbox.ts`;
+- `App.tsx` `handleVaultStateChange` / reconcile;
+- the `profiles` / `activeProfileId` / `appContextActions` lines of the panel.
+
+The 123.5 hunks in `ServiceProfileManagementModal.tsx` are only O-123-6 / O-123-7 (first-profile name, chips / rename hidden for a lone profile, duplicate-name check, hint removed). The Dashboard hunks are O-123-3 / O-123-8 / O-123-11. None of them changes the profile list, the delete handler or the dot.
+
+**What remains (needs the Owner's dev data; I cannot sign in, by rule):** the profile is really still in the state. There are two ways that can happen:
+- **A — the cloud delete failed:** fail-closed, nothing deleted, and the modal shows the red line above.
+- **B — resurrection:** the cloud still holds the row after the delete. Hydrate / refresh-on-focus treats the cloud as the source of truth and brings the profile back. Candidates:
+  - an insert of a just-created profile that was already in flight when the delete ran (create and delete within seconds);
+  - another tab re-inserting a profile still in its outbox.
+
+  This is D-123-1 / AD-123-18 territory: sync / hydrate / outbox.
+
+Either way, the fix is not UI-state-only.
+
+**Owner steps to tell A from B (Hebrew; no user ids needed):**
+1. אחרי המחיקה, האם הופיעה בחלון ניהול הפרופיל שורה אדומה «לא הצלחנו למחוק את הפרופיל מהחשבון…»? (כן → מקרה A.)
+2. האם הנקודה נשארה מיד אחרי המחיקה, או חזרה רק אחרי מעבר לחלון / לשונית אחרת וחזרה? האם הפרופיל נוצר שניות ספורות לפני המחיקה?
+3. לרענן את הדף (F5) ולהיכנס שוב: האם הנקודה עדיין שם?
+4. ב־SQL Editor של Supabase (dev), עם מזהה האפליקציה בלבד:
+   `select ap.local_profile_id, ap.display_name, ap.created_at from public.access_profiles ap join public.user_services us on us.id = ap.user_service_id where us.service_id = '<מזהה האפליקציה>' order by ap.created_at;` — שורה שמופיעה אחרי המחיקה = מקרה B.
+
+**Status:** STOP for O-123-17, per the ruling (the fix needs sync / hydrate / outbox changes, or none at all if A). No mutation was added yet; the check will get its mutation with whatever fix is ruled.
+
+### O-123-17 Step 2 — fail-closed cloud profile delete (Architect ruling; T-1 only)
+**Cause (Owner evidence, Architect reading):** legacy data. The old profile's cloud row carried a different `local_profile_id` than the vault profile. `deleteAccessProfileFromCloud` matched 0 rows, treated that as success, and the local delete went ahead. The next cloud read brought the row back as a profile. Profiles created now are not affected, and this is not a 123.5 regression.
+
+**Fix: the profile delete path only.**
+- `src/supabase/persistence.ts`, `deleteAccessProfileFromCloud`:
+  - the delete now asks for the removed rows back (`.select('id')`);
+  - if no row came back, it throws an error with `code: PROFILE_DELETE_UNCONFIRMED` (new exported constant) and skips `forgetProfile`;
+  - a server error is rethrown as before.
+
+  `git diff e91b5b12 -- src/supabase` is exactly these two hunks in this one function plus the constant (pinned by `O17_PERSIST_HUNKS`).
+- `src/loginAssistance/DigitalHomeCredentialModal.tsx`, `onDeleteProfile`:
+  - any cloud-delete failure, including "no row removed", sets the existing `PROFILE_DELETE_CLOUD_FAILED_MESSAGE` («לא הצלחנו למחוק את הפרופיל מהחשבון. בדקו חיבור לרשת ונסו שוב.») and deletes nothing locally;
+  - the one exception is a profile still in the vault outbox (`outboxOf(vaultState).profileIds`): its first cloud insert never happened, so "no row" is expected. Under the AD-123-18 model, any other profile without a cloud row is dropped as "gone" by the next dual-write.
+
+  The call line `bumpDualWriteGeneration(); await deleteAccessProfileFromCloud(profileId);` is byte-identical.
+- **Not changed:** hydrate, outbox code, the sync algorithm, `persistVault`, crypto, schema / RLS.
+
+**Checks** (`scripts/verifyPhase123OwnerFixes.mjs`, now 20 groups):
+| Check | What it proves |
+|---|---|
+| `checkProfileDeleteProof` (unit: real `persistence.ts`, stub client with PostgREST delete semantics, where rows come back only with `.select()`) | matching row → removed, success, rows asked back; **the Owner case** (cloud row under an older local id) and an owner / RLS mismatch → 0 rows → `PROFILE_DELETE_UNCONFIRMED`, the row stays; server error rethrown unchanged |
+| `checkDeleteUnconfirmed` (browser, real App) | a cloud delete that removed no row → the existing Hebrew error in the modal, profile and dot kept, 0 writes; a profile still in the outbox → deleted normally, leaves the outbox, empty state |
+| `checkLastProfileDeleted` (from Step 1) | after the last delete: no dot; the window shows «עדיין אין פרופיל לאתר זה.» + «הוסף פרופיל» + «פתח אתר» only |
+
+**Mutations:** I added `--mutation-report` to list every group that catches a mutation. All four are caught by a behaviour check, not only by the exact-hunk pin:
+| Mutation | Caught by |
+|---|---|
+| M33 0-row cloud delete treated as success (`persistence.ts`) | `checkProfileDeleteProof` "0-row cloud delete treated as success (got success)"; `checkNChecks` hunk pin |
+| M34 0-row cloud delete treated as success by the window (outbox ignored) | `checkDeleteUnconfirmed` "…the profile was deleted locally"; host hunk pin |
+| M35 a profile that never reached the cloud cannot be deleted | `checkDeleteUnconfirmed` (outbox case); host hunk pin |
+| M36 dot / edit buttons remain after the last profile is deleted (local delete skipped) | `checkLastProfileDeleted`, `checkDeleteUnconfirmed`, `checkProfileNames`; host pin |
+
+**G-3 rows (O-123-17):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123OwnerFixes` `checkNChecks` | frozen `src/supabase` → allows `persistence.ts` only when reverting the exact O-123-17 hunks gives BASE byte for byte | O-123-17 |
+| `verifyPhase123OwnerFixes` `checkProfileWritesStatic` | "host = BASE" → host = BASE after reverting the three exact O-123-17 hunks | O-123-17 |
+| `verifyPhase123D8OwnSite` `checkHydrateScope`, `checkKi5SharedPredicate` | "persistence.ts = base apart from D-123-8 / KI-5" → the same after `withoutO17DeleteProof` (exact text) | O-123-17 |
+| `verifyPhase123AppContext` N-3 `AD_123_18_IMPORTS` | the host may also import `PROFILE_DELETE_UNCONFIRMED` | O-123-17 |
+
+Each change carries a code comment naming O-123-17. Nothing else was weakened. AppContext's `checkPersistenceScope` (`forgetProfile` only after success; 8 functions byte-identical) still passes unchanged.
+
+**T-1 (O-123-17):**
+- `npx tsc -b` clean.
+- OwnerFixes `--no-mutations` 20 groups PASS. `--mutations=M33,M34,M35,M36 --mutation-report` all caught (2m).
+- Readers of `persistence.ts` / the host:
+  - 109Accounts, 113LoginAssistance, 121DeleteService (43 mutations) plain PASS;
+  - Sync (15 groups), AppContext (23), D8OwnSite (10), Catalog (19), Navigation (12), RemoveApp (13) `--no-mutations` PASS.
+
+**Earlier code path that could leave a mismatched `local_profile_id`** (from code history only, not verified; information, not a fix):
+- (a) `src/vault/vaultMigration.ts` gives migrated legacy profiles the deterministic id `profile-legacy-<serviceId>`. A cloud row created for the same app from another vault / device under a `profile-<uuid>` id keeps that id.
+- (b) Before AD-123-18 amendment A (outbox), hydrate kept local-only profiles ("never drop local", D-109-25). Local profiles then reached the cloud only by a background upsert on `(user_id, local_profile_id)`. A failed or aborted write left the vault profile without a cloud row, while an older row for the same app stayed under its own id.
+
+Either way, the vault and the cloud hold the "same" profile under two ids. The fix above turns that case into a visible error instead of a silent resurrection.
+
+**Owner re-check (Hebrew):** step 17 in "Owner re-check steps" below.
+
+### Batch 3 — O-123-13…16 (T-1 only; no final run yet)
+
+#### O-123-13 / O-123-14 — the catalog offer sits above the still-filled custom-site form
+**Files / symbols:**
+- `src/digitalHome/AppCatalog.tsx`, `handleAddCustomSite`:
+  - the three offer outcomes (`catalog_service_available`, `already_in_user_home`, `same_user_custom_duplicate`) no longer call `dismissAddModal()`; they only reset `isSavingCustom` and set `catalogOffer`;
+  - `<AddSiteModal covered={catalogOffer !== null}>`;
+  - new `closeOfferAndForm()` is used by «חזרה לחנות האתרים» and, after a successful add, by «הוספה לבית הדיגיטלי» (`confirmAddCatalogToHome`);
+  - Escape / × / backdrop / «סגור» keep `dismissCatalogOffer` (offer only);
+  - the catalog-available offer now shows a × button (`aria-label="סגירה"`), the title `catalogOfferFoundTitle(catalogOffer.displayName)`, the text `catalogOfferSupportedText(catalogOffer.displayName)` and the two buttons; each offer's first button gets `autoFocus`.
+- `src/digitalHome/catalogMessages.ts` (new, user-side copy only): `catalogOfferFoundTitle` «מצאנו את <name> בחנות האתרים», `catalogOfferSupportedText` «<name> כבר נתמך, ולכן אין צורך להוסיף אותו כאתר מותאם אישית.», `CATALOG_OFFER_ADD_LABEL` «הוספה לבית הדיגיטלי», `CATALOG_OFFER_BACK_LABEL` «חזרה לחנות האתרים», `CATALOG_OFFER_CLOSE_LABEL` «סגירה». `<name>` is always the classifier's catalog `displayName`.
+- `src/AddSiteModal.tsx`: new optional `covered` prop. While covered:
+  - the overlay gets `inert` and `data-covered="true"`;
+  - its own Escape is off (`useEscapeToClose(cancelIfIdle, !covered)`);
+  - when it is uncovered again, focus returns to the name field (`nameInputRef`).
+  The default `covered = false` leaves the edit flow unchanged.
+- `src/digitalHome/AppCatalogModal.tsx`: the Tab trap scope is the top non-inert `.modal-overlay` (previously the first one, which is now the inert form).
+- `src/App.css`: `.sm-catalog-offer-head` / `.sm-catalog-offer-close`; `.modal-overlay[data-covered='true']` (no second backdrop, dialog at opacity 0.55).
+- `src/supabase/**` untouched by this change. The old `registryPersistence.ts` constants stay (pinned by verify 104); `AppCatalog` no longer imports the four catalog-available ones.
+
+**Check** `checkCatalogOfferLayered` (OwnerFixes, browser, real App + real classifier; fixture hosts):
+- **catalog-available** (`avail.example.test`, catalog name «חנות זמינה», typed «החנות שלי»):
+  - title and text use the catalog name, and the typed name appears nowhere;
+  - exactly the two buttons are shown;
+  - the form stays visible with the typed values, `inert`, not focusable (`focus()` fails), opacity < 1, and Tab stays inside the offer;
+  - Escape and × each close only the offer: the form stays filled and focus returns to the name field;
+  - «חזרה לחנות האתרים» closes both and adds nothing;
+  - «הוספה לבית הדיגיטלי» adds `svc-avail`, closes both and creates no custom site.
+- **already in home** (`one.example.test`) and **own duplicate** (`own.example.test`):
+  - the existing copy is shown, and the form stays behind (same assertions as above);
+  - «סגור» and Escape each close only the offer, keeping the values and returning focus.
+
+| Mutation | Caught by |
+|---|---|
+| M37 form closed when the catalog offer appears | "the custom-site form is not closed when the offer appears" |
+| M38 typed name used instead of the catalog name | "title «מצאנו את <catalog name> בחנות האתרים»" |
+| M39 Escape closes the form too | "O-123-13 Escape: only the offer closes — the form stays" |
+| M40 form focusable while the offer is open | "the form is inert (not focusable) while the offer is open" |
+| M41 «סגור» closes the form too (O-123-14) | "O-123-14 (one.example.test) «סגור»: only the offer closes — the form stays" |
+| M42 typed values lost behind the offer (O-123-14) | "the form keeps the typed values behind the offer" |
+
+**G-3 rows (O-123-13 / O-123-14):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123Catalog` `CATALOG_ALLOWED_IMPORTS` | allows `./catalogMessages` (strings only) | O-123-13 |
+| `verifyPhase123Catalog` `HE` | `addHome` «הוספה לבית הדיגיטלי», `availablePrompt` = the new text; `notNow` removed; `backToCatalog` added | O-123-13 |
+| `verifyPhase123Catalog` `checkCustomAdd` | new title / text for the catalog-available offer; after «סגור» the still-open form is cancelled with «ביטול» before the next add; after «הוספה…» the form must be gone | O-123-13 / O-123-14 |
+| `verifyPhase123Catalog` D-123-3 group | after the offer closes (backdrop / Escape) the still-open form is cancelled with «ביטול» before the next add / closing the catalog | O-123-14 |
+| `verifyPhase104ServiceManagement` | "UI uses `catalogServiceAvailableTitle(catalogOffer.displayName)`" → uses `catalogOfferFoundTitle(…)` and `catalogOfferSupportedText(…)` with `catalogOffer.displayName` | O-123-13 |
+
+AppContext's D-123-3 overlay scan initially failed because the overlay class was a template literal. I fixed the product code (literal `className="modal-overlay"` + `data-covered`), not the scan, which still finds 6 overlays.
+
+**T-1 (O-123-13 / O-123-14):**
+- `npx tsc -b` clean; no lints.
+- OwnerFixes `--report-groups`: 21 groups PASS. `--mutation-report --mutations=M37…M42`: all caught (M39 / M41 re-run after the explicit assertion; M40 / M42 re-run after the `data-covered` change).
+- Catalog (19 groups), AppContext (23), D8OwnSite (10), CatalogGate (8), Navigation (12), FixD6D8 (6) `--no-mutations` PASS.
+- 104ServiceManagement and 108M1ExplicitLoginEntry plain PASS.
+
+#### O-123-15 — autofill label
+**Files / symbols:** `src/loginAssistance/messages.ts` `LABEL_TRY_AUTO` «נסה מילוי אוטומטי» → «מילוי פרטים אוטומטי». The click handler is unchanged.
+
+**Check** `checkAutofillLabel` (browser): the window autofill action reads «מילוי פרטים אוטומטי», the old label is gone from the page, and a click still runs the autofill attempt (status line).
+
+| Mutation | Caught by |
+|---|---|
+| M43 old autofill label restored | `checkAutofillLabel` (got «נסה מילוי אוטומטי»); `checkMessagesComments` |
+
+**G-3 rows (O-123-15):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase113LoginAssistance` "Autofill copy unchanged" | asserts `LABEL_TRY_AUTO = 'מילוי פרטים אוטומטי'` | O-123-15 |
+| `verifyPhase123OwnerFixes` `checkMessagesComments` (O-2 "every other constant unchanged vs BASE") | BASE's `LABEL_TRY_AUTO` value is swapped for exactly the new label before the comparison; every other constant still equals BASE | O-123-15 |
+
+**T-1 (O-123-15):**
+- OwnerFixes 22 groups PASS; M43 caught.
+- 113LoginAssistance and 117ManagedAutofill plain PASS.
+- RemoveApp (13), Navigation (12), D8OwnSite (10), AppContext (23), FixD6D8 (6) `--no-mutations` PASS.
+
+#### O-123-16 — closed-window notice copy (narrow N-2 copy exception)
+**Files / symbols:** `src/digitalHome/cloudReconcile.ts` `MSG_REMOVED_ELSEWHERE`. This is the whole diff against BASE:
+```diff
+-export const MSG_REMOVED_ELSEWHERE = 'האפליקציה או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.';
++export const MSG_REMOVED_ELSEWHERE = 'האתר או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.';
+```
+`git diff --stat e91b5b12 -- src/digitalHome/cloudReconcile.ts`: 1 file, 1 insertion, 1 deletion.
+
+**Check:** OwnerFixes `checkNChecks`:
+- `cloudReconcile.ts` carries the new line exactly once;
+- swapping it back gives BASE byte for byte (`O16_LINE`).
+
+The behaviour (the window closes with the notice) is checked in Navigation and AppContext with the new text.
+
+| Mutation | Caught by |
+|---|---|
+| M44 old removed-elsewhere wording | `checkNChecks` "carries «האתר או הפרופיל…» exactly once" |
+| M45 another `cloudReconcile.ts` line changed (`CLOUD_REFRESH_MIN_INTERVAL_MS`) | `checkNChecks` "identical to e91b5b12 apart from the MSG_REMOVED_ELSEWHERE line" |
+
+**G-3 rows (O-123-16):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123OwnerFixes` `checkNChecks` frozen list | `cloudReconcile.ts` leaves the "no diff" list and must equal BASE after swapping back exactly that one line | O-123-16 |
+| `verifyPhase123D8OwnSite` `checkHydrateScope` `others` | same (exact line, vs its BASE `af881f6b`) | O-123-16 |
+| `verifyPhase123Navigation` `checkNChecks` N-2 | "`cloudReconcile.ts` unchanged since `c700cd60`" → unchanged apart from that one line; `HE.removedClosed` = the new copy (browser checks at the closed-window notice use it) | O-123-16 |
+| `verifyPhase123AppContext` `HE.removedElsewhere` | the new copy | O-123-16 |
+
+**T-1 (O-123-16):**
+- `npx tsc -b` clean.
+- OwnerFixes 22 groups PASS; M44 and M45 caught.
+- D8OwnSite (10), Navigation (12), AppContext (23), Sync (15), RemoveApp (13), Catalog (19) `--no-mutations` PASS.
+
+No verify process was left running after the runs.
+
+### Batch 4 — O-123-18…21 (T-1 only)
+
+#### O-123-18 — return to the floating window after a profile / site-details modal
+**Files / symbols:**
+- `src/Dashboard.tsx`:
+  - new prop `windowModalOpen` (default `false`);
+  - `interface WindowReturn { serviceId, opener, opened }`, ref `windowReturn`, state `windowReturnSeq`, ref `focusOnReopen`;
+  - `openFromWindow(service, opener, open)` records the return, then opens the modal and closes the window. It is used by the panel callbacks `onEditProfile` (`edit-profile`), `onAddProfile` (`add-profile` / `add-first-profile`) and `onEditSiteDetails` (`edit-site-details`);
+  - an effect on `[windowModalOpen, windowReturnSeq]`: when the modal closes it reopens the window, only if the modal really opened, the vault is unlocked, the app is still in `services` and its tile is in the DOM. It uses the current `Service` and the live tile rect;
+  - an effect on `assistance` moves focus to `[data-action=<opener>]` inside the window, or to the window section when that button is gone.
+- `src/App.tsx`: `windowModalOpen={profileHost !== null || siteEditHost !== null}` on `<Dashboard>`. The AC-113-45 tile-focus effect (`profileReturnFocusId`) stays and still covers the exceptions (app removed, locked, not opened from the window).
+- `src/loginAssistance/LoginAssistancePanel.tsx`: `tabIndex={-1}` on the window section, so it can take focus.
+- Not changed: modal logic, persistence, sync, Remove app.
+
+**Exceptions:**
+- **The app was removed:** no service and no tile → no window; the O-123-11 notice rules apply unchanged.
+- **Locked / logged out:** `vaultUnlocked` is false, or Dashboard is unmounted → no window.
+- **Not opened from the window:** only `openFromWindow` records a return. A request that never opened a modal is cleared on the next close through `opened === false`.
+
+**Check** `checkReturnToWindow` (browser, real App):
+- «עריכת פרופיל» × on `svc-cred` → the window is back, anchored to the tile, focus on `edit-profile`;
+- rename + save, then × on `svc-two` → the window is back and shows the new chip «אלף חדש»;
+- «הוספת פרופיל» «ביטול» → the window is back, focus on `add-profile`;
+- «הוסף פרופיל» cancel / save on `svc-zero` → the window is back, focus on `add-first-profile`, or on the window after the save (the button is gone);
+- «עריכת פרטי האתר» save (title «אתר שלי חדש») and Escape on the own site → the window is back, refreshed;
+- catalog opened and closed (not from the window) → no window;
+- app removed elsewhere (`__pvGone`) while the modal is open → no window, and the notice is shown;
+- lock from inside the modal (`.vault-state-badge-lock`), then log in again → no window.
+
+| Mutation | Caught by |
+|---|---|
+| M46 window not reopened after save | `checkReturnToWindow` (save → window back) |
+| M47 window not reopened after cancel | `checkReturnToWindow` (cancel → window back) |
+| M48 window reopened although the app was removed (cached service, no tile guard) | `checkReturnToWindow` "window reopened although the app was removed" |
+
+**G-3 rows (O-123-18):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123Navigation` `checkAppsLoginReachability` (AC-113-45 focus back on the tile after the profile modal closes) | now asserts that the window is visible and focus is on its `edit-profile` button; code comment names O-123-18 | O-123-18 supersedes the 123.4 focus-to-tile re-homing for these modals |
+| `verifyPhase123OwnerFixes` `openTile` helper | waits 150 ms, keeps an already-open window of the same app, and otherwise closes any open window first (the reopened window may cover the next tile); code comment names O-123-18 | O-123-18 (test helper only; no assertion changed) |
+
+#### O-123-19 — «↗ פתח» below the URL field
+**Files / symbols:**
+- `src/AddSiteModal.tsx`:
+  - `TEST_OPEN_URL_LABEL = 'פתח'`;
+  - new `TEST_OPEN_URL_ICON = '↗'` (rendered first, `aria-hidden`, so it sits to the right of «פתח» in RTL);
+  - new `TEST_OPEN_URL_ACCESSIBLE_NAME = 'פתח את הכתובת לבדיקה בכרטיסייה חדשה'`, set as `aria-label` on the button;
+  - the `onClick` / `disabled` / `noopener,noreferrer` behaviour is unchanged. Both forms (add and «עריכת פרטי האתר») use this component.
+- `src/App.css`:
+  - `.modal-field .modal-url-row` is now `flex-direction: column; align-items: stretch`, so the input keeps the full width;
+  - `.modal-url-test` uses `align-self: flex-start` (the right side in RTL) and is an inline-flex with a small gap.
+
+**Accessible name:** the ruling's example was «פתיחת הכתובת לבדיקה בכרטיסייה חדשה». I used «פתח את הכתובת…» so that the accessible name contains the visible word «פתח» (WCAG 2.5.3 label in name; speech users can say what they see).
+
+**Check** `checkTestOpenButton` (the O-123-10 group), new helper `assertOpenButtonLayout`, run for both forms:
+- the label is «↗ פתח»;
+- the button top is at or below the input bottom, and the input width equals the row width;
+- the ↗ box is to the right of the «פתח» text box;
+- `getByRole('button', { name: <accessible name> })` finds exactly one button.
+
+The O-123-10 behaviour assertions (disabled for empty / invalid, the exact stored URL, a new tab with `noopener,noreferrer`, no probe) are unchanged.
+
+| Mutation | Caught by |
+|---|---|
+| M28 button absent (kept; the block text was updated to the new markup) | "the test-open button is in the URL field block" |
+| M29 opens a URL different from the stored one (kept) | O-123-10 exact URL assertion |
+| M30 enabled for an invalid address (kept) | "disabled while the address is empty" |
+| M49 button beside the URL field again (row back to `align-items: center`, no column) | "the button sits below the URL field, which keeps the full width" |
+| M50 old «פתיחה לבדיקה» label | "label «↗ פתח»" (got «↗פתיחה לבדיקה») |
+| M51 no descriptive accessible name (no `aria-label`) | "descriptive accessible name «פתח את הכתובת לבדיקה בכרטיסייה חדשה»" |
+
+**G-3 rows (O-123-19):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123OwnerFixes` `checkTestOpenButton` (add and edit) | «פתיחה לבדיקה» text next to the field → presence assertion plus `assertOpenButtonLayout`; code comments name O-123-19 | O-123-19 |
+| `verifyPhase123OwnerFixes` M28 | same mutation, `from` text updated to the new button markup | O-123-19 |
+
+No other verify pins this label or layout (`rg` over `scripts/`).
+
+#### O-123-20 — menu item «הסרת אתר»
+**Files / symbols:** `src/loginAssistance/messages.ts` `LABEL_REMOVE_APP` «הסרת אפליקציה» → «הסרת אתר». The behaviour, the `data-action="remove-app"` and the menu gating are unchanged. The wider app → site wording (code comments, other copy) is not touched.
+
+**Check:** `requestRemove` (used by `checkRemoveDialog`, the O-123-4 group) asserts the menu item text «הסרת אתר» before clicking it.
+
+| Mutation | Caught by |
+|---|---|
+| M52 old «הסרת אפליקציה» menu label | `checkMessagesComments` (O-2 BASE comparison) and `checkRemoveDialog` "the window menu item reads «הסרת אתר»" |
+
+**G-3 rows (O-123-20):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123RemoveApp` `HE.removeApp` (static N-6 copy and browser menu text) | `'הסרת אתר'`; code comment names O-123-20 | O-123-20 |
+| `verifyPhase123OwnerFixes` `checkMessagesComments` (O-2 "every other constant unchanged vs BASE") | BASE's `LABEL_REMOVE_APP` value is swapped for exactly the new label, next to the O-123-15 swap; every other constant still equals BASE | O-123-20 |
+
+AppContext and Catalog name «הסרת אפליקציה» only in assertion messages and regexes on `menu.remove_app`. They do not pin the string, so they are unchanged.
+
+#### O-123-21 — remove-confirm paragraph
+**Files / symbols:** `src/digitalHome/RemoveAppConfirmDialog.tsx` `REMOVE_APP_CONFIRM_BODY` → «כל הפרופילים ופרטי ההתחברות של האתר יימחקו מכל המכשירים שלך.». The title `REMOVE_APP_CONFIRM_TITLE` and the O-123-4 0-profile variant (no paragraph) are unchanged.
+
+**Check:** `checkRemoveDialog`:
+- with ≥ 1 profile, the paragraph equals the new text exactly;
+- the 0-profile title and "no paragraph" assertions are unchanged.
+
+| Mutation | Caught by |
+|---|---|
+| M53 old «…של האפליקציה…» paragraph | `checkRemoveDialog` "≥ 1 profile → the paragraph reads «…של האתר…»" |
+
+**G-3 rows (O-123-21):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123OwnerFixes` `HE.confirmBody` and the O-123-4 "paragraph unchanged" assertion | the new text; the assertion now names O-123-21; code comments | O-123-21 |
+| `verifyPhase123RemoveApp` `HE.confirmBody` (static N-6 copy and browser AD-123-11 copy) | the new text; code comment names O-123-21 | O-123-21 |
+
+**T-1 (batch 4):**
+- **O-123-18:**
+  - `npx tsc -b` clean;
+  - OwnerFixes 23 groups PASS, M46–M48 caught;
+  - AppContext (23), Navigation (12), Catalog (19), RemoveApp (13), D8OwnSite (10), Sync (15), CatalogGate (8), FixD6D8 (6) `--no-mutations` PASS;
+  - 113LoginAssistance and 117ManagedAutofill plain PASS.
+- **O-123-19:**
+  - `npx tsc -b` clean;
+  - OwnerFixes 23 groups PASS;
+  - `--mutation-report --mutations=M28,M29,M30,M49,M50,M51`: 6 of 6 caught;
+  - no other verify reads this button.
+- **O-123-20 / O-123-21:**
+  - `npx tsc -b` clean;
+  - OwnerFixes 23 groups PASS;
+  - `--mutations=M52,M53`: 2 of 2 caught;
+  - RemoveApp (13), AppContext (23), Catalog (19), Navigation (12) `--no-mutations` PASS.
+
+`src/supabase/**`, `src/admin` and every other N-2 path got no new change in batch 4. No verify process was left running.
+
+### O-123-22 — lost session while adding / editing a custom site → auth copy (T-1 only)
+**Finding:** when the tab has lost its Supabase session, `requireAuthenticatedUserId` throws `AuthRequiredError`. Its message is Hebrew with no keyword, so `classifyCustomAddFailure` fell through to `CUSTOM_ADD_FAIL_PERSISTENCE_HE` instead of `CUSTOM_ADD_FAIL_AUTH_POLICY_HE`.
+
+**Files / symbols:** `src/catalog/customAddFailure.ts` `classifyCustomAddFailure`. The first branch maps `error instanceof Error && error.name === 'AuthRequiredError'` to `failureClass: 'auth_policy'` with `CUSTOM_ADD_FAIL_AUTH_POLICY_HE`.
+- It matches by `name`, one of the two forms the ruling allows, so the catalog module does not import `src/auth/session.ts` and, through it, the Supabase client.
+- It runs before the connectivity branch, so a lost session gets the auth copy even when `navigator.onLine` is false.
+- Add (`App.tsx` `addCustomService`, line 1200) and edit (`updateCustomService`, line 1262) both go through `userMessageForCustomAddFailure`, so both get the auth copy.
+- Not changed: `src/auth/**`, `src/supabase/**`, session refresh, and every message text.
+
+**Check** `checkCustomAddAuthRequired` (unit; real `customAddFailure.ts` bundled with esbuild):
+- static fixture guard: `src/auth/session.ts` `AuthRequiredError` still sets `this.name = 'AuthRequiredError'`;
+- an `AuthRequiredError` with a Hebrew, keyword-free message → `auth_policy` + `CUSTOM_ADD_FAIL_AUTH_POLICY_HE`, also through `userMessageForCustomAddFailure`;
+- a plain Hebrew `Error` → still the persistence copy;
+- `23505` → still `duplicate_reuse`.
+
+| Mutation | Caught by |
+|---|---|
+| M54 AuthRequiredError mapping removed | `checkCustomAddAuthRequired` "AuthRequiredError (session lost) → auth copy" (got `persistence_validation`, «לא ניתן לשמור את האתר כרגע…») |
+
+**G-3:** none. No existing assertion pins the old behaviour. `verifyPhase116CustomAddIdentity` classifies only plain objects and a `TypeError`, which the new branch does not match. It was not run, per the T-1 scope of the ruling.
+
+**T-1 (O-123-22):**
+- `npx tsc -b` clean;
+- OwnerFixes `--no-mutations`: 24 groups PASS;
+- `--mutation-report --mutations=M54`: 1 of 1 caught.
+
+No verify process was left running.
+
+### O-123-23 — admin login screen (Owner admin exception, `need_login` branch only; T-1 only)
+**Files / symbols:**
+- `src/admin/AdminGate.tsx`, `need_login` branch only:
+  - `heading` «מרכז הבקרה» → «הבית הדיגיטלי - ניהול»;
+  - the `subtitle` prop is removed. `AuthEntryScreen` with `loginOnly` and no `subtitle` renders no subtitle line (`(subtitle || !loginOnly)`); `src/auth` is not touched;
+  - `<p className="admin-gate-home-link">` with the «חזרה לבית הדיגיטלי» link is removed.
+- `src/admin/admin.css`: after the change nothing uses `admin-gate-home-link` (`rg` over `src/`), so its three rules are removed, as item 1 of the exception allows:
+  - the selector in the shared `width / max-width` list;
+  - `.admin-gate--login .admin-gate-home-link`;
+  - `.admin-gate-home-link`.
+- Not changed: the `denied` branch and its home link, the login banner, the step-up logic, `data-testid="admin-gate-login"`, `AdminApp.tsx`, every other `src/admin` / `src/auth` file.
+
+Full diff against BASE: `AdminGate.tsx` −8 / +1 lines; `admin.css` −10 / +1 lines (the selector list loses one line).
+
+**Check** `checkAdminLoginScreen` (unit layer, rendered in Edge):
+- **Setup:** the real `AdminGate`, `AuthEntryScreen` and `AUTH_COPY` are bundled with esbuild. Only `resolveAdminAccess`, the auth actions and `isDevBuild` are stubbed.
+- **Unauthenticated:**
+  - the heading is exactly «הבית הדיגיטלי - ניהול»;
+  - no paragraph under the heading, and no «התחבר כדי לנהל…» text;
+  - no `a[href="#/"]` and no «חזרה לבית הדיגיטלי»;
+  - the login form is still shown.
+- **`not_admin`:** the existing banner is shown, above the new heading.
+- **`error`:** the denied screen still has its «חזרה לבית הדיגיטלי» link.
+- **Exactness:**
+  - `AdminGate.tsx` and `admin.css` equal BASE byte for byte after reverting exactly the allowed hunks (`O23_GATE_HUNKS`, `O23_CSS_HUNKS`);
+  - no other `src/admin` file differs from BASE.
+
+| Mutation | Caught by |
+|---|---|
+| M55 «חזרה לבית הדיגיטלי» link back | "no «חזרה לבית הדיגיטלי» link on the admin login screen" |
+| M56 old heading «מרכז הבקרה» | "heading «הבית הדיגיטלי - ניהול»" (got «מרכז הבקרה») |
+| M57 subtitle back | "no subtitle line under the heading" (got 1 paragraph) |
+
+**G-3 rows (O-123-23):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123OwnerFixes` `checkNChecks` frozen list (`src/admin` unchanged vs BASE) | `AdminGate.tsx` and `admin.css` leave the "no diff" list; `checkAdminLoginScreen` requires them to equal BASE after reverting exactly the O-123-23 hunks, and no other `src/admin` file may change; code comment names O-123-23 | O-123-23 (Owner admin exception) |
+
+No other assertion pins the old text:
+- `verifyPhase109Accounts` checks only `need_login`, `AuthEntryScreen`, `loginOnly`, the `data-testid` and the re-check;
+- `verifyPhase122AdminWorkspace` replaces `AdminGate` with a pass-through stub, and its «חזרה לבית הדיגיטלי» assertion is about the admin app bar;
+- the Phase 107 HTML fixtures are static files.
+
+**T-1 (O-123-23):**
+- `npx tsc -b` clean;
+- OwnerFixes `--no-mutations`: 25 groups PASS;
+- `--mutation-report --mutations=M55,M56,M57`: 3 of 3 caught;
+- `verifyPhase109Accounts --no-mutations`: PASS.
+
+**Final-run note (Architect):** the admin sweep is `verifyPhase122AdminWorkspace` and `verifyPhase109Accounts --no-mutations` only. No verify process was left running.
+
+### O-123-24 — user login title (copy-only change in `src/auth`; T-1 only)
+**Files / symbols:** `src/auth/copy.ts` `AUTH_COPY.productTitle` «כספת דיגיטלית» → «הבית הדיגיטלי». This is the whole diff against BASE (one line).
+- Its only use is the `AuthEntryScreen` default heading (`heading ?? AUTH_COPY.productTitle`).
+- The admin login passes its own `heading` (O-123-23), so it is unaffected; `checkAdminLoginScreen` still renders «הבית הדיגיטלי - ניהול» with the real `copy.ts`.
+- Not changed: every other `AUTH_COPY` string, the `AuthEntryScreen` logic, session code, every other `src/auth` file.
+
+**Check** `checkUserLoginTitle` (unit layer, rendered in Edge):
+- **Setup:** the real `AuthEntryScreen` and `AUTH_COPY` are rendered with no `heading`, using the same auth-action stubs as O-123-23.
+- **Rendered:** the heading is exactly «הבית הדיגיטלי», and «כספת דיגיטלית» does not appear.
+- **Exactness:** `copy.ts` carries the new line once and equals BASE byte for byte after swapping back that one line, so no other `AUTH_COPY` string changed.
+
+| Mutation | Caught by |
+|---|---|
+| M58 old title «כספת דיגיטלית» | `checkUserLoginTitle` "the user login heading (AuthEntryScreen default) is «הבית הדיגיטלי»" (got «כספת דיגיטלית») |
+
+**G-3 rows (O-123-24):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123OwnerFixes` `checkNChecks` "src/auth diff limited to register.ts" | also allows `src/auth/copy.ts`, which `checkUserLoginTitle` pins to BASE apart from the `productTitle` line. New untracked `src/auth` files are now refused outright, which is stricter; code comment names O-123-24 | O-123-24 |
+
+`rg «כספת דיגיטלית»` over `scripts/` finds only the static HTML fixture `scripts/fixtures/phase113-wave-v2-login.html`, which no assertion reads for the title. `verifyPhase109Accounts` reads `copy.ts` only for the single-password wording, not the title.
+
+**T-1 (O-123-24):**
+- `npx tsc -b` clean;
+- OwnerFixes `--no-mutations`: 26 groups PASS;
+- `--mutation-report --mutations=M58`: 1 of 1 caught.
+
+No verify process was left running.
+
+### O-123-25 — tile dot only when the app is ready to use (T-1 only)
+**Files / symbols:** `src/Dashboard.tsx` `renderTile`:
+- `hasCredentials = appHasProfile({ accessProfiles }, service.id) && deriveServiceManagementState(service, { selectedIds: homeIds, accessProfiles, credentials: credentialsByProfileId }) === 'added'`;
+- `homeIds = new Set(services.map((item) => item.id))`. Dashboard's `services` prop is App's `selectedServices` (minus a tile hidden during the Undo window), i.e. the selected apps;
+- one new import, `deriveServiceManagementState` from `src/serviceManagement/serviceManagementState.ts`. That file is the existing single rule: default profile, complete credentials for the current `resolveCredentialEntry` fields, and no-stored-credentials counts as complete. No second completeness rule.
+- An own approved site whose approved fields differ from the stored field ids is incomplete, because the effective (D-123-8) `Service` drives `resolveCredentialEntry`.
+- Not changed: `Tile.tsx`, the stored values (D-123-8 ruling 2), the fields-updated notice, the floating window, profile actions, persistence and sync.
+
+**Check** `checkTileReadyDot` (browser, real App):
+- **(a)** `svc-cred`, whose profile has complete credentials → dot.
+- **(b)** an approved own site whose approved fields changed to `email`, with values stored under `username` / `password` → no dot. The fields-updated notice still shows, and the stored values are untouched.
+- **(c)** `svc-zero` with no profile → no dot.
+- `svc-one`, a profile without credentials → no dot (not orange).
+- A no-stored-credentials catalog app → dot with a profile, no dot without one.
+
+| Mutation | Caught by |
+|---|---|
+| M59 dot back to "profile exists" only | `checkLastProfileDeleted` "svc-one starts without its dot" and `checkTileReadyDot` (b) |
+| M60 dot without the profile term | `checkTileReadyDot` "no-stored-credentials app without a profile → no dot" |
+
+**G-3 rows (O-123-25):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123OwnerFixes` `checkLastProfileDeleted` (O-123-17) "svc-one / svc-cred start with their dot" | `svc-one` (profile, no credentials) starts without a dot; `svc-cred` still starts with it, so the O-123-17 "no dot after the last profile is deleted" assertion stays meaningful for it | O-123-25 |
+| `verifyPhase123OwnerFixes` `checkLastProfileDeleted` "the dot appears after the first profile" (created without credentials) | the first profile exists and there is no dot | O-123-25 |
+| `verifyPhase123OwnerFixes` `checkDeleteUnconfirmed` (O-123-17) "the profile and its dot stay" | the profile stays and the dot state is unchanged from before the delete (`svc-one` has none) | O-123-25 |
+| `verifyPhase123AppContext` `checkDashboardDot` "AD-123-6: Dashboard tile input = appHasProfile(...)" | pins the new expression (`DASH_DOT`). Its existing "Dashboard does not read `hasCompleteCredentials`" assertion stays and guards "no second rule" | O-123-25 supersedes AD-123-6 FR-21/22 "profile without credentials counts" |
+| `verifyPhase123AppContext` `checkGreenDotUi` (FR-21/22) | `svc-one` / `svc-two` / `svc-three`: no dot, because their default profiles have no complete credentials (`svc-two`'s credentials sit on the non-default profile); `svc-zero` / `svc-custom` unchanged | O-123-25 |
+| `verifyPhase123AppContext` FR-23 "dot has no count / text" | moved to the dot that appears after `svc-zero`'s first profile with complete credentials (FR-21 assertion, unchanged) | O-123-25 (`svc-one` no longer has a dot) |
+| `verifyPhase123AppContext` M4 (`DASH_DOT` from-string) | targets the new expression; still caught | O-123-25 |
+
+Other dot assertions are unchanged and still pass:
+- Catalog "added app has no green dot (0 profiles)";
+- AppContext "no dot after the last profile is deleted".
+
+**O-123-23 follow-up found while running AppContext (G-3 in a touched verify):** AppContext's N-1 check allowed only `userApproval.ts` / `ApprovalQueue.tsx` under `src/admin`, so it failed on the O-123-23 files. It now also allows `src/admin/AdminGate.tsx` and `src/admin/admin.css`, whose content OwnerFixes `checkAdminLoginScreen` pins hunk by hunk against `e91b5b12`; code comment names O-123-23. The same pin exists in six verifies that this round did not touch; see KI-123.5-5.
+
+**T-1 (O-123-25):**
+- `npx tsc -b` clean;
+- OwnerFixes `--no-mutations`: 27 groups PASS;
+- `--mutations=M59,M60`: 2 of 2 caught. A first run of M34–M36 (O-123-17) caught all three, before M59's catcher was relabelled from a fixture message to an O-123-25 check;
+- AppContext `--no-mutations` PASS; AppContext `--mutations=M4` caught.
+
+No verify process was left running.
+
+### O-123-26 — window edit button reads «השלמת פרטי כניסה» when the shown profile is incomplete (T-1 only)
+**Files / symbols:**
+- `src/loginAssistance/messages.ts`:
+  - new `LABEL_COMPLETE_CREDENTIALS = 'השלמת פרטי כניסה'`;
+  - `MSG_AUTOFILL_CREDENTIALS_MISSING` is now «פרטי הכניסה בפרופיל הזה חסרים. לחצו «השלמת פרטי כניסה» בחלון האתר והשלימו אותם.». The AD-123-1 comment stays directly above it.
+- `src/loginAssistance/LoginAssistancePanel.tsx`:
+  - `activeProfileComplete = entry.kind === 'no-stored-credentials' || (entry.kind === 'form' && activeProfileId !== null && hasCompleteCredentials(credentialsByProfileId[activeProfileId], entry.fields))`. Here `entry` is the existing `resolveCredentialEntry(service)` and `activeProfileId` is the profile the button opens (shown / selected). `hasCompleteCredentials` comes from `src/credentials.ts`; no new completeness rule.
+  - The bar button (`data-action="edit-profile"`) renders `activeProfileComplete ? LABEL_EDIT_PROFILE : LABEL_COMPLETE_CREDENTIALS`. Its condition, `onClick` (same profile, same modal), `data-action` (O-123-18 focus return) and class are unchanged. It has no `aria-label`, so the accessible name follows the text.
+- Not changed:
+  - the fields-updated notice: its own «עריכת פרופיל» button stays as is, per the ruling;
+  - «הוספת פרופיל», the profile switcher, persistence, sync, `src/supabase`, `src/admin`.
+- A no-stored-credentials site has no profile bar in the window (`launchKindOffersProfileUi`), so the no-stored-credentials branch never changes a visible label. It is kept so that it matches the ruling and O-123-25.
+
+**Check** `checkCompleteCredentialsLabel` (browser, real App). Fixture: `p-cred` has a username and an empty password; `p-two-b` is complete; `p-two-a` (the default) and `p-one` have no credentials.
+- **(a)**
+  - `svc-two` opens on «אלף» → «השלמת פרטי כניסה». Clicking it opens the modal with «אלף» selected; Escape brings back the window with focus on the button (O-123-18).
+  - Switching back to «אלף» restores the label.
+  - `svc-one` (single profile, no credentials) → «השלמת פרטי כניסה».
+  - `svc-cred` (password missing) → «השלמת פרטי כניסה».
+  - Accessible name = visible text, with no `aria-label`, in every case.
+- **(b)** switching to «בית» (complete) → «עריכת פרופיל», which opens the modal on «בית» with the same focus return. A no-stored-credentials site never shows «השלמת פרטי כניסה».
+- **(c)** autofill on `svc-cred` returning `credentials_missing` shows exactly the new copy, and the button name inside «…» is the one the window shows. The harness stub for `assistanceActions.ts` now imports the real `MSG_AUTOFILL_CREDENTIALS_MISSING` for `__pvCtl.auto = 'credentials_missing'`, mirroring the real mapping that Navigation pins. Mutations of the copy therefore reach the browser.
+
+| Mutation | Caught by |
+|---|---|
+| M61 window edit button always «עריכת פרופיל» | `checkCompleteCredentialsLabel` (a) |
+| M62 completeness condition inverted | `checkCompleteCredentialsLabel` (a) |
+| M63 old credentials_missing copy | `checkMessagesComments` (copy vs BASE) and `checkCompleteCredentialsLabel` (c) |
+
+**G-3 rows (O-123-26):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123OwnerFixes` `checkMessagesComments` (O-2: "every other message constant unchanged vs BASE") | the BASE values also allow `LABEL_COMPLETE_CREDENTIALS` (new, right after `LABEL_EDIT_PROFILE`) and the new `MSG_AUTOFILL_CREDENTIALS_MISSING` text, and only those values | O-123-26 |
+
+No existing verify pins «עריכת פרופיל» on the bar button in an incomplete state:
+- every verify finds the bar button by `data-action="edit-profile"` (AppContext 881 / 943, Navigation 736, D8OwnSite 782, OwnerFixes `checkReturnToWindow`);
+- D8OwnSite 772 pins «עריכת פרופיל» on the fields-updated notice button, which is unchanged;
+- Navigation 184 (the copy does not name «ניהול» / «הוסף אתרים») and AppContext `checkNoSiteBranches` (the `עריכת פרופיל` string is still present in messages) hold as written;
+- `verifyPhase113LoginAssistance` 132 matches a different, unchanged message.
+
+**T-1 (O-123-26):**
+- `npx tsc -b` clean;
+- OwnerFixes `--no-mutations`: 28 groups PASS;
+- `--mutation-report --mutations=M61,M62,M63`: 3 of 3 caught;
+- AppContext `--no-mutations` PASS (regression check of the window bar and modal target; that file was not changed).
+
+Navigation and D8OwnSite also read the touched files but were not changed. They were not run, because they still fail on KI-123.5-5. No verify process was left running.
+
+### O-123-27 — the covered add-site form is darkened, not translucent (T-1 only)
+**Files / symbols:** `src/App.css`, rule `.modal-overlay[data-covered='true'] > .modal-dialog`:
+- `opacity: 0.55; filter: saturate(0.6);` is replaced with `filter: brightness(0.7) saturate(0.6);`. There is no opacity below 1.
+- `.modal-overlay[data-covered='true'] { background: transparent; }` is kept (no doubled scrim).
+- Not changed: `inert`, focus, Escape, the offer copy and layout, `AddSiteModal.tsx`, and every other modal rule.
+
+**Check:** the shared helper `assertFormBehind`, used by `checkCatalogOfferLayered` (O-123-13) and the O-123-14 already-in-home group. With the offer open, the covered dialog must have:
+- computed `opacity` equal to 1;
+- a computed `filter` containing `brightness(`;
+- a transparent overlay background (alpha 0).
+
+The existing inert, focus and Tab-trap assertions are unchanged.
+
+| Mutation | Caught by |
+|---|---|
+| M64 covered form translucent again (`opacity: 0.55`) | `checkCatalogOfferLayered` "O-123-27 (O-123-13): the covered form is fully opaque (opacity 0.55)" |
+
+**G-3 rows (O-123-27):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123OwnerFixes` `assertFormBehind` (O-123-13 / O-123-14) "the form is dimmed behind the offer (opacity < 1)" | now requires opacity 1 + `brightness(` filter + a transparent overlay | O-123-27 supersedes the opacity-based dimming |
+
+No other verify reads `data-covered` or this rule.
+
+**Observation, for the Architect (not changed):** the add-site dialog also carries the shared `.modal-dialog--frost` style from BASE: a `rgba(255, 255, 255, 0.78)` background with `backdrop-filter: blur(12px)`. That style applies whether or not the form is covered, and it is used by other modals. So at opacity 1 the covered form looks exactly like the uncovered form, only darker: what is behind it shows only as the frosted blur. It no longer shows through as legible cards. A first draft of the check also asserted an opaque background colour; it failed on this frost value, so it was dropped as going beyond the ruling. If the Owner wants the covered form fully solid, the change would be one scoped declaration on the covered selector, e.g. `background: #fff`. That needs a ruling.
+
+**T-1 (O-123-27):**
+- `npx tsc -b` clean;
+- OwnerFixes `--no-mutations`: 28 groups PASS;
+- `--mutation-report --mutations=M64`: 1 of 1 caught.
+
+No verify process was left running.
+
+### KI-123.5-5 resolved — `src/admin` allowance in six verifies (G-3 only, per the Architect ruling under "O-123-25 done")
+Each of the six verifies now also accepts exactly `src/admin/AdminGate.tsx` and `src/admin/admin.css`. The content of both files is pinned against `e91b5b12` by OwnerFixes `checkAdminLoginScreen`, and each row's code comment names O-123-23 / KI-123.5-5:
+
+| Verify | Change |
+|---|---|
+| `verifyPhase123Catalog` (N-1, ~544) | `O23_ADMIN` is added to the allowed `src/admin` file list |
+| `verifyPhase123RemoveApp` (N-1, ~478) | the same |
+| `verifyPhase123D8OwnSite` (N-2, ~577) | the same (next to `ApprovalQueue.tsx`) |
+| `verifyPhase123CatalogGate` `checkAdminReexportOnly` | the two files are filtered out before the "≤ 2 files, `userApproval.ts` / `ApprovalQueue.tsx`" assertion |
+| `verifyPhase123FixD6D8` `checkD6DiffScope` | the `git diff` pathspec excludes the two files, so "one file, one line" still applies to the rest of `src/admin` |
+| `verifyPhase123Navigation` (N-1, ~280) | the two files are filtered out before the "`src/admin` unchanged" assertion |
+
+These are allowance-only changes, so per the ruling they do not count as "touched" and get no T-1 run. They run `--no-mutations` in the final run.
+
+**Note for the final run:** the batch B admin items (O-123-29…32) change further `src/admin` files. Each of those items adds its own named G-3 allowance to these same six assertions (see the items below).
+
+### Owner closing batch A/B (O-123-28…35), overnight, T-1 per item
+Overnight rules applied: ambiguities are recorded as **Q-for-Architect** and resolved with the narrowest option; blocked items are recorded as Known Issues.
+
+#### O-123-34 — no × on the "found in the catalog" offer (T-1 only)
+**Files / symbols:**
+- `src/digitalHome/AppCatalog.tsx`: the `sm-catalog-offer-head` wrapper and its × button are removed; the title `<h2>` stays as is.
+- Escape on the offer: `useEscapeToClose` now calls `closeOfferAndForm()` (the «חזרה לחנות האתרים» handler) for `catalog_service_available`. For `already_in_user_home` it still calls `dismissCatalogOffer()` («סגור», O-123-14 unchanged).
+- `src/digitalHome/catalogMessages.ts`: the unused `CATALOG_OFFER_CLOSE_LABEL` is removed.
+- `src/App.css`: the unused `.sm-catalog-offer-head` / `.sm-catalog-offer-close` rules are removed.
+- The backdrop click is unchanged: it closes only the offer.
+
+**Q-for-Architect (O-123-34 Escape):** the ruling says Escape "still" acts as «חזרה לחנות האתרים». Until now Escape on this offer closed only the offer and kept the filled form (O-123-13, Owner step 13, M39 catcher). I followed the explicit text: Escape = «חזרה לחנות האתרים», which closes the offer and the form and adds nothing. If "still" was meant literally ("keep today's Escape"), the change is one line in the Escape hook (mutation M66 shows it).
+
+**Check** `checkCatalogOfferNoClose` (browser):
+- the catalog-available offer has no button with text × or `aria-label="סגירה"`; only «הוספה לבית הדיגיטלי» and «חזרה לחנות האתרים» remain;
+- Escape closes the offer and the form, keeps the catalog open, adds nothing and creates no custom site.
+
+| Mutation | Caught by |
+|---|---|
+| M65 × back on the catalog offer | `checkCatalogOfferNoClose` "no × button" |
+| M66 Escape closes only the offer again | `checkCatalogOfferNoClose` "the form closes with the offer" |
+
+**G-3 rows (O-123-34):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123OwnerFixes` `checkCatalogOfferLayered` (O-123-13) "Escape / × close only the offer" for the catalog-available offer | both steps removed; the O-123-14 «סגור» / Escape (offer only) steps stay | O-123-34 |
+
+Catalog and Phase104 reach the offer only through the already-in-home variant (Escape / backdrop / «סגור»), which is unchanged; no row needed.
+
+**T-1 (O-123-34):**
+- `npx tsc -b` clean;
+- OwnerFixes `--no-mutations`: 29 groups PASS;
+- `--mutations=M65,M66`: 2 of 2 caught.
+
+#### O-123-33 — duplicate e-mail on register opens an alert dialog (T-1 only)
+**Files / symbols:** screen and copy layer only; `register.ts` is unchanged.
+- `src/auth/copy.ts`:
+  - `registerDuplicate` is now «כבר קיים חשבון עם כתובת אימייל זו. נסו להתחבר במסך התחברות.» (no «»);
+  - new `registerDuplicateClose: 'סגור'`.
+- `src/auth/AuthEntryScreen.tsx`:
+  - The existing catch computes the same message as before. In register mode, if the message is `registerDuplicate`, with or without the `\n(פרטי פיתוח: …)` DEV hint that `register.ts` appends (`isRegisterDuplicate`):
+    - the hint text goes to `console.warn` only when `isDevBuild()`;
+    - all six register fields are cleared (`clearRegisterFields`);
+    - `duplicateNotice` opens the dialog.
+  - Every other message still goes to the inline `.unlock-error` as before, fields kept and DEV hint included. This also covers login.
+  - The dialog is `modal-overlay` > `modal-dialog`, `role="alertdialog"`, `aria-modal`, `aria-describedby` set to the text, with one autofocused «סגור». While it is open, the card gets `inert` and `auth-entry-card--covered`.
+  - «סגור» (or Escape) closes the dialog; an effect then focuses the first register field («שם פרטי»).
+- `src/App.css`: `.auth-entry-card--covered { filter: brightness(0.7) saturate(0.6); }`, the O-123-27 pattern: no opacity change. Two small dialog layout rules.
+
+**Q-for-Architect (O-123-33 Escape):** the ruling names one button «סגור» and is silent on the keyboard. The dialog also closes on Escape, the same as «סגור», as expected for a modal alertdialog. Remove it if you want «סגור» only.
+
+**Check** `checkRegisterDuplicateDialog` (unit, Edge). It renders the real `AuthEntryScreen`, the real `copy.ts` / `mapAuthErrorToFriendly` and the real `App.css`; `registerAccount` / `loginWithPassword` throw the scripted message, and DEV is on. The check covers:
+- duplicate with the DEV hint → `role="alertdialog"` with exactly the new text (no «»), one focused «סגור»;
+- the card is inert, with opacity 1 and a `brightness(` filter;
+- all six fields are empty;
+- the page text has no «פרטי פיתוח» and no inline error, and the hint appears in a console warning;
+- «סגור» → empty register form, register tab still selected, focus on the first field. Escape closes the dialog the same way;
+- the password-mismatch and generic-with-DEV-hint register errors stay inline with the fields kept; the login "invalid login" error stays inline.
+
+| Mutation | Caught by |
+|---|---|
+| M67 duplicate e-mail shown inline again | "a duplicate e-mail opens the alertdialog" |
+| M68 register fields kept when the dialog opens | "all register fields are cleared" |
+| M69 register form not inert behind the dialog | "the register form behind the dialog is inert" |
+| M70 old duplicate copy with «» | `checkUserLoginTitle` copy exactness (and the copy assertion in this group) |
+| M71 developer detail visible in the dialog | the exact-text assertion |
+| M72 focus not moved to the first field after «סגור» | "focus on the first field" |
+| M73 register form translucent behind the dialog | "opaque and darker" |
+
+**G-3 rows (O-123-33):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123OwnerFixes` `checkNChecks` "`src/auth` diff ⊆ register.ts + copy.ts" | also allows `src/auth/AuthEntryScreen.tsx` (the screen layer, pinned by this group) | O-123-33 (Architect: `src/auth` UI and copy only) |
+| `verifyPhase123OwnerFixes` `checkUserLoginTitle` "copy.ts = BASE apart from productTitle" | also reverts the O-123-33 duplicate lines before the byte comparison | O-123-33 |
+
+**T-1 (O-123-33):**
+- `npx tsc -b` clean;
+- OwnerFixes `--no-mutations`: 30 groups PASS;
+- `--mutations=M67…M73`: 7 of 7 caught. M67 was first caught by a timeout; after a named assertion was added, it was rerun and caught by "a duplicate e-mail opens the alertdialog";
+- `verifyPhase109Accounts --no-mutations` PASS (it reads `AuthEntryScreen.tsx`).
+
+#### O-123-28 — after a custom-site add: fade, reveal, highlight (T-1 only)
+**Files / symbols:**
+- `src/AddSiteModal.tsx`: new optional `closing` prop. The overlay gets `modal-overlay--closing`, `data-closing="true"`, and is inert while fading. Edit-site usage is unchanged (default `false`).
+- `src/digitalHome/AppCatalog.tsx`:
+  - `customSiteAddedMessage` and the per-name status line are removed; new `MSG_CUSTOM_SITE_ADDED = '✓ האתר נוסף לבית הדיגיטלי'`, `LABEL_JUST_ADDED = 'נוסף עכשיו'`, `ADD_FORM_FADE_MS = 250`, `JUST_ADDED_HIGHLIGHT_MS = 1800`.
+  - On `created`: `formClosing` and the success line go on at once. The form stays «שומר…» while fading, so it cannot be cancelled mid-fade. After 250 ms the form unmounts and `justAddedId` is set to the definition's id (the id the add path stores).
+  - A reveal effect waits until the site is listed. If the current category or search hides it, both reset to «הכל» and empty. It then scrolls the card into view with `block: 'nearest'` (no reorder, no pinning), focuses it (`tabIndex=-1` while highlighted), and clears the highlight after 1.8 s.
+  - The success line (`role="status"`, `data-catalog-notice="custom-added"`) is now the first element in the catalog body. Search, category chips, «+ הוספת אתר מותאם אישית» and a catalog add clear it; closing the catalog unmounts it. Timers are cleared on unmount.
+- `src/App.css`: the `dh-fade-out` 250 ms fade, the green `dh-just-added-glow` (1.8 s) plus a static green ring, the «נוסף עכשיו» chip, and a `prefers-reduced-motion` rule that removes both animations (states and timers unchanged).
+
+**Note (O-123-35 ordering):** the "normal already-added state" after the highlight is today's added card. O-123-35 later replaces the card itself; the highlight hooks (`data-just-added`, chip, focus) stay on the catalog item.
+
+**Check** `checkCustomAddSequence` (browser, real App). A MutationObserver plus a `focusin` listener timestamp the states. The fixture filters by «קניות» and «חנות», then adds a banking custom site:
+- the overlay animates `dh-fade-out 0.25s` and is removed 200–400 ms after the fade starts (the window allows for timer jitter); the catalog stays;
+- «✓ האתר נוסף לבית הדיגיטלי» is the first element and the old «…» נוסף לבית הדיגיטלי. is gone;
+- the filters were reset;
+- the new card gets the «נוסף עכשיו» chip and the glow (green shadow sampled 700 ms in), is focused, and is inside the catalog dialog's visible area;
+- the highlight lasts 1.5–2.3 s, after which the card is `added` with no chip;
+- the success line stays until a category click clears it;
+- with reduced motion, a second add shows no animation on the overlay or the card, a static green ring and the chip from the first frame, and the same fade and highlight timings and focus.
+
+| Mutation | Caught by |
+|---|---|
+| M74 form closes at once (no fade) | "the form fades out" |
+| M75 hiding filters not reset | "the highlight … appears and ends" (the card never appears) |
+| M76 focus not moved to the new card | "focus moves to the new card" |
+| M77 highlight never ends | "the highlight … appears and ends" |
+| M78 no «נוסף עכשיו» chip | "highlighted with the «נוסף עכשיו» chip" |
+| M79 old custom-add confirmation text | "success line «✓ האתר נוסף לבית הדיגיטלי»" |
+| M80 success line not cleared by the next catalog action | "the next catalog action clears the success line" |
+| M81 fade still animated under reduced motion | "(reduced motion): no fade animation" |
+
+**G-3 rows (O-123-28):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123Catalog` `checkCustomAdd` "created → «האתר החדש שלי» נוסף לבית הדיגיטלי." | expects «✓ האתר נוסף לבית הדיגיטלי» | O-123-28 (the old indication is removed) |
+
+**T-1 (O-123-28):**
+- `npx tsc -b` clean;
+- OwnerFixes `--no-mutations`: 31 groups PASS. Three harness-only iterations of the new group fixed:
+  - shadow sampling during the 0% keyframe;
+  - focus not visible to a MutationObserver;
+  - the log array being replaced;
+- `--mutations=M74…M81`: 8 of 8 caught;
+- Catalog `--no-mutations` PASS.
+
+**Follow-up during O-123-35 (D-123-3 overlay rule):** the AddSiteModal overlay `className` was a template literal, which hides it from `verifyPhase123AppContext` `checkDialogBackdropRule`. It is a plain `className="modal-overlay"` again; the fade is keyed on `.modal-overlay[data-closing='true']` (same 250 ms, same reduced-motion rule). M81's anchor was renamed with it and re-proven (caught).
+
+#### O-123-35 — catalog picker redesign (T-1 only)
+**Files / symbols:**
+- `src/App.tsx`:
+  - new `addApps(ids)`, passed as `onAddApps`. It follows the add steps of `changeSelection(id, 'add')`:
+    - commit a pending removal of one of the ids (as `addApp` does);
+    - skip ids already in the home or locked; lock and mark the rest pending;
+    - `ensureKnownBuiltinRegistryRow` for known built-ins plus one catalog refresh; `noteDeliberateAdd` per id;
+    - then **one** `recordLocalCreations(vaultState, ids.reduce(addToSelection))` (outbox), **one** `persistSelectionState` → `persistVault`, then state.
+  - On any error: nothing is committed, `SELECTION_PERSIST_FAILED_MESSAGE`, `failed`. `persistVault` itself is unchanged; there is no new cloud-writing call site (Catalog `checkApp` count unchanged).
+  - `justAddedIds` state; the catalog host's `onAdded(ids)` closes the catalog and hands the ids to `Dashboard`.
+- `src/digitalHome/AppCatalogModal.tsx`:
+  - `CATALOG_MODAL_TITLE = 'הוספת אתר לבית הדיגיטלי'`, `CATALOG_FADE_MS = 250`;
+  - `finishAdd(ids)` sets `data-closing` (fade, inert), and after 250 ms calls `onAdded(ids)` (or `onClose` when no host callback);
+  - the opener is not refocused after a post-add close.
+- `src/digitalHome/AppCatalog.tsx`:
+  - the picker. Each card is one `<button aria-pressed aria-disabled data-catalog-item data-catalog-state>`: a 40 px icon (`ServiceCardLogo`, `aria-hidden`), the name (2-line clamp, full name in `title`), a small ✓ when selected, «✓ כבר נוסף» when in the home;
+  - no category, no per-card button, no checkbox;
+  - `togglePick` only for `available`; selection is pruned when an id reaches the home another way;
+  - the sticky CTA bar appears only with ≥ 1 selected (`pickAddLabel`);
+  - `addPicks` makes one `onAddApps(ids)` call:
+    - failure → red `role="alert"` line in the bar with the host's existing copy, selection kept;
+    - success → `pickAddedLabel(n)` for `PICK_ADDED_MS = 500`, then `onAddSequenceDone(ids)`;
+  - the O-123-13 offer «הוספה לבית הדיגיטלי» shows «✓ נוסף לבית» for 500 ms and then the same `onAddSequenceDone([id])`;
+  - chips «הכול» + categories (visible «סינון לפי קטגוריה» label removed, kept as `aria-label`);
+  - «+ הוספת אתר מותאם אישית» is now a secondary text-link next to the search;
+  - the O-123-28 hooks (`data-just-added`, chip, focus) sit on the card button.
+- `src/digitalHome/catalogMessages.ts`: `LABEL_ALL_CATEGORIES`, `LABEL_ALREADY_IN_HOME`, `pickAddLabel`, `pickAddedLabel`.
+- `src/components/ServiceCard.tsx`: `ServiceCardLogo` exported (no change to the card).
+- `src/Dashboard.tsx` / `src/Tile.tsx`:
+  - optional `justAddedIds` / `onJustAddedShown` and Tile `justAdded` (class `app-icon-wrap--just-added`, `data-just-added`);
+  - focus goes to the first new tile (home order); `HOME_JUST_ADDED_MS = 1200`.
+- `src/App.css`:
+  - picker styles: compact search ≤ 22 rem, `.sm-add-site-link`, `.sm-pick-grid` (auto-fill `minmax(132px, 1fr)`, equal rows → 7 per row at 1280 px), card / ✓ / dimmed in-home, sticky `.sm-pick-cta-bar`;
+  - the catalog fade on `.dh-catalog-overlay[data-closing='true']`; the 1.2 s tile glow;
+  - a reduced-motion rule (no animation / transition; JS timings unchanged).
+
+**Q-for-Architect (O-123-35):**
+- (a) «+ הוספת אתר מותאם אישית» "secondary position": I kept it in the toolbar row next to the search, styled as a link rather than a button. Below the grid would hide it in long lists.
+- (b) While the add is in flight the CTA keeps its label (`aria-busy`, inert to clicks). The ruling names no busy label.
+- (c) After a post-add close focus goes to the first new tile, so the catalog opener is not refocused.
+
+**Checks (OwnerFixes):**
+- `checkCatalogPicker` (browser, real App):
+  - title; compact search (≤ 50 % width, ≤ 44 px); first chip «הכול» pressed, one chip per category, no other category control; custom-site action not primary;
+  - 5–7 cards per row at 1280 px, fewer at 600 px;
+  - every card is a `<button aria-pressed>` with nothing clickable inside, a decorative 36–44 px icon, text = name only (+ «✓ כבר נוסף» in the home); no checkboxes;
+  - in-home: dimmed, `aria-disabled`, not selectable, and no «כבר בבית הדיגיטלי» anywhere;
+  - no CTA at 0; click selects (border polled + ✓); «הוספת האתר» → «הוספת 2 אתרים»; second click and Space toggle; the sticky CTA sits inside the dialog;
+  - failure (`persistFail` fixture knob in the vault stub) → named `role="alert"` with the exact existing copy, red, nothing stored, both still selected, catalog open, no tile;
+  - retry → exactly **one** new `persistVault` holding both ids, both tiles.
+- `checkCatalogPickerSequence` (browser, real App), with a MutationObserver plus `focusin` timeline:
+  - 2-site add: «✓ נוספו 2 אתרים» with the catalog still open, 400–750 ms before the fade; `dh-fade-out 0.25s`, gone after 200–400 ms; both tiles highlighted (`dh-home-just-added`, green shadow sampled mid-way) for 1–1.5 s; focus on the first new tile in home order, and it stays there;
+  - the O-123-13 offer add («✓ נוסף לבית») follows the same sequence;
+  - reduced motion: no animation, static green ring, same timings and focus.
+
+| Mutation | Caught by |
+|---|---|
+| M82 old catalog title | "catalog title «הוספת אתר לבית הדיגיטלי»" |
+| M83 chip «הכל» | "first chip «הכול»" |
+| M84 search full width | "compact search field" |
+| M85 sparse grid | "dense grid — 5–7 cards per row" |
+| M86 card shows its category | "shows only icon + name" |
+| M87 card without aria-pressed | "one <button aria-pressed>" |
+| M88 in-home not aria-disabled | "in-home site is dimmed and aria-disabled" |
+| M89 «✓ כבר בבית הדיגיטלי» label back | "shows only icon + name + «✓ כבר נוסף»" |
+| M90 CTA with nothing selected | "no CTA … / cannot be selected" |
+| M91 CTA without the count | "multi-select → «הוספת 2 אתרים»" |
+| M92 one persistVault per site | "two sites → exactly one persistVault (got 2)" |
+| M93 failure clears the selection | "the selection is kept after a failure" |
+| M94 failure line without role="alert" | "a failed add shows a role="alert" line" |
+| M95 no «✓ נוסף…» CTA label | "the CTA shows «✓ נוספו 2 אתרים»" |
+| M96 catalog closes at once | "~500 ms before the catalog fades (got 12 ms)" |
+| M97 catalog not faded | "the catalog fades out (got none)" |
+| M98 catalog stays open | "the new tiles are highlighted …" (timeline) |
+| M99 tiles not highlighted | timeline (no highlight) |
+| M100 tile highlight 3 s | "highlight for 1–1.5 s (got 3001 ms)" |
+| M101 focus not moved to the new tile | "focus moves to the first new tile (got null)" |
+| M102 focus on the last new tile | "focus moves to the first new tile (svc-avail, got svc-a3)" |
+| M103 catalog fade animated under reduced motion | "(reduced motion): no fade animation" |
+| M104 offer add without the sequence | "(offer): the new tiles are highlighted …" |
+| M105 in-home card selectable | "an in-home site cannot be selected" |
+
+M102 was first written as "opener refocused after the post-add close" (dropping the `restoreFocusRef` guard). In Edge that mutant behaves identically, because the opener's `requestAnimationFrame` runs before the Dashboard focus effect. It was replaced by a mutant that breaks the visible rule (first new tile). The guard stays as a defensive line.
+
+The first sweep also showed that the selection-border read raced the 120 ms border transition. It is now polled; M94 and M102 were re-run after that fix.
+
+**G-3 rows (O-123-35):**
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123Catalog`: HE `catalogTitle` / `alreadyAdded`, chip «הכל» ×3 | «הוספת אתר לבית הדיגיטלי» / «✓ כבר נוסף» / «הכול» | O-123-35 copy |
+| Catalog `checkAddBuiltIn`, `checkCatalogGateListing` | in-home = aria-disabled card with «✓ כבר נוסף»; add = select + CTA; catalog closes itself (was Escape) | O-123-35 picker |
+| Catalog `checkCustomAdd` | after the offer add the catalog closes → reopen before the error case | O-123-35 (offer uses the post-add sequence) |
+| Catalog harness | mirrors `App.addApps` (`onAddApps`) | O-123-35 new host prop |
+| Catalog M10 anchor | the overlay tag spans lines | O-123-35 (`data-closing` / `inert`) |
+| `verifyPhase123Navigation` empty-state add + reachability | select + CTA, catalog closes itself; reachability = `button[data-catalog-item][aria-pressed="false"]` | O-123-35 |
+| `verifyPhase123RemoveApp` re-add during the Undo window | select + CTA; catalog closes itself; M6 mutates both `addApp` and `addApps` | O-123-35 (re-add now via `addApps`) |
+| `verifyPhase104ServiceManagement` passive label + pending | `LABEL_ALREADY_IN_HOME` «✓ כבר נוסף»; pending = card `aria-disabled` + `togglePick` guard | O-123-35 |
+| `verifyPhase123AppContext` `checkDashboardDot` | Tile.tsx = HEAD apart from the O-123-35 `justAdded` lines | O-123-35 (highlight only; no count / text) |
+| OwnerFixes `checkCatalogCardStatic` / `checkCatalogCards`, M1–M4 | O-123-1 rules measured on the picker card; "action at the bottom" retired (no per-card action), M3 now breaks equal width | O-123-35 supersedes the card |
+| OwnerFixes `checkHeaderAddButton` | select + CTA, catalog closes itself | O-123-35 |
+| OwnerFixes `checkCatalogOfferLayered` (O-123-13) | after the offer add the catalog closes (was: stays), reopen | O-123-35 |
+| OwnerFixes HE `added` | «✓ כבר נוסף» | O-123-35 |
+
+**Also fixed during this T-1 (O-123-33, found by AppContext D-123-3):** the duplicate-email overlay (`AuthEntryScreen.tsx`) had no backdrop rule. It now uses `useBackdropDismiss(closeDuplicateNotice, { containsForm: false })`, so a full press + release on the backdrop closes it like «סגור». **Q-for-Architect:** the O-123-33 ruling names only «סגור»; D-123-3 makes non-form dialogs close on the backdrop.
+
+**T-1 (O-123-35):**
+- `npx tsc -b` clean;
+- OwnerFixes `--no-mutations`: **33 groups PASS**;
+- mutations M1–M4, M74–M105 all caught (M81 / M97 / M103 re-proven after the `data-closing` selector change);
+- Catalog `--no-mutations` PASS (M10 re-anchored, caught); Navigation PASS; RemoveApp PASS (M6 caught); Phase104 PASS; AppContext PASS; 109Accounts PASS.
+
+#### Admin items O-123-30 / 31 / 32 / 29 — shared test harness (T-1 only)
+Owner admin exception, limited to the files these items need: `src/admin/AdminApp.tsx` (shell, O-123-29), `src/admin/RegistryAdmin.tsx` (O-123-31 heading, O-123-32 filter), `src/admin/AdminFillTestGrid.tsx` (O-123-31 result) and one appended block at the end of `src/admin/admin.css` (marker `/* Phase 123.5 O-123-29`). No other `src/admin` file, nothing in `src/execution` / `src/supabase` / extension.
+
+The new OwnerFixes unit groups render the **real `AdminApp`** in Edge, with the stubs `verifyPhase122AdminWorkspace` uses:
+- `adminRegistryApi` (auto-stubbed from its exports, backed by an in-page fixture), `AdminGate` passthrough, `adminAuth`, `useServiceLogos`;
+- `src/execution/managedAutofill.ts` is the real module; only `executeAdminManagedAutofillTest` answers from a page hook (no extension);
+- as on the real `#/admin` route, the page gets `index.css`, `App.css` and `admin.css`;
+- fixture: six sites, one or two per approval state (approved ×2, not approved, blocked, no mapping ×2) over two categories, two of them disabled.
+
+`bundleAdminGate` got dataurl loaders for the `admin.css` background image (harness only).
+
+#### O-123-30 — «+ אתר חדש» font size — BLOCKED (KI-123.5-6; no product change)
+**Measurement** (`checkAdminNewSiteFont`, real AdminApp with the route's CSS): «+ אתר חדש» computes **14px**, the same as every other primary admin button: «שמור» (site workspace), and «בחירת קובץ והעלאה», «רענון», «סיווג מחדש», «הוסף קטגוריה» (categories). It is also 14px at 1000px (the full-width ≤ 1024px layout). Every button is 14px from `.admin-btn`; no rule overrides the new-site button.
+
+The arch text ("the same size as the other primary admin buttons") is therefore already met. The Owner's words ("the font size matches the button") more likely mean that the text looks small inside the tall button (≈ 180 × 74px, G-122-12). That would need a size different from the other primary buttons. Following the overnight rule (narrowest option), I made **no CSS change**. The group stays as a regression lock: the new-site font equals the other primary buttons.
+
+**Q-for-Architect (O-123-30):** which reading applies?
+- (a) Keep 14px: already equal; nothing to change.
+- (b) Larger text for this button only, e.g. `--admin-fs-card` 16px with a matching «+» icon. This is a one-rule change in the appended block, and the check becomes "16px, ≥ the other primary buttons".
+
+| Mutation | Caught by |
+|---|---|
+| M106 new-site font 16px | `checkAdminNewSiteFont` "«+ אתר חדש» font size 16px = the other primary admin buttons 14px" (also `checkAdminLoginScreen` admin.css exactness) |
+
+#### O-123-31 — «בדיקה והפעלה» (T-1 only)
+**Files / symbols:**
+- `RegistryAdmin.tsx`: on the `test` tab the workspace head renders neither the `<h3>` («עריכת אתר» / «יצירת אתר» / «פרטי אתר (הגשת משתמש)») nor the `WORKSPACE_TAB_DESCRIPTION_HE` line. The header element is left out unless the existing "details unsaved" notice has to show. Other tabs are unchanged. The `AdminFillTestGrid` gets `active={workspaceTab === 'test'}`.
+- `AdminFillTestGrid.tsx`:
+  - success = `outcome.userMessage`, failure = `formatAdminManagedTestResultSummary(outcome)`; the «[A2 diagnostics …]» suffixes are removed. `console.info('[A2 ManagedFillDiagnostics]', …)` is unchanged;
+  - the 4 s success timer is removed. A new effect clears error / success / structure line / SPECIAL result / stopped when `active` turns false (leaving the tab). Leaving the screen (another site, another top tab) unmounts the grid as before. A new run already cleared the previous message at its start (unchanged).
+
+**Q-for-Architect (O-123-31):**
+- (a) The «סגירה» button on the success line is kept. It is an explicit user dismissal, not a timer. Remove it if "persist until …" excludes it.
+- (b) The failure summary still appends the technical tokens that `formatAdminManagedTestResultSummary` adds (`reason` code, «שדה <id>», detail, locator), and the existing structure line below it repeats them. The ruling names only the A2 suffix, and the formatter lives in frozen `src/execution`. Removing the tokens is a separate ruling.
+- (c) Narrowest reading of "remove the heading": only on «בדיקה והפעלה». The other tabs keep the heading and their description line.
+
+**Check** `checkAdminFillTestResult` (unit, Edge, real AdminApp; managed test answered by the page hook):
+- «פרטי אתר» keeps «עריכת אתר»; «בדיקה והפעלה» has no heading and no «הרצת בדיקת מילוי מול המיפוי השמור, ומצב המיפוי.»;
+- failure with diagnostics: the alert text starts with the Hebrew message and has no "A2" / "diagnostics" / "console"; `[A2 ManagedFillDiagnostics]` is in the console. It is still shown after 30 s on the page clock; it is cleared after «הגדרת כניסה ומילוי» → «בדיקה והפעלה»;
+- run again (failure shown) → a pending run clears it while «ממלא…» is shown;
+- success: exactly the Hebrew message; kept after 30 s; cleared by leaving the tab;
+- static: no "A2 diagnostics" and no `setTimeout` in `AdminFillTestGrid.tsx`.
+
+| Mutation | Caught by |
+|---|---|
+| M107 heading + description back on the test tab | "no «עריכת אתר» heading and no description line" |
+| M108 A2 suffix on success | "success message is the Hebrew text only" |
+| M109 A2 suffix on failure | "failure message has no «[A2 diagnostics …]» suffix" |
+| M110 4 s success timer | "success message stays (no timer; 30 s later)" |
+| M111 failure timer | "failure message stays (no timer; 30 s later)" |
+| M112 leaving the tab keeps the result | "leaving the tab clears the failure message" |
+| M113 next run keeps the previous failure | "clicking «כניסה לאתר ומילוי שדות» again clears the previous message" |
+| M114 diagnostics no longer in the console | "the A2 diagnostics stay in the browser console" |
+| M115 `active` prop not passed | "leaving the tab clears the failure message" |
+
+#### O-123-32 — approval-state filter (T-1 only)
+**Files / symbols:** `RegistryAdmin.tsx`:
+- `ApprovalFilter = 'all' | UserApprovalState`, `APPROVAL_FILTER_STATES` (badge order), `filterApproval` state;
+- a fourth `<select aria-label="סינון לפי מצב אישור" data-filter="approval">` after the status filter: «כל מצבי האישור» + one option per state labelled `USER_APPROVAL_HE[state]` (the badge text);
+- `filteredRows` adds `userApprovalState(row) !== filterApproval → false` after the existing three filters and before the search (AND).
+
+**Check** `checkAdminApprovalFilter` (unit, Edge):
+- fixture badges are as intended;
+- four selects; options exactly «כל מצבי האישור», «מאושר למשתמשים», «טרם אושר למשתמשים», «חסום למשתמשים», «אין מיפוי»;
+- each state shows exactly its cards, each carrying that badge state and label;
+- AND: approved + «בריאות» → one card; no mapping + «פעיל» → one card; approved + search «חסום» → none; «כל מצבי האישור» → all six.
+
+| Mutation | Caught by |
+|---|---|
+| M116 «חסום למשתמשים» option missing | options list |
+| M117 options show state keys, not badge labels | options list |
+| M118 not AND-combined with the search | "AND with the search" |
+| M119 «כל מצבי האישור» worded differently | options list |
+| M120 filter ignored | "«מאושר למשתמשים» shows exactly …" |
+
+#### O-123-29 — admin tab bar (T-1 only)
+**Files / symbols:**
+- `AdminApp.tsx`: the nav leaves `.admin-app-bar` and becomes its own row in the header: `<nav className="admin-nav admin-tabbar" role="tablist" aria-label="ניווט ניהול">`. Each tab is a `<button role="tab" aria-selected>`. `.admin-nav-btn`, `is-active`, `data-nav`, labels, order and `selectTab` (unsaved-changes guard) are unchanged; `aria-current="page"` is replaced by `aria-selected`.
+- `admin.css` appended block:
+  - full-width bar: a grid of three equal `1fr` columns in the same white card style as the app bar;
+  - tabs at 1.1875rem (19px), weight 600;
+  - active tab filled with `--admin-primary`, white, weight 700, shadow;
+  - 150 ms colour transitions, zeroed by the existing `.admin-app *` reduced-motion rule;
+  - ≤ 700px: 1rem tab text with tighter padding, and the catalog filters in two columns (search full width). See below.
+
+**Narrow screens (found by `verifyPhase122AdminWorkspace` `checkReadableWidths` at 360 × 800):** the admin shell is viewport-locked. The new tab row (133px, labels wrap) and the fourth filter (one more stacked row) left the site list **16px** tall at 360 × 800, so the card could not be clicked. The ≤ 700px rules above restore it to 157px (checked ≥ 120px).
+
+**Q-for-Architect (O-123-29):**
+- (a) Below 700px the tab text is 1rem (16px) instead of the ruling's 1.125–1.25rem. At 19px the third label wraps into 3–4 lines in a ≈ 105px column and takes the list's height. From 701px up the ruling's size holds.
+- (b) Tabs are plain buttons in the Tab order. Arrow-key roving focus (WAI-ARIA tabs pattern) was not added; the ruling names only the roles.
+- (c) There is no `aria-controls` / `role="tabpanel"` on `<main>`; contents are unchanged.
+
+**Check** `checkAdminTabBar` (unit, Edge):
+- `role="tablist"` with three `role="tab"`, same labels and order;
+- bar width = the header's content width (±1px); three equal widths in one row;
+- 18–20px text;
+- `aria-selected="true"` on the active tab only; the active tab is filled, bold and differs in background, colour and weight;
+- clicking «קטגוריות» routes and moves `aria-selected`;
+- 360 × 800: site list ≥ 120px;
+- with reduced motion: transition 0s.
+
+| Mutation | Caught by |
+|---|---|
+| M121 tabs not equal | "three equal tabs in one row (109 / 155 / 286px)" |
+| M122 small tab text | "large tab text 1.125–1.25rem (14 / 14 / 14px)" |
+| M123 active tab not dominant | "the active tab … is clearly dominant" |
+| M124 no `role="tablist"` | "the top options are a role="tablist"" |
+| M125 `aria-selected` stuck | "aria-selected="true" on «קטגוריות» only" |
+| M126 bar 60% wide | "the tab bar spans the full header width (835 of 1392px)" |
+| M127 reduced-motion transition rule dropped | "prefers-reduced-motion → no tab animation" (and admin.css exactness) |
+| M128 tabs no longer route | "aria-selected="true" on «קטגוריות» only" |
+| M129 narrow-screen rules removed | "at 360 × 800 … the site list usable (16px ≥ 120px)" |
+
+#### G-3 rows (O-123-29…32)
+| Verify | Change | Reason |
+|---|---|---|
+| `verifyPhase123Catalog`, `verifyPhase123RemoveApp`, `verifyPhase123D8OwnSite`, `verifyPhase123CatalogGate`, `verifyPhase123Navigation`, `verifyPhase123AppContext` (`src/admin` allowance) | also allow `AdminApp.tsx`, `RegistryAdmin.tsx`, `AdminFillTestGrid.tsx` | O-123-29…32 Owner admin exception; content pinned by the OwnerFixes groups |
+| `verifyPhase123FixD6D8` `checkD6DiffScope` | the same three files excluded from the line-diff scope | O-123-29…32 |
+| OwnerFixes `checkAdminLoginScreen` | admin.css compared without the appended block (`withoutO29Block`); "no other src/admin file" allows the three files | O-123-29 / 30 / 31 / 32 |
+| OwnerFixes `checkNChecks` frozen paths | the three files excluded | O-123-29…32 |
+
+#### T-1 (admin items)
+- `npx tsc -b` clean;
+- OwnerFixes `--no-mutations`: **37 groups PASS** (before the narrow-screen fix);
+- `--mutation-report --mutations=M106…M128`: 23 of 23 caught, each by its item's group;
+- touched verifies `--no-mutations` PASS: Catalog (19 groups), RemoveApp (13), D8OwnSite (10), CatalogGate (8), FixD6D8 (6), Navigation (12), 109Accounts;
+- every other verify that reads the changed admin files, PASS: 121FillTestGrid, 121GridStructure, 120AdminManagedTestHarness, 121Runtime, 102CredentialSchema, 108M1ExplicitLoginEntry, 121SpecialDraftAuthoring, 121ContractSafeSaves, 121IframeSurface, 111Assets, 121ServiceFormSave, 121UnifiedVocabulary, 117ManagedAutofill, 122AdminNotes, 120ClearManagedMappings, 122SubmitterProfiles, 121DeleteService;
+- first run failures, both fixed: AppContext (its own `src/admin` allowance; G-3 row above) and `verifyPhase122AdminWorkspace` (360 × 800 list squeezed; the narrow-screen rules above).
+- After the fixes:
+  - `npx tsc -b` clean;
+  - OwnerFixes `--no-mutations` `PASS — 37 check groups … — 1m 12s`;
+  - `--mutation-report --mutations=M106,M121…M129` 10 of 10 caught (M129: "16px ≥ 120px");
+  - AppContext `--no-mutations` PASS (23 groups);
+  - `verifyPhase122AdminWorkspace --no-mutations` `PASS — 32 check groups … — 2m 07s`.
+
+#### Architect rulings round (overnight Q-for-Architect items + O-123-36)
+Accepted as implemented, no code change: O-123-34 (Escape = «חזרה לחנות האתרים»), O-123-33 (Escape and backdrop close like «סגור»), O-123-35 (a)(b)(c), O-123-31 (a) «סגירה» kept and (c) heading removed on «בדיקה והפעלה» only, O-123-29 (a) 1rem below 700px. Owner steps 13 and 29 reworded to match.
+
+**O-123-30 — «+ אתר חדש» 16px / 600 (closes KI-123.5-6).**
+- Change: `src/admin/admin.css` only, inside the appended Phase 123.5 block (so `withoutO29Block` still compares the rest to BASE): `.admin-catalog-bar .admin-toolbar .admin-new-site-btn { font-size: 16px; font-weight: 600; }` and `… .admin-new-site-btn .admin-icon { width: 18px; height: 18px; }`. The «+» goes from 16 to 18px, the same 16/14 ratio as the text. The selector has three classes so it outranks the toolbar `.admin-btn` rule. The button box and the other buttons are not touched.
+- Check (`checkAdminNewSiteFont`, real AdminApp + route CSS in Edge): text 16px / weight 600; «+» 18–20px; the box with a forced 14px / 16px baseline is the same size (180 × 74); the other primary buttons (שמור, בחירת קובץ והעלאה, רענון, סיווג מחדש, הוסף קטגוריה) stay 14px and «+ אתר חדש» is ≥ them; 16px also at a viewport width of 1000.
+- Mutations: **M130** back to 14px → "text 16px / weight 600 (got 14px / 600)"; **M131** «+» not scaled → "18–20px; got 16px". **M106 retired**: it injected 16px into the toolbar rule to break the old "equal" check, which the ruling now requires.
+
+**O-123-31 (b) — technical tokens in a closed «פרטים טכניים».**
+- Change: `src/admin/AdminFillTestGrid.tsx` only (display layer; `src/execution` unchanged). A managed failure sets the visible `role="alert"` line to `outcome.userMessage` (the Hebrew sentence). A new helper, `technicalTokens(outcome)`, takes `formatAdminManagedTestResultSummary(outcome)` and strips the leading sentence, leaving reason · «שדה <id>» · detail · locator. Under the sentence, `<details className="admin-special-test-details" data-section="managed-test-technical">` (closed) holds the summary `{FILL_TEST_GRID_HE.specialTechnicalDetails}` («פרטים טכניים», the existing label), the tokens line and the structure line `data-testid="managed-test-structure"`, which moved out of the visible output. Catch-path Hebrew errors are unchanged. Stop / fill-run-end outcomes have no tokens; only the structure line is collapsed.
+- Check (`checkAdminFillTestResult`): visible alert = «שדה לא נמצא בדף.» exactly; no `field_not_found` / «שדה username» visible outside the details; the details exist, are closed and have the summary «פרטים טכניים»; `field_not_found` and «שדה username» are inside; the structure line is inside the details only, exactly once.
+- Mutations: **M132** tokens back in the visible line → "the visible failure line is the Hebrew sentence only (got «שדה לא נמצא בדף. · field_not_found · שדה username»)"; **M133** `<details open>` → "«פרטים טכניים» is closed by default". M109 (A2 suffix) re-anchored on the new `setError(outcome.userMessage);` line and still caught.
+
+**O-123-29 (b)(c) — WAI-ARIA tabs keyboard pattern.**
+- Change: `src/admin/AdminApp.tsx` only. Each tab has `id="admin-nav-tab-<id>"`, `aria-controls="admin-nav-panel"` and `tabIndex={tab === item.id ? 0 : -1}`. The tablist `onKeyDown` moves focus: ArrowLeft = next and ArrowRight = previous (RTL), both wrapping, plus Home / End. It uses **manual activation**: arrows move focus only, and Enter / Space (native button) activates through the unchanged `selectTab`. Routing and the unsaved-changes question are unchanged, and an arrow press never pops the leave-workspace dialog. `<main className="admin-app-main" id="admin-nav-panel" role="tabpanel" aria-labelledby="admin-nav-tab-<active>">`.
+- Check (`checkAdminTabBar`): tabIndex `-1,0,-1` with «הגדרת אתרים» active; aria-controls of every tab → the `<main role="tabpanel">` id, labelled by the active tab; from «הגדרת אתרים»: ArrowLeft → «אתרים בהוספה…», ArrowLeft → «קטגוריות» (wrap), ArrowRight → «אתרים בהוספה…» (wrap), ArrowRight → «הגדרת אתרים», Home → «קטגוריות», End → «אתרים בהוספה…». The selection and content stay on «הגדרת אתרים» until Enter. Enter activates; tabIndex becomes `-1,-1,0` and aria-labelledby follows.
+- Mutations: **M134** arrows don't move (handler removed) → "RTL ArrowLeft = next tab — focus on «approvals» (got «registry»)"; **M135** all tabs tabIndex 0 → "(got 0,0,0)"; **M136** no `role="tabpanel"` → "(panel 0, … labelledby false)"; **M137** LTR arrow direction → "(got «categories»)".
+
+**O-123-36 — missing site icons (`src/resolveServiceLogo.ts` only).**
+- Change: the cascade order is unchanged, and the strict ≥ 36 px test (`MIN_LOGO_SIZE`) comes first in every tier. `tryImage` also remembers the largest loaded candidate ≥ 32 px in both dimensions (`MIN_FALLBACK_LOGO_SIZE = 32`, `Math.min(naturalWidth, naturalHeight)`) in a per-call `FallbackLogo`. `resolveServiceLogo` returns it only after every tier found nothing ≥ 36 px (`return fallback.best?.src ?? null;`); < 32 px → null (letter fallback). `fetchPageHtml`: the `api.allorigins.win` fallback is removed; it is a direct fetch only, and failure → null. No new requests or tiers; managed tier, `logoCache.ts` and letter fallback unchanged.
+- Check (new UNIT group `checkServiceLogoFallback`): the real module is bundled with esbuild and run in Node with stubbed `Image` (per-URL natural size or onerror), `window` timers and `fetch` (records URLs; CORS rejection, or HTML for one case):
+  - (a) only `/favicon.ico` 32 px → that URL;
+  - (b) 32 px + `/favicon-96x96.png` 96 → the 96 URL; 32 px + `/apple-touch-icon.png` 180 → apple; a 32 px page `<link rel="icon">` does not stop the cascade before a later 96 px favicon;
+  - two sub-36 candidates (32 / 35) → the 35;
+  - (c) only 16 / 31 px → null;
+  - the same image-candidate count as with no icon at all;
+  - (d) exactly one fetch, to the site's own origin, no allorigins; no `allorigins` in the file.
+- Mutations: **M138** threshold 36 only → "(a) … (got null)"; **M139** keep the smaller sub-36 → "the largest (35 px) (got …/favicon.ico)"; **M140** 32 px accepted in the strict tier (prefers the earlier 32 over a later larger one) → "(b) 32 px + 96 px → the ≥ 36 px icon (got …/favicon.ico)"; **M141** accept < 32 → "(c) … (got …/apple-touch-icon.png)"; **M142** allorigins restored → "(d) … (got https://icon-site.example.test/, https://api.allorigins.win/raw?url=…)".
+- `verifyPhase111Assets` (logoCache keeps `resolveServiceLogo` as tier 2; Home / catalog only through logoCache) still passes. N-5: no added `src` line carries a URL or domain literal (the removed proxy line was the only one).
+
+#### G-3 rows (rulings round)
+| Verify / assertion | Change | Item |
+|---|---|---|
+| `verifyPhase121FillTestGrid` §4 STANDARD run path needles | `'formatAdminManagedTestResultSummary(outcome)'` in `requestManagedTest` → `'setError(outcome.userMessage);'`, plus a new assertion that `technicalTokens` still calls `formatAdminManagedTestResultSummary(outcome)` | O-123-31 (b) |
+| `verifyPhase121FillTestGrid` §9 "grid itself has no collapsed section" | exactly one `<details>` in the grid, the `managed-test-technical` one, never `open` | O-123-31 (b) |
+| `verifyPhase121FillTestGrid` §9 structure-line slice | sliced from the `managed-test-technical` details to its `</details>` (was from `{testOutcome && !testOutcome.ok ? (` in the output block); same two needles | O-123-31 (b) |
+| OwnerFixes `checkAdminNewSiteFont` | "equal to the other primary buttons" → 16px / 600, ≥ the others (still 14px), «+» 18–20px, box unchanged | O-123-30 |
+| OwnerFixes M106 | retired (see O-123-30) | O-123-30 |
+| OwnerFixes M109 | re-anchored on `setError(outcome.userMessage);` | O-123-31 (b) |
+
+#### T-1 (rulings round)
+- No verify node process running beforehand; `npx tsc -b` clean.
+- OwnerFixes `--no-mutations`: `PASS — Phase 123.5 Owner fixes: 38 check groups, mutation sweep skipped (--no-mutations) — 1m 18s`.
+- OwnerFixes `--mutation-report --mutations=M109,M130…M142`: `PASS — … 38 check groups, 14 selected mutations caught — 4m 00s`, each caught by its item's group (messages quoted above); no fixture-only catches.
+- Touched / reading verifies `--no-mutations`, all exit 0: 121FillTestGrid, 123FixD6D8, 123AppContext, 123D8OwnSite, 123Catalog, 123RemoveApp, 123Navigation, 123CatalogGate, 111Assets, 122AdminWorkspace, 121DeleteService, 121UnifiedVocabulary, 121SpecialDraftAuthoring, 120ClearManagedMappings, 121Runtime, 121GridStructure, 121ContractSafeSaves, 120AdminManagedTestHarness.
+
+### Additional evidence requested for O-123-9 / O-123-10
+**O-123-9 file text** (`supabase/migrations/20261006120000_phase123_registry_owner_select.sql`):
+```sql
+-- Phase 123.5 (O-123-9 / AD-123-16): a regular user can read their own user-submitted registry rows
+-- (any status, including pending_review), so the custom-site upsert and the removal delete pass RLS.
+
+drop policy if exists "service_registry_select_own_user_rows" on public.service_registry;
+create policy "service_registry_select_own_user_rows" on public.service_registry for select to authenticated using (owner_user_id = auth.uid() and source_type = 'user');
+```
+Byte comparison: `checkRegistryOwnerSelectSql` takes the file's non-comment, non-empty lines and requires them to equal, byte for byte, the ruling's two statements (`OWNER_SELECT_SQL` in the verify); it passes.
+
+`git diff --stat e91b5b12 -- supabase` is **empty**, and `git ls-files --others -- supabase` lists only the new file. The AD-123-15 migration (`20261005120000_…`) is already part of BASE `e91b5b12` (`git cat-file -e` succeeds), so against this BASE the only `supabase/` change is the one new O-123-9 file.
+
+**O-123-10 save / normalisation path byte-unchanged** (as of O-123-10; batch 3 later changed `AppCatalog.tsx` and `AddSiteModal.tsx` for the offer layering only, without touching the save / normalisation code, see O-123-13 / O-123-14): `git diff --stat e91b5b12 -- src/catalog src/digitalHome/customSiteForm.ts src/digitalHome/EditSiteDetailsModal.tsx src/digitalHome/AppCatalog.tsx src/supabase` is empty (`validateCustomPrimaryUrl`, `createCustomServiceDefinition`, `buildCustomSiteDefinition`, both save handlers and `registryPersistence.ts` untouched; the only `src/App.tsx` change is the O-123-4 `hasProfiles` prop). In `AddSiteModal.tsx`, `git diff -w e91b5b12` adds only the import, the label constant, `const testUrl = validateCustomPrimaryUrl(primaryUrl)`, the `modal-url-row` wrapper and the button; `normalizeUrlField`, `handleSubmit` and the `onAdd` values are unchanged.
+
+### Final run 123.5 (reduced; "Final run policy for 123.5, revised")
+**Result: PASS under the policy.** 88 of 90 active verifies PASS; the 2 failures are environment (TLS interception), with evidence below. `npx tsc -b` and `npm run build` exit 0. Fingerprint before = after. No code edit during the run; the Owner's `npm run dev` (port 5173) was not touched.
+
+**Run validity.** The first attempt (09:05) overlapped a duplicate Developer session's run (PowerShell started 09:04) writing to the same `%TEMP%\pv-final-*` files. Both were declared invalid by the Owner. The Developer stopped her own run; the duplicate was stopped with the Owner's explicit authorisation. A read-only check then confirmed that no verify process remained. The clean run below uses new file names (`%TEMP%\pv-final2-*`); all earlier `pv-final-*` files are ignored.
+
+**Fingerprint** (`%TEMP%\pv-fingerprint-123-5.mjs`, BASE `e91b5b12`, scope `-- src scripts supabase`):
+- before (09:18): `sha256=4226bdac1118aef05463af17c65780cb477d0a38db3e0bd041d03ee9ace5a086`, `diff_bytes=200006 tracked_changed=35 untracked=4`;
+- after (09:30): `sha256=4226bdac1118aef05463af17c65780cb477d0a38db3e0bd041d03ee9ace5a086`, the same counts. The full outputs (hash, counts, file list) are byte-identical.
+
+**Run:** one sequential PowerShell loop over every `scripts/verifyPhase*.mjs` (90 files, sorted by name, `scripts/retired/` excluded), each with `--no-mutations`, then `npx tsc -b`, then `npm run build`; 09:18:37 → 09:30:12. Per-verify logs: `%TEMP%\pv-final2-<name>.txt`; summary: `%TEMP%\pv-final2-summary.txt`.
+
+| Verify | Result | Time |
+|---|---|---|
+| verifyPhase101FailureMode | PASS | 0s |
+| verifyPhase101Supabase | **FAIL — environment (E-1)** | 1s |
+| verifyPhase102CredentialSchema | PASS | 0s |
+| verifyPhase102Registry | **FAIL — environment (E-1)** | 1s |
+| verifyPhase102TileRegression | PASS | 0s |
+| verifyPhase103Execution | PASS | 0s |
+| verifyPhase104ServiceManagement | PASS | 0s |
+| verifyPhase108AdapterRouting | PASS | 0s |
+| verifyPhase108BrowserIntegration | PASS | 0s |
+| verifyPhase108KnownServiceBootstrap | PASS | 0s |
+| verifyPhase108M1ExplicitLoginEntry | PASS | 0s |
+| verifyPhase108ModalAudience | PASS | 0s |
+| verifyPhase109Accounts | PASS | 0s |
+| verifyPhase110StandardAutofill | PASS | 0s |
+| verifyPhase111Assets | PASS | 0s |
+| verifyPhase112IdentityFirst | PASS | 0s |
+| verifyPhase112LoginIntelligence | PASS | 0s |
+| verifyPhase112MediumStatus | PASS | 0s |
+| verifyPhase113LoginAssistance | PASS | 0s |
+| verifyPhase116CustomAddIdentity | PASS (`S0–S4 static + R1–R12`) | 1s |
+| verifyPhase117ManagedAutofill | PASS | 0s |
+| verifyPhase117RivhitLiveM8 | PASS | 1s |
+| verifyPhase118AssistedMapping | PASS | 0s |
+| verifyPhase119CapabilityFramework | PASS | 0s |
+| verifyPhase119ReadinessWaitInputs | PASS | 1s |
+| verifyPhase119VisualMapping | PASS | 0s |
+| verifyPhase120A24PostRuntimeSafety | PASS | 0s |
+| verifyPhase120A25PeerObserve | PASS | 15s |
+| verifyPhase120A2ManagedFillDiagnostics | PASS | 0s |
+| verifyPhase120AdminManagedTestHarness | PASS | 0s |
+| verifyPhase120ClearManagedMappings | PASS | 0s |
+| verifyPhase120DedicatedAdapterRetirement | PASS | 0s |
+| verifyPhase120IdentityAuthoring | PASS | 0s |
+| verifyPhase120LocatorVerification | PASS | 0s |
+| verifyPhase120ManagedActivateGate | PASS | 0s |
+| verifyPhase120ManagedEligibility | PASS | 0s |
+| verifyPhase120ManagedVisibility | PASS | 0s |
+| verifyPhase120ShufersalMigration | PASS | 0s |
+| verifyPhase121AccessibilityNotOpener | PASS | 0s |
+| verifyPhase121ActionBar | PASS | 0s |
+| verifyPhase121AnalyzeExactOne | PASS | 1s |
+| verifyPhase121AnalyzeProposalQuality | PASS | 12s |
+| verifyPhase121ApproveReadback | PASS | 8s |
+| verifyPhase121ApproveSavedOnly | PASS | 2s |
+| verifyPhase121AuthoringClickBounded | PASS | 19s |
+| verifyPhase121ChoiceScreen | PASS | 52s |
+| verifyPhase121ContractSafeSaves | PASS | 0s |
+| verifyPhase121CredentialFieldCopy | PASS | 2s |
+| verifyPhase121DeclaredFrameReadiness | PASS | 0s |
+| verifyPhase121DeleteService | PASS | 32s |
+| verifyPhase121DigitRunIds | PASS | 0s |
+| verifyPhase121FillTestGrid | PASS | 1s |
+| verifyPhase121FloatingFieldsAfterOpener | PASS | 6s |
+| verifyPhase121FrameBySource | PASS | 6s |
+| verifyPhase121GridStructure | PASS | 4s |
+| verifyPhase121IframeSurface | PASS | 5s |
+| verifyPhase121InspectReadinessEligible | PASS | 22s |
+| verifyPhase121LoginContract | PASS | 0s |
+| verifyPhase121MultiStepRuntime | PASS | 9s |
+| verifyPhase121MultiStepTransition | PASS | 8s |
+| verifyPhase121NoChangesToSave | PASS | 2s |
+| verifyPhase121OpenerIdentification | PASS | 1s |
+| verifyPhase121OwnLabelHit | PASS | 1s |
+| verifyPhase121PartialOcclusionPick | PASS | 1s |
+| verifyPhase121PasswordlessSurface | PASS | 21s |
+| verifyPhase121RemoveFieldRow | PASS | 3s |
+| verifyPhase121Runtime | PASS | 13s |
+| verifyPhase121ServiceFormSave | PASS | 3s |
+| verifyPhase121SingleOpener | PASS | 1s |
+| verifyPhase121SpecialDraftAuthoring | PASS | 0s |
+| verifyPhase121SpecialSaveGuard | PASS | 1s |
+| verifyPhase121StableLocators | PASS | 2s |
+| verifyPhase121StepButtons | PASS | 28s |
+| verifyPhase121StepFillNoA24Wait | PASS | 15s |
+| verifyPhase121StopFillRun | PASS | 16s |
+| verifyPhase121TestThenChoose | PASS | 1s |
+| verifyPhase121UnifiedVocabulary | PASS | 5s |
+| verifyPhase121UniformVisualPick | PASS | 7s |
+| verifyPhase122AdminNotes | PASS | 42s |
+| verifyPhase122AdminWorkspace | PASS (`32 check groups, mutation sweep skipped (--no-mutations) — 1m 51s`) | 112s |
+| verifyPhase122SubmitterProfiles | PASS | 41s |
+| verifyPhase123AppContext | PASS | 16s |
+| verifyPhase123Catalog | PASS | 22s |
+| verifyPhase123CatalogGate | PASS | 1s |
+| verifyPhase123D8OwnSite | PASS | 5s |
+| verifyPhase123FixD6D8 | PASS | 0s |
+| verifyPhase123Navigation | PASS | 13s |
+| verifyPhase123OwnerFixes | PASS (`38 check groups, mutation sweep skipped (--no-mutations) — 1m 03s`) | 63s |
+| verifyPhase123RemoveApp | PASS | 15s |
+| verifyPhase123Sync | PASS | 1s |
+
+**tsc / build:** `npx tsc -b` exit 0, no errors. `npm run build` exit 0, `✓ built in 3.75s`; the only notice is Vite's existing "Some chunks are larger than 500 kB" warning.
+
+**Failure classification (H-2):**
+- **E-1 — `verifyPhase101Supabase`, `verifyPhase102Registry`: environment.**
+  - These two are the live-Supabase checks. Both stop at their first network call (`signInAnonymously`, user A) with `TypeError: fetch failed`, cause `Error: self-signed certificate in certificate chain`, `code: 'SELF_SIGNED_CERT_IN_CHAIN'`, raised in `TLSSocket.onConnectSecure`. That is the TLS handshake, before any project logic runs.
+  - This machine's HTTPS inspection re-signs traffic. The dev server loads `C:\certs\netspark-ca-bundle.pem` for that reason (its start log: "TLS: using CA bundle …"); a plain `node` run does not.
+  - The same failure is on record: `arch-phase121` R-72-1 ("101 / 102 are live-Supabase tests … fail at TLS `SELF_SIGNED_CERT_IN_CHAIN` from Node — local HTTPS inspection, not a product issue"); `dev-phase101` ("Node verification scripts require `NODE_EXTRA_CA_CERTS` (Netspark CA) in this environment"); `dev-phase121` END OF ROUND (pre-existing). In Phase 123 they were listed as live-only and not run.
+  - `git diff --stat e91b5b12 -- scripts/verifyPhase101Supabase.mjs scripts/verifyPhase102Registry.mjs` is empty. (RC-123.5-1 a: corrected — the earlier text said "Phase 123 made no `src/supabase` change", which is wrong.) Phase 123 did change these paths:
+    - `src/supabase/persistence.ts`, for O-123-17 (`.select('id')` on the profile delete, plus `PROFILE_DELETE_UNCONFIRMED`);
+    - the migration `supabase/migrations/20261006120000_phase123_registry_owner_select.sql`, added for O-123-9.
+  - The environment classification still holds. Both failures happen at the TLS handshake of the first call (`signInAnonymously`), before any of that code runs. Live coverage of those paths comes from the Owner's checks (the O-123-9 re-check, and AD-123-15 steps 18–20) and from the O-123-17 T-1 mocks.
+  - Not re-run with the CA bundle: that would mean live-DB access and a TLS-setting change, which the standing rules exclude. No product failure.
+
+### Last batch 123.5 — RC-123.5-1 + O-123-39…42 (2026-10-07)
+Detected phase: 123 · Selected state: FIX ROUND 123.5 (last batch) · Status: BLOCKED (T-1 mutation evidence masked by KI-126-1; see Q below). Every item is implemented. The targeted re-run has no failure other than KI-126-1.
+
+**RC-123.5-1 (report text only):**
+- (a) The E-1 bullet is corrected under "Final run 123.5". It now names the `persistence.ts` O-123-17 change and the O-123-9 migration, and keeps the environment classification.
+- (b) and (c) are in the Declaration below.
+
+**Product changes:**
+- **O-123-39** — `src/digitalHome/AppCatalog.tsx`:
+  - A `created` custom add now calls `onAddSequenceDone([definition.id])`, the same call as the store add (O-123-35). `AppCatalogModal` fades the catalog, with the form still inside it showing «שומר…», and the host's `onAdded` closes it. The Dashboard then highlights the tile, scrolls to it and focuses it through the same `justAddedIds` path.
+  - Removed: the O-123-28 status line, the reveal effect (filter / search reset, card scroll / focus), the catalog card highlight and chip, and the form-only fade. Also removed: `MSG_CUSTOM_SITE_ADDED`, `LABEL_JUST_ADDED`, `ADD_FORM_FADE_MS` and `JUST_ADDED_HIGHLIGHT_MS`.
+  - Failure path unchanged: the `catch` keeps the form open with its error.
+  - `src/AddSiteModal.tsx`: the now-unused O-123-28 `closing` prop is removed, so `inert={covered}` is back to the O-123-13 form.
+  - `src/App.css`: the O-123-28 rules are removed (`.app-catalog-status`, `.modal-overlay[data-closing]`, `.app-catalog-item--just-added`, its keyframes, the chip). `dh-fade-out` is kept for the catalog fade.
+  - Add logic, `persistVault`, registry and auth are unchanged.
+- **O-123-40** — `App.css`:
+  - `.sm-pick--in-home` no longer has `opacity`. Its background is `#f1f5f9`, and only `.sm-pick-icon` / `.sm-pick-name` inside it get `opacity: 0.55`.
+  - `.sm-pick-in-home` is `font-weight: 700`, colour `#166534`. Measured contrast in Edge is ≥ 4.5:1; by calculation it is about 6.5:1 on `#f1f5f9`.
+  - The card stays `aria-disabled` and non-selectable.
+- **O-123-41** — `src/Dashboard.tsx`: `HOME_JUST_ADDED_MS = 5000`. This is the only highlight constant, and the store and custom adds share it through the one path. Under reduced motion the frame is static (no animation) for the same 5 s timer.
+- **O-123-42** — `App.css`:
+  - `.la-panel-failure-flash` runs `la-panel-failure-fade 5s`: opacity 1 from 0 to 60 %, then an ease-out fade from 60 to 100 %.
+  - Reduced motion: `la-panel-failure-hold 3s` (static opacity 1, no fill), then back to the base opacity 0 with no fade. CSS only, no timer.
+  - A new failure restarts the wash through the existing `key={failureFlash}`.
+
+**Verify updates (G-3 rows name the O-item):**
+- `verifyPhase123OwnerFixes`:
+  - New static group `checkPostAddStatic` (O-123-39 / 40 / 41). There are now **39 groups**.
+  - `checkFailureCss`: O-123-42 rows.
+  - The browser O-123-8 group: O-123-42 opacity sampling on the animation timeline (0 / 1 / 2.9 s = 1, then fading at 3.5 / 4.5 s, 0 at 5.1 s), restart by element identity, and the reduced-motion hold (1 until 2.9 s, then 0 at 3.1 s).
+  - The O-123-28 group is replaced by an **O-123-39** group on the real App. It runs the store add's timeline and `assertLanding` (catalog fade, tile frame, 5 s, focus, scroll), checks that no in-catalog status line or highlight appears, checks the failure path (form open, Hebrew error, typed values, nothing added), and checks reduced motion.
+  - The O-123-35 picker group has O-123-40 rows (label weight, green, every opacity up to the card = 1, contrast ≥ 4.5, icon / name / background dimmed).
+  - `assertSequence` now uses the shared `assertLanding` with 5 s (O-123-41).
+  - `waitFor` takes an optional timeout (12 s for the 5 s highlight).
+  - Mutations: M74–M81 retired (O-123-28 code removed). M24 and M100 re-anchored (G-3). New **M143–M160**:
+    - O-123-39: M143–M146;
+    - O-123-41: M147–M149;
+    - O-123-40: M150–M154;
+    - O-123-42: M155–M160.
+- `verifyPhase123Catalog`:
+  - `checkCustomAdd`: a created add closes the form and the catalog (was the O-123-28 status line), then the catalog is reopened for the rest.
+  - `checkCustomCategoryRequired`: the catalog closes itself after the created add (was closed with «סגירה»).
+
+**Targeted re-run** (frozen tree, 11:01:48 → 11:04:52, `%TEMP%\pv-o39-rerun-*.txt`):
+- Fingerprint (BASE `e91b5b12`, scope `src scripts supabase`): before = after = **`04236b556ed1a2584230beee55bc260a2711318697571098c4a37614010e89db`** (diff_bytes 197158, tracked_changed 35, untracked 4).
+- `verifyPhase123OwnerFixes` (full sweep): exit 1 at the static N-checks (KI-126-1, below). The mutation sweep did not start.
+- `verifyPhase123OwnerFixes --report-groups`: **38 / 39 groups PASS**. The one failing group is `checkNChecks` (KI-126-1). This covers every O-123-39…42 group plus the O-123-35 / O-123-8 groups.
+- `verifyPhase123Catalog` (full): exit 1 at static "N-2: extension unchanged vs HEAD" (HEAD = `e91b5b12`; KI-126-1). Its browser groups and mutations did not run.
+- `verifyPhase123AppContext --no-mutations`: exit 1 at the same static N-2 (KI-126-1). It is re-run only because it reads `Dashboard.tsx` / `App.css`.
+- PASS with `--no-mutations` (the other verifies that read a touched file): 104ServiceManagement, 123CatalogGate, 108BrowserIntegration, 123Navigation, 123FixD6D8, 103Execution, 108M1ExplicitLoginEntry, 123D8OwnSite, 123RemoveApp, 102CredentialSchema, 113LoginAssistance, 111Assets, 117ManagedAutofill.
+- `npx tsc -b` exit 0. `npm run build` exit 0 (`✓ built in 5.51s`).
+- **KI-126-1 evidence:**
+  - `git diff --name-only e91b5b12 -- extension` gives `extension/manifest.json`;
+  - `git ls-files --others --exclude-standard -- extension` gives `extension/_locales/en/messages.json` and `extension/_locales/he/messages.json`;
+  - the same list against HEAD.
+  - This is exactly the three Phase 126 Part A paths, so all three failures are known. There is no other failure.
+
+**Q-for-Architect (why BLOCKED):**
+- In OwnerFixes, Catalog and AppContext, the KI-126-1 failure is a static group that aborts the run before the browser groups and before any mutation. So M143–M160 (and Catalog's sweep with its two edited browser groups) cannot execute on this tree.
+- Per the KI-126-1 ruling, the G-3 allowance is added only after the Phase 123 commit, so I did not add it.
+- The OwnerFixes behaviour is evidenced by `--report-groups`; the mutation evidence is not.
+- Proposed: run OwnerFixes and Catalog in full (and AppContext `--no-mutations`) right after the Phase 126 G-3 allowance, as part of that step. Or rule otherwise.
+
+**Notes:**
+- The ruling text mentions «נוסף עכשיו» on the home tile. The store add's home landing has never shown a «נוסף עכשיו» label, only the green frame. The «נוסף עכשיו» chip existed only on the O-123-28 catalog card, which is now removed.
+- Following "whatever the store add shows on the home also shows here", the custom add gets exactly the frame. No new element was added. If the Owner wants a «נוסף עכשיו» label on the home tile, that is a new item.
+
+### Phase 126 Part A G-3 rows + O-123-43 / O-123-44 + re-run (2026-10-07, "Run-time ruling (13:25)")
+Detected phase: 123 · Selected state: FIX ROUND 123.5 (last batch, re-scoped) · Status: **BLOCKED**. Two OwnerFixes failures on the frozen tree; not fixed, awaiting a ruling. Everything else is PASS.
+
+**Stop (step 1):** the unblock run's full OwnerFixes sweep was stopped at about M100: my batch shell and its one `node scripts/verifyPhase123OwnerFixes.mjs` child, both started by me. I checked afterwards: no verify process was left. The Owner's dev server on 5173 was not touched.
+
+**Phase 126 Part A G-3 rows (step 2, kept):**
+- They live in one helper, `scripts/lib/phase126PartA.mjs`:
+  - `PHASE126_PART_A` lists exactly `extension/manifest.json`, `extension/_locales/he/messages.json` and `extension/_locales/en/messages.json`;
+  - `withoutPhase126PartA(paths)` drops exactly those three;
+  - `revertPhase126PartAManifest(text)` reverts exactly the Part A manifest lines (`"key"`, `"default_locale": "he"`, `__MSG_extName__` / `__MSG_extDescription__` back to the old name / description).
+- The reverted manifest equals the base bytes: the same as `HEAD:extension/manifest.json`, the same at `909cc8b` and at `e91b5b12`, and the original Runtime pin `c8231165…ecdf09`. Any other manifest change still fails.
+- 13 verifies changed, each row commented "Phase 126 Part A (G-3)":
+  - `verifyPhase123OwnerFixes` (`checkNChecks`), `verifyPhase123Catalog` and `verifyPhase123AppContext` (`checkProtectedUnchanged`): the path lists drop the three paths, plus a manifest-revert assertion;
+  - Phase 121 `DigitRunIds`, `InspectReadinessEligible`, `OwnLabelHit`, `PartialOcclusionPick`, `IframeSurface`, `StepFillNoA24Wait`, `TestThenChoose`: the manifest pin compares the reverted manifest with `HEAD`;
+  - `RemoveFieldRow` and `StepButtons`: the manifest leaves the `--stat` list and gets a separate revert assertion;
+  - `Runtime`: the manifest PINS entry hashes the reverted text.
+
+**O-123-43 (product, CSS only, `src/App.css`):**
+- `.app-icon-wrap--just-added` runs `dh-home-just-added 5s ease-in-out forwards`. 5 s equals `HOME_JUST_ADDED_MS`; the constant is unchanged.
+- Keyframes: ring and glow alpha 100 % at 0, 32 and 64 %, 40 % at 16, 48 and 80 %. That is a 1.6 s cycle, 2.5 cycles, green (34, 197, 94) only.
+- Then 80 → 100 % fades to alpha 0 over the last 1 s.
+- Reduced motion: unchanged rule, `animation: none`, a static frame for the 5 s.
+
+**O-123-44 (product):**
+- `AppCatalogModal.tsx`: `CATALOG_FADE_MS = 500`, still the one shared constant (store add and custom add).
+- `finishAdd`: under `prefers-reduced-motion: reduce` it hands over at once, with no closing state. Otherwise it is unchanged (`inert={closing}`, then the timer, then `onAdded`, then the O-123-39 / 43 landing).
+- `App.css`: `dh-fade-out` is replaced by `dh-catalog-exit` (opacity 1 → 0, scale 1 → 0.98), and the closing overlay runs it `500ms ease-out forwards`.
+- The add form sits inside the overlay, so form and catalog fade together. The overlay is `position: fixed; inset: 0`, so the scale does not move the form.
+- A failure keeps the form open, unchanged.
+
+**OwnerFixes T-1 (G-3 rows name the O-item):**
+- `checkPostAddStatic` gets O-123-43 / O-123-44 rows:
+  - animation and 5 s = `HOME_JUST_ADDED_MS`;
+  - parsed keyframe stops: green only, 100 / 40 % alternating, 1.4–1.8 s cycles, ≥ 2 dims, last ~1 s fading to 0;
+  - reduced-motion block;
+  - exactly one `*FADE_MS` = `CATALOG_FADE_MS=500`;
+  - `dh-catalog-exit 500ms ease-out`, scale 0.97–0.99;
+  - reduced-motion early hand-over before `setClosing`;
+  - `inert={closing}`.
+- Browser timeline:
+  - samples the overlay (`animationTimingFunction`, `inert`, form inside, opacity and scale 250 ms into the exit);
+  - samples the tile ring alpha and colours every ~100 ms;
+  - `assertLanding` (G-3, was `dh-fade-out 0.25s`, 200–400 ms) checks 500 ms ease-out, inert, 450–750 ms, mid-fade opacity < 0.9 and scale < 1, green throughout, no alpha jump > 0.3, ≥ 2 breathing dips with floor ≥ 0.3, and a monotonic tail ≤ 0.15 after 4.75 s;
+  - reduced motion: no closing state, static alpha ≥ 0.95;
+  - custom add: the form is inside the fading overlay.
+- New mutations:
+  - O-123-43: M161 (old 1.2 s glow), M162 (steps), M163 (no end fade), M164 (breathing under reduced motion), M165 (fast flashing), M166 (colour jump);
+  - O-123-44: M167 (250 ms), M168 (no scale), M169 (form removed before the fade), M170 (reduced motion waits), M171 (no `inert`).
+- M97 is re-anchored on the new exit rule (G-3).
+- M103 (reduced-motion catalog fade) is now also caught by the static reduced-motion row, because the JS no longer shows a closing state under reduced motion.
+- Pre-freeze T-1: `--report-groups` gave **39 / 39 groups PASS** (13:3x).
+- A separate pre-freeze mutation T-1 (M97, M103, M161–M171) was blocked by the tool's auto-review and not run. M161–M171 are in the formal run's list below; M97 / M103 were not executed this batch.
+
+**Frozen-tree run** (13:37:58 → 13:43:24, `%TEMP%\pv-o44run-*.txt`):
+- Fingerprint (BASE `e91b5b12`, scope `src scripts supabase`): before = after = **`1176fcb243ecfe1f30ca040f3990a6b8f7cea124b430ab651274ca05d514f24a`** (diff_bytes 217681, tracked_changed 45, untracked 5).
+
+| Run | Result |
+|---|---|
+| `verifyPhase123OwnerFixes --no-mutations` | **FAIL** (F-1) |
+| `verifyPhase123OwnerFixes --mutations=M24,M100,M143…M171` | **FAIL** in the clean pre-pass (F-2); 0 mutations executed |
+| `verifyPhase123Catalog` (full, with mutations) | PASS |
+| `verifyPhase123AppContext --no-mutations` | PASS |
+| Phase 121 `DigitRunIds`, `InspectReadinessEligible`, `OwnLabelHit`, `PartialOcclusionPick`, `IframeSurface`, `StepFillNoA24Wait`, `TestThenChoose`, `RemoveFieldRow`, `StepButtons`, `Runtime` (`--no-mutations`) | PASS (10 / 10) |
+| `npx tsc -b` | PASS |
+| `npm run build` | PASS |
+
+**Failures (not fixed; awaiting a ruling):**
+- **F-1:** browser group O-123-39 / 43 / 44, the first (non-reduced) custom add: "O-123-43 the frame stays one green throughout (50 samples)".
+  - At least one of the 50 tile samples had a box-shadow colour other than (34, 197, 94), or no shadow colour at all.
+  - The same group passed in the pre-freeze `--report-groups` T-1 on the same code. The O-123-35 store-add group, which shares `assertLanding`, passed in this run.
+  - So this is intermittent in my new sampling row. Possible causes: a sample taken while the tile re-renders, or a serialisation of the alpha-0 end frame.
+  - Not diagnosed further, because the message does not print the offending sample.
+  - Proposed: print the offending sample in the message and re-run. If it is the end-frame serialisation, treat a colourless sample at alpha 0 as transparent green. Needs a ruling.
+- **F-2:** unit group O-123-29 (real AdminApp in Edge), in the mutation run's clean pre-pass: "the active tab «קטגוריות» is clearly dominant (fill rgba(0, 0, 0, 0), weight 700 vs …)".
+  - The active fill read as transparent. This group is untouched by this batch, and it passed 13 s earlier in the `--no-mutations` run on the same tree.
+  - Likely a timing read during the admin tab transition. Classified as intermittent, not a code change.
+  - Because the clean pre-pass failed, none of M24, M100 or M143–M171 executed.
+
+**Not changed:** `extension/`, Vercel, env and secrets; `persistVault`, registry, auth, supabase, manifest, crypto. No commit or push.
+
+### F-1 / F-2 test-robustness fixes + re-run (2026-10-07, "Re-scoped run report (13:56): Architect ruling")
+Detected phase: 123 · Selected state: FIX ROUND 123.5 (last batch, re-scoped) · Status: **PASS**.
+
+**Changes (only `scripts/verifyPhase123OwnerFixes.mjs`):**
+- **F-1** (O-123-43 "one green" row in `assertLanding`):
+  - The tile sampler now keeps the raw computed `box-shadow` and every colour with its alpha. It no longer computes a pre-baked exact-RGB flag.
+  - The row checks the **green hue family** (hue 90–160°, saturation ≥ 0.3; `#22c55e` ≈ 142°) for every colour with alpha > 0.05. Colours with alpha ≤ 0.05, or transparent / no colour at the end of the fade, are valid.
+  - Other hues fail. The message prints up to 5 failing samples: time in ms, the property (`box-shadow`) and the computed rgba string.
+  - In this run no sample failed, so no non-green hue was observed and there is no product bug to report.
+  - The static keyframe row (exact 34, 197, 94 at every stop) is unchanged.
+- **F-2** (O-123-29 `checkAdminTabBar`):
+  - Both fill reads (initial «הגדרת אתרים», and «קטגוריות» after the click; was a fixed 250 ms wait then one read) now use `settled(active)`. It polls every 50 ms, for at most 1.5 s, until the active tab's computed fill is non-transparent and fill / colour / weight are identical on two consecutive reads.
+  - The dominance assertion is unchanged. It also now fails explicitly on a transparent active fill (`!TRANSPARENT.test(on.bg)`), so a transparent fill after the timeout still fails.
+
+**Frozen-tree run** (13:59:47 → 14:09:38, `%TEMP%\pv-f12run-*.txt`):
+- Fingerprint (BASE `e91b5b12`, scope `src scripts supabase`): before = after = **`690c850b20c8f8fecbce4654157658029fb0c0484088cd0f6a8a4fc54d69e9dc`** (diff_bytes 217681, tracked_changed 45, untracked 5).
+
+| Run | Result |
+|---|---|
+| OwnerFixes `--no-mutations` (1st) | PASS, 39 groups (1m 26s) |
+| OwnerFixes `--no-mutations` (2nd, immediately after) | PASS, 39 groups (1m 25s) |
+| OwnerFixes `--mutations=M24,M97,M100,M103,M143…M171` | PASS, 39 groups + **33 / 33 selected mutations caught** (6m 36s) |
+| `npx tsc -b` | PASS |
+| `npm run build` | PASS |
+
+- Notes:
+  - M97 and M103 are caught by the O-123-44 static rows.
+  - M148 (shorter reduced-motion highlight) is caught by the browser sample count: 12 samples < 20, i.e. the frame left after about 1.2 s. The message text is the "one green" row, because the count is part of that assertion.
+  - M161–M171 are all caught.
+- Other verifies were not repeated (per the ruling; only this script changed). Their results stand from the 13:37 run.
+- No `src/`, `extension/`, Vercel, env or secrets change. No commit or push.
+
+### Owner re-check steps (Hebrew)
+1. **O-123-1** (בכרטיס החדש של O-123-35, שלב 30) — לפתוח «+ הוספת אפליקציה». כל כרטיסי הקטלוג באותו גודל; שם ארוך נחתך אחרי שתי שורות עם «…», ומעבר עכבר מציג את השם המלא. אין יותר כפתור «הוספה» בכל כרטיס: אתר שכבר בבית מסומן «✓ כבר נוסף».
+2. **O-123-2** — במסך «הרשמה», להירשם עם כתובת של חשבון קיים ועם הסיסמה הנכונה שלו → ההודעה «כבר קיים חשבון…», לא נכנסים לחשבון, ונשארים במסך הכניסה / הרשמה. כתובת חדשה → הרשמה רגילה.
+3. **O-123-3** — חשבון בלי אפליקציות: בראש הבית הדיגיטלי אין «+ הוספת אפליקציה», רק הכפתור במרכז. אחרי הוספת האפליקציה הראשונה הכפתור בראש חוזר.
+4. **O-123-4** — הסרת אפליקציה בלי פרופילים: בחלון האישור רק כותרת וכפתורים, בלי הפסקה על מחיקת הפרופילים. אפליקציה עם פרופיל: הפסקה מופיעה (בנוסח של O-123-21, שלב 21).
+5. **O-123-5** — לפתוח את תפריט ⋮ בחלון האפליקציה, ואז ללחוץ על פעולה אחרת בחלון / על מקום אחר בחלון / מחוץ לחלון / Escape / ✕ → התפריט נסגר בכל מקרה.
+6. **O-123-6** — אפליקציה בלי פרופילים: «הוספת פרופיל» בלי שדה שם; אחרי שמירה החלון לא מציג שם או צ'יפים. הוספת פרופיל שני: שם חובה; שם ריק או שם קיים → הודעה בעברית בתוך הטופס; אחרי שמירה מופיעים הצ'יפים «ראשי» והשם החדש.
+7. **O-123-7** — בטופס הוספת פרופיל אין המשפט «אפשר לשמור פרופיל גם בלי פרטי כניסה…», ושמירה בלי פרטי כניסה עדיין עובדת.
+8. **O-123-8** — פעולה שנכשלת בחלון האפליקציה (פתיחה / מילוי אוטומטי) → שורה אדומה בחלון בלבד, ורקע החלון נצבע באדום רך, נשאר מלא 3 שניות ואז דועך במשך 2 שניות (לפי O-123-42, שלב 39); השורה נשארת עד הפעולה הבאה או סגירת החלון; לא מופיעה הודעה בראש הבית הדיגיטלי. הודעת קטלוג לא זמין / שגיאת הסרה נשארות למעלה.
+9. **O-123-9** — עם משתמש רגיל (לא מנהל): להוסיף אתר מותאם אישית → נשמר בלי שגיאה. אחר כך להסיר אותו עד הסוף (לחכות 5 שניות בלי «ביטול»). שאילתת ה־SQL של שלב 15 מחזירה 0 שורות.
+10. **O-123-10** — בטופס הוספת אתר ובטופס «עריכת פרטי האתר»: להקליד כתובת עם `www.` ובלי → «↗ פתח» (לפני O-123-19: «פתיחה לבדיקה») פותח בכרטיסייה חדשה בדיוק את הכתובת שהוקלדה (עם `https://` אם חסר); כתובת לא תקינה → הכפתור מושבת; אחרי שמירה הכתובת השמורה זהה לזו שנפתחה.
+11. **O-123-11** — לפתוח את אותו חשבון בשני חלונות, A ו־B:
+    - B בבית הדיגיטלי בלי שום חלון פתוח → למחוק אפליקציה ב־A → ב־B האריח נעלם, בלי הודעה;
+    - B עם הקטלוג פתוח → אותו דבר;
+    - B עם חלון של אפליקציה אחרת פתוח → אותו דבר, והחלון נשאר פתוח;
+    - B עם החלון של האפליקציה שנמחקת פתוח, או חלון ניהול הפרופיל שלה → החלון נסגר ומופיעה ההודעה «האתר או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.» (הנוסח לפי O-123-16).
+12. **O-123-12** — לחזור על שלב 10 ברשימת הבדיקה (אתר פרטי שהמנהל אישר עם שדות כניסה אחרים, ופרופיל שנשמר עם השדות הישנים): בחלון האפליקציה מופיעים רק ההודעה «שדות הכניסה לאתר עודכנו — יש להשלים את פרטי הכניסה.» והכפתור «עריכת פרופיל», לצד הפעולות הרגילות. המשפט «עדיין לא שמרת פרטי כניסה לאתר זה.» לא מופיע. הערכים השמורים לא נמחקו: ב«עריכת פרופיל» אפשר להשלים את השדות החדשים. אתר שלא שמרת לו פרטי כניסה, ובלי ההודעה הזאת, עדיין מציג «עדיין לא שמרת…» כמו קודם.
+13. **O-123-13** — ב«+ הוספת אפליקציה» → «+ הוספת אתר מותאם אישית», להקליד שם משלך וכתובת של אתר שקיים בחנות האתרים (ולא נמצא בבית הדיגיטלי), לבחור קטגוריה ו«הוסף»:
+    - נפתח חלון מעל הטופס עם הכותרת «מצאנו את <שם האתר בחנות> בחנות האתרים» והמשפט «<שם האתר בחנות> כבר נתמך, ולכן אין צורך להוסיף אותו כאתר מותאם אישית.». השם שהקלדת לא מופיע;
+    - הטופס נשאר מאחור, כהה יותר אבל אטום (לפי O-123-27: כרטיסי החנות לא נראים דרכו, מעבר למראה החלבי הרגיל של החלון), עם מה שהקלדת, ואי אפשר ללחוץ או לעבור אליו ב־Tab;
+    - (לפי O-123-34, כפי שאושר) בחלון העליון אין ✕; יש רק «הוספה לבית הדיגיטלי» ו«חזרה לחנות האתרים». מקש Escape זהה ללחיצה על «חזרה לחנות האתרים»: שני החלונות נסגרים, חוזרים לחנות, ושום דבר לא נוסף;
+    - שוב «הוסף» → «חזרה לחנות האתרים» → אותו דבר;
+    - שוב (עם הקלדה מחדש) → «הוספה לבית הדיגיטלי» → הכפתור מציג «✓ נוסף לבית» לרגע, החלונות והחנות נסגרים בהדרגה, והאריח של האתר מהחנות מודגש בבית הדיגיטלי (בלי אתר מותאם אישית; לפי O-123-35, שלב 30).
+14. **O-123-14** — אותו דבר עם כתובת של אתר שכבר נמצא בבית הדיגיטלי, ועם כתובת של אתר מותאם אישית שכבר הוספת: מופיעה ההודעה הקיימת «… כבר נמצא בבית הדיגיטלי שלך.» עם «סגור». הטופס נשאר מאחור, מעומעם ומלא. «סגור» או Escape → רק ההודעה נסגרת, הטופס נשאר עם מה שהקלדת, והסמן בשדה השם.
+15. **O-123-15** — לפתוח אפליקציה עם מילוי אוטומטי: הכפתור נקרא «מילוי פרטים אוטומטי» (לא «נסה מילוי אוטומטי»), והוא עובד כמו קודם.
+16. **O-123-16** — לחזור על הסעיף האחרון של שלב 11: ההודעה היא «האתר או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.».
+17. **O-123-17** — למחוק את הפרופיל האחרון של אפליקציה → הנקודה הירוקה נעלמת, והחלון מציג «עדיין אין פרופיל לאתר זה.» עם «הוסף פרופיל» ו«פתח אתר» בלבד; גם אחרי F5. אם המחיקה בענן לא הצליחה (למשל אין רשת) → מופיעה ההודעה «לא הצלחנו למחוק את הפרופיל מהחשבון…», והפרופיל לא נמחק.
+18. **O-123-18** — מתוך החלון הצף של אפליקציה:
+    - «עריכת פרופיל» → פעם אחת «שמירה» ואז ✕, ופעם אחת ✕ / «ביטול» / Escape בלי שמירה → בכל פעם החלון הצף של אותה אפליקציה חוזר ליד האריח, עם הנתונים העדכניים (למשל שם הפרופיל החדש), והסמן על הכפתור «עריכת פרופיל»;
+    - «הוספת פרופיל» (כשיש כבר פרופיל) → שמירה וגם ביטול → החלון חוזר והסמן על «הוספת פרופיל»;
+    - אפליקציה בלי פרופילים: «הוסף פרופיל» → ביטול → החלון חוזר והסמן על «הוסף פרופיל»; שמירה → החלון חוזר עם הפרופיל, והסמן בתוך החלון;
+    - אתר מותאם אישית: ⋮ → «עריכת פרטי האתר» → שמירה (למשל שינוי שם) → החלון חוזר עם השם החדש; שוב, ו־Escape → החלון חוזר;
+    - חריגים:
+      - (א) בזמן שחלון הפרופיל פתוח, למחוק את האפליקציה בחלון דפדפן אחר → החלון הצף לא חוזר, ומופיעה ההודעה «האתר או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.»;
+      - (ב) בזמן שחלון הפרופיל פתוח, לנעול את הכספת (כפתור הנעילה בראש המסך) → אחרי כניסה מחדש אין חלון צף פתוח;
+      - (ג) לפתוח את «+ הוספת אפליקציה» ולסגור → לא נפתח שום חלון צף.
+19. **O-123-19** — בטופס הוספת אתר מותאם אישית ובטופס «עריכת פרטי האתר»:
+    - שדה הכתובת ברוחב מלא, והכפתור «↗ פתח» מתחתיו, בצד ימין, עם החץ מימין למילה «פתח»;
+    - כתובת תקינה → הכפתור פותח בכרטיסייה חדשה בדיוק את הכתובת (כמו בשלב 10); כתובת לא תקינה או ריקה → הכפתור מושבת;
+    - (אופציונלי, קורא מסך) הכפתור מוקרא «פתח את הכתובת לבדיקה בכרטיסייה חדשה».
+20. **O-123-20** — בחלון הצף, תפריט ⋮ → הפריט נקרא «הסרת אתר» (לא «הסרת אפליקציה»), ולחיצה עליו פותחת את חלון האישור כמו קודם.
+21. **O-123-21** — «הסרת אתר» באפליקציה עם פרופיל → בחלון האישור מופיעה הפסקה «כל הפרופילים ופרטי ההתחברות של האתר יימחקו מכל המכשירים שלך.». הכותרת לא השתנתה, ובאפליקציה בלי פרופילים עדיין אין פסקה (שלב 4).
+22. **O-123-22** — להתחבר ולפתוח את הכספת. באותה לשונית: F12 → Application → Local Storage → למחוק את המפתח שמתחיל ב־`sb-` ומסתיים ב־`-auth-token` (כך הלשונית מאבדת את החיבור ל־Supabase בלי מעבר למסך הכניסה). בלי לרענן: «+ הוספת אתר מותאם אישית» → למלא ו«הוסף» → מופיעה ההודעה «לא ניתן להוסיף את האתר כרגע. התחברו מחדש או בדקו את הרשאות החשבון.» (ולא «לא ניתן לשמור את האתר כרגע…»). אותו דבר ב«עריכת פרטי האתר» → שמירה.
+23. **O-123-23** — לפתוח את `#/admin` (דף הכניסה לאזור המנהל):
+    - הכותרת היא «הבית הדיגיטלי - ניהול»;
+    - אין מתחתיה שורת הסבר קטנה;
+    - אין מתחת לכרטיס הקישור «חזרה לבית הדיגיטלי»;
+    - שדות האימייל והסיסמה וכפתור «התחברות» עובדים כמו קודם;
+    - כניסה עם חשבון שאינו מנהל → ההודעה הכתומה «החשבון הנוכחי אינו מנהל…» עדיין מופיעה מעל הכרטיס.
+24. **O-123-24** — להתנתק (או לפתוח את האפליקציה בחלון פרטי): הכותרת בדף הכניסה הרגיל היא «הבית הדיגיטלי» (לא «כספת דיגיטלית»). גם בלשונית «יצירת חשבון» הכותרת זהה. בדף הכניסה למנהל (`#/admin`) הכותרת נשארת «הבית הדיגיטלי - ניהול».
+25. **O-123-25** — בבית הדיגיטלי:
+    - אפליקציה עם פרופיל שיש בו את כל פרטי הכניסה → נקודה ירוקה על האריח;
+    - אפליקציה עם פרופיל בלי פרטי כניסה (או עם פרטים חלקיים) → אין נקודה בכלל (לא כתומה ולא ירוקה);
+    - אפליקציה בלי פרופילים → אין נקודה;
+    - האתר הפרטי משלב 10 (המנהל אישר שדות כניסה אחרים, והערכים נשמרו בשדות הישנים) → אין נקודה, וההודעה «שדות הכניסה לאתר עודכנו…» עדיין מופיעה בחלון;
+    - אחרי השלמת הפרטים ב«עריכת פרופיל» ושמירה → הנקודה הירוקה מופיעה.
+26. **O-123-26** — בחלון הצף של אפליקציה:
+    - פרופיל בלי פרטי כניסה, או עם פרטים חלקיים → הכפתור נקרא «השלמת פרטי כניסה». לחיצה פותחת את חלון הפרופיל הרגיל על אותו פרופיל; אחרי ביטול או שמירה החלון הצף חוזר והסמן על הכפתור;
+    - פרופיל עם כל פרטי הכניסה → הכפתור נקרא «עריכת פרופיל», כמו קודם;
+    - באפליקציה עם שני פרופילים, אחד שלם ואחד לא: מעבר בין הצ'יפים מחליף את שם הכפתור בהתאם;
+    - אחרי השלמת הפרטים ושמירה → החלון חוזר והכפתור נקרא «עריכת פרופיל»;
+    - ההודעה «שדות הכניסה לאתר עודכנו…» (שלב 12) עדיין מציגה את הכפתור «עריכת פרופיל»;
+    - (אם יש מילוי אוטומטי והפרטים חסרים) ההודעה היא «פרטי הכניסה בפרופיל הזה חסרים. לחצו «השלמת פרטי כניסה» בחלון האתר והשלימו אותם.».
+27. **O-123-28** — הוחלף ב־O-123-39 (שלב 36): אחרי הוספת אתר מותאם אישית החנות כבר לא נשארת פתוחה, ואין יותר השורה «✓ האתר נוסף לבית הדיגיטלי» או הדגשת כרטיס בחנות.
+28. **O-123-33** — במסך «הרשמה», למלא את כל השדות עם אימייל של חשבון קיים ו«הרשמה»:
+    - נפתח חלון קטן במרכז עם «כבר קיים חשבון עם כתובת אימייל זו. נסו להתחבר במסך התחברות.» (בלי «») וכפתור אחד «סגור»;
+    - הטופס מאחור כהה ואי אפשר ללחוץ עליו;
+    - «סגור» (או Escape, או לחיצה על הרקע) → החלון נסגר, כל שדות ההרשמה ריקים, והסמן בשדה «שם פרטי»;
+    - שגיאות אחרות (למשל סיסמאות לא תואמות) עדיין מופיעות בתוך הטופס כמו קודם.
+29. **O-123-34** — כמו שלב 13: בחלון «מצאנו את … בחנות האתרים» אין ✕. Escape זהה ל«חזרה לחנות האתרים»: החלון והטופס נסגרים, וחוזרים לחנות בלי שנוסף דבר.
+30. **O-123-35** — ב«+ הוספת אפליקציה»:
+    - הכותרת «הוספת אתר לבית הדיגיטלי»; חיפוש קומפקטי; שורת קטגוריות שמתחילה ב«הכול»; «+ הוספת אתר מותאם אישית» כקישור משני ליד החיפוש;
+    - כרטיסים קטנים (5–7 בשורה במסך רגיל): סמל ושם בלבד;
+    - לחיצה (או רווח) על כרטיס מסמנת אותו במסגרת ו־✓, ולחיצה נוספת מבטלת. אתר שכבר בבית מעומעם (הסמל, השם והרקע) עם «✓ כבר נוסף» מודגש וקריא (לפי O-123-40, שלב 37), ואי אפשר לסמן אותו;
+    - כשמסומן לפחות אתר אחד, למטה מופיע הכפתור «הוספת האתר» / «הוספת 2 אתרים» (לפי המספר);
+    - לסמן שני אתרים ו«הוספת 2 אתרים» → הכפתור מציג «✓ נוספו 2 אתרים» לחצי שנייה, החנות נסגרת בהדרגה, שני האריחים מודגשים בבית במשך 5 שניות (לפי O-123-41, שלב 38), והסמן על האריח החדש הראשון.
+31. **O-123-29** — בכניסה לאזור המנהל (`#/admin`):
+    - שלוש האפשרויות «קטגוריות», «הגדרת אתרים», «אתרים בהוספה ע"י משתמשים» הן שורת לשוניות ברוחב מלא מתחת לכותרת, שלוש לשוניות שוות עם טקסט גדול;
+    - הלשונית הפעילה בולטת (כחולה מלאה, טקסט לבן מודגש);
+    - מעבר בין הלשוניות מציג את אותם מסכים כמו קודם, ועם שינויים לא שמורים באתר עדיין מופיעה שאלת האישור;
+    - מקלדת: Tab מגיע ללשונית הפעילה בלבד (Tab נוסף יוצא מהשורה). חץ שמאלה עובר ללשונית הבאה (משמאל) וחץ ימינה לקודמת, עם מעבר מהסוף להתחלה; Home לראשונה ו־End לאחרונה. החצים מזיזים רק את המיקוד; Enter או רווח פותחים את הלשונית;
+    - (אופציונלי, קורא מסך) התוכן מתחת מוקרא כ«לוח לשונית» עם שם הלשונית הפעילה;
+    - במסך צר (טלפון) טקסט הלשוניות קטן יותר (1rem) ורשימת האתרים עדיין נראית.
+32. **O-123-30** — ב«הגדרת אתרים», הכפתור «+ אתר חדש»: הטקסט גדול יותר מבעבר (16px, מודגש למחצה), וה־«+» גדל איתו. גודל הכפתור עצמו לא השתנה, ושאר הכפתורים הכחולים במנהל (למשל «שמור», «הוסף קטגוריה») נשארו כמו שהיו.
+33. **O-123-31** — ב«הגדרת אתרים» לפתוח אתר רגיל עם מיפוי שלם → «בדיקה והפעלה»:
+    - אין למעלה את הכותרת «עריכת אתר» ואת השורה «הרצת בדיקת מילוי מול המיפוי השמור, ומצב המיפוי.» (בלשוניות האחרות הן עדיין מופיעות);
+    - למלא ערכי בדיקה ו«כניסה לאתר ומילוי שדות» → הודעת ההצלחה או הכישלון בעברית, בלי «[A2 diagnostics …]» (פרטי A2 נמצאים רק בקונסול F12);
+    - בכישלון מוצג רק המשפט בעברית (למשל «שדה לא נמצא בדף.»). מתחתיו «פרטים טכניים» סגור; לחיצה עליו פותחת את קוד הסיבה, «שדה …», הפרטים והמאתר, ואת שורת המבנה;
+    - ההודעה נשארת גם אחרי דקה;
+    - היא נעלמת רק במעבר ללשונית אחרת (ובחזרה), ביציאה מהאתר, או בלחיצה נוספת על «כניסה לאתר ומילוי שדות».
+34. **O-123-32** — ב«הגדרת אתרים» יש מסנן רביעי «כל מצבי האישור» עם האפשרויות «מאושר למשתמשים», «טרם אושר למשתמשים», «חסום למשתמשים», «אין מיפוי» (אותו נוסח כמו התגית על הכרטיסים):
+    - בחירה במצב מציגה רק כרטיסים עם התגית הזאת;
+    - שילוב עם קטגוריה, מקור, סטטוס וחיפוש מציג רק כרטיסים שעונים על כולם;
+    - «כל מצבי האישור» מחזיר את כל הכרטיסים.
+35. **O-123-36** — בבית הדיגיטלי ובחנות האתרים:
+    - אתר שיש לו רק סמל קטן של 32 פיקסלים (למשל fibi) מציג עכשיו את הסמל שלו ולא את האות הראשונה של שמו;
+    - אתר שיש לו סמל גדול (36 פיקסלים ומעלה) מציג אותו כמו קודם, גם אם יש לו גם סמל של 32;
+    - אתר שיש לו רק סמל קטן מאוד (16 פיקסלים) עדיין מציג את האות;
+    - (אופציונלי) F12 → Network, לרענן: אין אף בקשה ל־`api.allorigins.win`. בקשות לאתר עצמו שנחסמות (CORS) הן תקינות;
+    - אם סמל שנשמר קודם עדיין מוצג כאות, אפשר לנקות את מטמון הסמלים (או להמתין לרענון המטמון) ולבדוק שוב.
+36. **O-123-39** — ב«+ הוספת אפליקציה» (אפשר לבחור קטגוריה ולהקליד בחיפוש קודם) → «+ הוספת אתר מותאם אישית» → למלא אתר חדש (שלא קיים בחנות) ו«הוסף»:
+    - הטופס והחנות נסגרים יחד בהדרגה (כרבע שנייה), וחוזרים לבית הדיגיטלי;
+    - האריח של האתר החדש מודגש במסגרת ירוקה, בדיוק כמו אחרי הוספה מהחנות (שלב 30), במשך 5 שניות; הבית גולל אליו והסמן עליו;
+    - בחנות לא מופיעה השורה «✓ האתר נוסף לבית הדיגיטלי» ואין הדגשת כרטיס;
+    - כישלון (למשל בלי רשת) → הטופס נשאר פתוח עם מה שהקלדת וההודעה האדומה, ושום דבר לא נוסף;
+    - (אופציונלי) עם «הפחתת תנועה»: אין הנפשה, אותה מסגרת ואותו זמן.
+37. **O-123-40** — ב«+ הוספת אפליקציה», אתר שכבר בבית: הסמל, השם והרקע מעומעמים, אבל «✓ כבר נוסף» מודגש בירוק כהה וקריא בבירור. עדיין אי אפשר לסמן את הכרטיס.
+38. **O-123-41** — הוספה מהחנות (שלב 30) והוספת אתר מותאם אישית (שלב 36): המסגרת הירוקה על האריח החדש נשארת 5 שניות. עם «הפחתת תנועה»: מסגרת קבועה, אותן 5 שניות.
+39. **O-123-42** — פעולה שנכשלת בחלון האפליקציה (שלב 8): הרקע האדום הרך נשאר מלא 3 שניות ואז דועך במשך 2 שניות. כישלון נוסף מתחיל את הצבע מחדש. עם «הפחתת תנועה»: הצבע מופיע 3 שניות ונעלם בבת אחת (בלי דעיכה).
+
+### Known Issues
+- **KI-123.5-1 (O-123-2 read-error limit):** `loadAppUserProfile` returns `null` on a read error, so a failed profile read during orphan recovery falls through to the existing RPC path (which signs out on any RPC error). Fixing it needs `session.ts` (N-2); out of scope.
+- **KI-123.5-2 (machine environment, H-2):** loopback connections on this machine are refused at random (Edge `net::ERR_NETWORK_ACCESS_DENIED`, Node `connect EACCES 127.0.0.1`). The browser verifies now answer the same `127.0.0.1` origin through Playwright routing and assert a secure context; the server still listens. The live dev server (`npm run dev`) is unaffected by this change.
+- **KI-123.5-3 (O-123-9 before state):** shown by the in-group reproduction and M27 rather than a run on a reverted tree (see addendum).
+- **KI-123.5-5 (O-123-23 vs older verifies' `src/admin` pins) — RESOLVED** (see "KI-123.5-5 resolved"; extended for O-123-29…32 in their G-3 rows). Original note: besides AppContext (fixed above), six Phase 123 verifies still allow only their own earlier `src/admin` changes. As written, they will fail on the O-123-23 `AdminGate.tsx` / `admin.css` change. They were not touched or run in this T-1 (outside the O-123-23 and O-123-25 rulings); the finding comes from reading their code:
+  - `verifyPhase123Catalog` (544–545) and `verifyPhase123RemoveApp` (478–479): `userApproval.ts` / `ApprovalQueue.tsx` only;
+  - `verifyPhase123CatalogGate` (261–262): the same, at most 2 files;
+  - `verifyPhase123FixD6D8` (97–99): exactly `ApprovalQueue.tsx`, one line;
+  - `verifyPhase123D8OwnSite` (577–578): `ApprovalQueue.tsx` only;
+  - `verifyPhase123Navigation` (280–281): `src/admin` unchanged since its BASE.
+  
+  Proposed: the same G-3 row as in AppContext (allow exactly these two files, pinned by OwnerFixes `checkAdminLoginScreen`) before the final run. This needs a ruling, because it touches six verifies outside the current item.
+- **KI-123.5-6 (O-123-30) — CLOSED** by the Architect ruling (16px / 600, «+» scaled; see "Architect rulings round"). Original note: «+ אתר חדש» already computes 14px, the same as every other primary admin button (measured in the real AdminApp with the route's CSS at 1440 and 1000px). No CSS change was made. The Q-for-Architect under O-123-30 asks whether the Owner wants larger text in this tall button instead. `checkAdminNewSiteFont` locks the current equality.
+- **KI-123.5-4 (O-123-10, by design):** «↗ פתח» (formerly «פתיחה לבדיקה») does not check whether the site answers; the Owner decides by looking at the opened tab (no probe, D-123-7).
+
+### Developer Declaration (fix round 123.5)
+**F-1 / F-2 unblock:**
+- Test-only changes in `verifyPhase123OwnerFixes.mjs`, exactly as ruled: a hue-family check that prints failing samples, and a settled-fill poll ≤ 1.5 s. Assertion strength is unchanged.
+- On the frozen tree `690c850b…69e9dc` (before = after): `--no-mutations` PASS twice in a row, 33 / 33 selected mutations caught, tsc and build PASS.
+- F-1 and F-2 are resolved. T-1 PASS for O-123-43 / 44 and the batch mutations.
+- No commit or push.
+
+**Re-scoped batch (Phase 126 Part A G-3 rows + O-123-43 / O-123-44):**
+- Implemented exactly as ruled. Product files: `src/App.css`, `src/digitalHome/AppCatalogModal.tsx`.
+- G-3 rows cover exactly the three Part A paths, in 13 verifies, through `scripts/lib/phase126PartA.mjs`.
+- Fingerprint before = after: `1176fcb2…514f24a`.
+- **BLOCKED** by F-1 (new O-123-43 sampling row, intermittent) and F-2 (O-123-29 admin unit group, intermittent; the mutation run's clean pre-pass failed, so 0 of the 31 selected mutations executed). Both were left unfixed, as ruled.
+- Catalog full, AppContext, the 10 Phase 121 extension-freezing verifies, tsc and build: PASS.
+- I do not declare T-1 PASS for O-123-43 / 44, or for the mutation layer.
+- No commit or push.
+
+**Last batch (RC-123.5-1 + O-123-39…42):**
+- O-123-39…42 are implemented exactly as ruled.
+- Product files touched: `AppCatalog.tsx`, `AddSiteModal.tsx` (unused prop removed), `Dashboard.tsx` (one constant), `App.css`.
+- No `src/supabase` / RLS / migration / manifest / extension / crypto / unlock / session change. `persistVault`, registry and auth are unchanged.
+- New 123 fingerprint, identical before and after the targeted re-run: `04236b55…10e89db`.
+- The only failures are KI-126-1, with evidence of exactly the three Part A paths.
+- The T-1 mutation sweeps (M143–M160, Catalog) are masked by KI-126-1 and await a ruling (Q above). So I do not declare T-1 PASS for the mutation layer.
+- No commit or push.
+
+**Final run (reduced policy, 09:18–09:30):**
+- 88 / 90 active verifies PASS with `--no-mutations`. The 2 failures (`verifyPhase101Supabase`, `verifyPhase102Registry`) are classified as environment, E-1 (TLS interception, `SELF_SIGNED_CERT_IN_CHAIN`).
+- `npx tsc -b` and `npm run build` exit 0.
+- Fingerprint `4226bdac…a5a086` is identical before and after; there was no code change during the run.
+- O-123-37 / 38 are deferred to Phase 125 and are not in the tree.
+- No commit or push.
+- **RC-123.5-1 b:** the Developer applied the O-123-9 migration (`20261006120000_phase123_registry_owner_select.sql`) nowhere. The Owner applied the identical policy live in the Supabase SQL editor.
+- **RC-123.5-1 c:** the implemented set is O-123-1…42 and O-2. O-123-37 / 38 are deferred to Phase 125 and are not in the tree.
+
+**Update after the Architect rulings round (O-123-30, O-123-31 b, O-123-29 b/c, O-123-36):** implemented with T-1 per item; all four PASS at T-1. KI-123.5-6 closed.
+- Product changes: `admin.css` (inside the appended block), `AdminFillTestGrid.tsx` (display layer), `AdminApp.tsx` (tabs keyboard / tabpanel), `src/resolveServiceLogo.ts` (32 px fallback; allorigins proxy removed). `src/execution`, `logoCache.ts`, managed tier and letter fallback unchanged.
+- No `src/supabase` / RLS / migration / manifest / extension / crypto / unlock / session change.
+- OwnerFixes now has **38 check groups and mutations M1–M142** (M106 retired).
+- No final run, commit or push.
+
+**Update after the overnight batch (O-123-28…35, KI-123.5-5):** implemented with T-1 per item, in the order given.
+- O-123-34, O-123-33, O-123-28, O-123-35, O-123-31, O-123-32 and O-123-29: PASS at T-1. O-123-30: BLOCKED (KI-123.5-6; already equal, no change; Q-for-Architect).
+- `src/auth` changes are screen / copy layer only: `copy.ts` lines and `AuthEntryScreen.tsx`; `register.ts` logic unchanged.
+- Admin changes are limited to `AdminApp.tsx`, `RegistryAdmin.tsx`, `AdminFillTestGrid.tsx` and one appended `admin.css` block.
+- No `src/supabase` / RLS / migration / manifest / extension / crypto / unlock / session change; `persistVault` is called, not changed.
+- OwnerFixes now has **37 check groups and mutations M1–M129**.
+- No final run, commit or push.
+
+**Update after O-123-27:** implemented with T-1 only. The change is one `App.css` rule: the covered dialog is darkened with `brightness(0.7) saturate(0.6)` and opacity stays 1. One G-3 row in OwnerFixes `assertFormBehind`, plus M64. The shared frost background is left unchanged and noted for the Architect.
+**Update after O-123-26:** implemented with T-1 only. The changes are one new label and one changed copy line in `src/loginAssistance/messages.ts`, plus the window bar button's text choice in `LoginAssistancePanel.tsx`, which reuses `resolveCredentialEntry` + `hasCompleteCredentials`. One G-3 row in OwnerFixes `checkMessagesComments`. No frozen path touched.
+**Update after O-123-25:** implemented with T-1 only (`Dashboard.tsx` dot expression, reusing `deriveServiceManagementState`). G-3 rows in OwnerFixes and AppContext. AppContext also got the O-123-23 `src/admin` allowance; six other verifies still need it (KI-123.5-5, awaiting a ruling).
+**Update after O-123-24:** implemented with T-1 only. One copy line in `src/auth/copy.ts` (`productTitle`), pinned to BASE apart from that line. The `src/auth` diff is now `register.ts` (O-123-2) plus this line.
+**Update after O-123-23:** implemented with T-1 only, under the Owner's admin exception, limited to the `need_login` branch of `AdminGate.tsx` and the three now-unused `admin-gate-home-link` rules in `admin.css`. Both files are pinned to BASE apart from those hunks; every other `src/admin` file is unchanged. Final-run admin sweep (Architect): `verifyPhase122AdminWorkspace` and `verifyPhase109Accounts --no-mutations`.
+**Update after O-123-22:** implemented with T-1 only (`tsc`, OwnerFixes, M54). The only product change is `src/catalog/customAddFailure.ts`. This makes the earlier O-123-10 note "`src/catalog` byte-unchanged" no longer true for this one file; the save / normalisation code it refers to is still unchanged.
+**Update after batch 4 (O-123-18…21):** O-123-18…21 are implemented with T-1 only. G-3 supersedes the 123.4 AC-113-45 focus-to-tile re-homing for the profile / site-details modals opened from the window. The tile focus stays for the O-123-18 exceptions.
+**Update after batch 3 (O-123-13…17):** O-123-13…17 are implemented with T-1 only, like O-123-11 / O-123-12.
+**Update after O-123-12:** O-123-11 and O-123-12 are implemented with T-1 only, per the sequencing ruling. The 94/94 final run below is superseded. The single final run on one frozen tree (full sweeps for OwnerFixes, Navigation, AppContext and D8OwnSite; H-2 samples; everything else `--no-mutations` / plain; `tsc`; build; fingerprints before / after) is still to be done, after the Owner writes "סיימתי את כל רשימת הבדיקה" and the last batch of findings is in.
+- Implemented only the findings listed in the manager section "Fix round 123.5": O-123-1…27 and O-2. No architecture or scope change; PHASE / arch / manager / plan files not modified.
+- Frozen paths are unchanged apart from six authorised changes, each pinned exactly:
+  - `src/admin/AdminGate.tsx` `need_login` heading / subtitle / home link, plus the three unused `admin-gate-home-link` rules in `src/admin/admin.css` (O-123-23, Owner admin exception); later `AdminApp.tsx`, `RegistryAdmin.tsx`, `AdminFillTestGrid.tsx` and one appended `admin.css` block (O-123-29…32, Owner admin exception). Every other `src/admin` file is unchanged;
+  - `src/auth/register.ts` (O-123-2);
+  - the `productTitle` line in `src/auth/copy.ts` (O-123-24);
+  - the one O-123-9 migration file (not applied to any database);
+  - the `deleteAccessProfileFromCloud` delete-proof hunks in `src/supabase/persistence.ts` (O-123-17);
+  - the one `MSG_REMOVED_ELSEWHERE` line in `src/digitalHome/cloudReconcile.ts` (O-123-16). No extension, manifest or dependency change; no browser dialogs; no site / host / service-id branches.
+- Every finding has a check group and at least one caught mutation in `scripts/verifyPhase123OwnerFixes.mjs` (37 groups, M1–M129 after the overnight batch; O-123-11's behaviour checks and inverted M10 are in `verifyPhase123Navigation`). Touched existing verifies changed only superseded assertions (G-13) or serving code (H-2), each listed in the G-3 table.
+- Previous final run (before O-123-11, superseded): 94 of 94 jobs PASS, fingerprints before / after identical, `npx tsc -b` and `npm run build` PASS. The current tree has T-1 evidence only.
+- No commit, push or other git write was made. Owner re-check steps O-123-1…26 are above and are awaiting the Owner.

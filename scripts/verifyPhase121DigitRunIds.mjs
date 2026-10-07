@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseHTML } from 'linkedom';
 import { revertD12168LocatorEdits } from './lib/phase121D68LocatorEdits.mjs';
+import { revertPhase126PartAManifest } from './lib/phase126PartA.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
@@ -226,7 +227,8 @@ function checkScope(c) {
   for (const rel of ['extension/generic/fill-executor.js', 'extension/generic/validated-autofill.js']) {
     assert(!/isUnstableName|VOLATILE_DIGIT_RUN/.test(read(rel)), `${rel}: runtime resolution untouched`);
   }
-  assert(git('diff HEAD -- extension/manifest.json') === '', 'manifest / permissions unchanged');
+  // Phase 126 Part A (G-3): the manifest may differ only by the Part A lines (was: git diff empty).
+  assert(revertPhase126PartAManifest(read('extension/manifest.json')) === git('show HEAD:extension/manifest.json'), 'manifest / permissions unchanged');
   for (const rel of ['src/assistedMapping/locatorDeterminism.ts', 'src/assistedMapping/mockProvider.ts']) {
     assert(!/isUnstableId|hasLongHexRun|\\d\{8/.test(read(rel)), `${rel}: the Hub has no mirror of the unstable-id rule (uses extension candidates only)`);
   }

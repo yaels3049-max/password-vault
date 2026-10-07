@@ -379,9 +379,211 @@
   margin-top: 0.85rem;
 }
 
-.app-catalog-status {
-  margin: 0.25rem 0 0.5rem;
+/* O-123-44: the catalog (and the add form inside it) leaves together; the duration equals CATALOG_FADE_MS. */
+@keyframes dh-catalog-exit {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.98); }
+}
+
+/* O-123-35: catalog picker — compact search, chips, dense icon grid, sticky CTA. */
+.app-catalog .sm-add-toolbar {
+  grid-template-columns: minmax(0, 22rem) auto;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.app-catalog .sm-search {
+  padding-block: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.sm-add-site-link {
+  border: none;
+  background: none;
+  padding: 0.25rem 0.35rem;
+  color: #2563eb;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sm-add-site-link:hover {
+  text-decoration: underline;
+}
+
+.app-catalog .sm-controls {
+  margin-bottom: 0.75rem;
+}
+
+.sm-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 0.6rem;
+  padding: 0.75rem 0.25rem;
+}
+
+.sm-pick {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.75rem 0.5rem 0.6rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.sm-pick:hover:not([aria-disabled='true']) {
+  border-color: #93c5fd;
+}
+
+.sm-pick:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.sm-pick--selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+}
+
+.sm-pick-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+}
+
+.sm-pick-icon .service-card-logo,
+.sm-pick-icon .service-card-letter {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: contain;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.sm-pick-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 100%;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.sm-pick-check {
+  position: absolute;
+  top: 0.35rem;
+  inset-inline-end: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* O-123-40: only the icon, name and background are dimmed; the label keeps full contrast (no opacity on it or a wrapper). */
+.sm-pick--in-home {
+  background: #f1f5f9;
+  cursor: default;
+}
+
+.sm-pick--in-home .sm-pick-icon,
+.sm-pick--in-home .sm-pick-name {
+  opacity: 0.55;
+}
+
+.sm-pick-in-home {
+  font-size: 0.75rem;
+  font-weight: 700;
   color: #166534;
+}
+
+.sm-pick-cta-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 0 0;
+  background: rgba(248, 250, 252, 0.97);
+  border-top: 1px solid #e2e8f0;
+}
+
+.sm-pick-cta {
+  min-width: 14rem;
+  justify-content: center;
+  font-size: 1rem;
+}
+
+.sm-pick-cta--done {
+  background: #16a34a;
+  border-color: #16a34a;
+}
+
+.sm-pick-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.dh-catalog-overlay[data-closing='true'] {
+  animation: dh-catalog-exit 500ms ease-out forwards;
+  pointer-events: none;
+}
+
+/* O-123-43: soft breathing (1.6 s cycle, 100 % ↔ 40 %), then a 1 s fade; the 5 s total equals HOME_JUST_ADDED_MS. */
+.app-icon-wrap--just-added {
+  border-radius: 16px;
+  box-shadow: 0 0 0 3px #22c55e, 0 0 18px rgba(34, 197, 94, 0.45);
+  animation: dh-home-just-added 5s ease-in-out forwards;
+}
+
+@keyframes dh-home-just-added {
+  0% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 1), 0 0 18px rgba(34, 197, 94, 0.45); }
+  16% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.4), 0 0 18px rgba(34, 197, 94, 0.18); }
+  32% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 1), 0 0 18px rgba(34, 197, 94, 0.45); }
+  48% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.4), 0 0 18px rgba(34, 197, 94, 0.18); }
+  64% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 1), 0 0 18px rgba(34, 197, 94, 0.45); }
+  80% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.4), 0 0 18px rgba(34, 197, 94, 0.18); }
+  100% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 0), 0 0 18px rgba(34, 197, 94, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sm-pick,
+  .dh-catalog-overlay[data-closing='true'],
+  .app-icon-wrap--just-added {
+    animation: none;
+    transition: none;
+  }
 }
 
 .dashboard-launcher {
@@ -812,6 +1014,50 @@
   width: 100%;
 }
 
+.la-panel-status--error {
+  color: #991b1b;
+  background: rgba(254, 226, 226, 0.85);
+  border-color: #fca5a5;
+}
+
+/* Soft red wash behind the window content after a failure; .la-panel--float is the stacking context. */
+.la-panel-failure-flash {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(254, 202, 202, 0.9);
+  opacity: 0;
+  pointer-events: none;
+  animation: la-panel-failure-fade 5s;
+}
+
+/* O-123-42: full opacity for 3 s, then the 2 s ease-out fade. */
+@keyframes la-panel-failure-fade {
+  0%,
+  60% {
+    opacity: 1;
+    animation-timing-function: ease-out;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Reduced motion: static for 3 s, then back to the base opacity 0 with no fade. */
+@keyframes la-panel-failure-hold {
+  from,
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .la-panel-failure-flash {
+    animation: la-panel-failure-hold 3s;
+  }
+}
+
 .app-icon-wrap--assisted {
   position: relative;
   z-index: 41;
@@ -1188,6 +1434,37 @@
   outline: none;
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+/* O-123-19: «↗ פתח» sits below the URL field, which keeps the full width. */
+.modal-field .modal-url-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin-bottom: 0;
+  font-weight: inherit;
+}
+
+.modal-field .modal-url-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.modal-field .modal-url-test {
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.modal-field .modal-url-test:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .modal-field-error {
@@ -2210,6 +2487,22 @@
   max-width: 440px;
 }
 
+/* O-123-33: the register form under the duplicate-e-mail dialog — opaque and darker (O-123-27). */
+.auth-entry-card--covered {
+  filter: brightness(0.7) saturate(0.6);
+}
+
+.auth-duplicate-dialog {
+  max-width: min(26rem, calc(100vw - 2rem));
+}
+
+.auth-duplicate-text {
+  margin: 0 0 1.25rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #1e293b;
+}
+
 .auth-entry-tabs {
   display: flex;
   gap: 0.5rem;
@@ -2317,6 +2610,16 @@
   overflow-wrap: break-word;
   /* Prefer balanced wraps / avoid short last-line orphans when supported. */
   text-wrap: pretty;
+}
+
+/* O-123-13/14: the custom-site form stays open under the catalog offer, dimmed and inert.
+   O-123-27: darkened, never translucent — nothing behind the form may show through it. */
+.modal-overlay[data-covered='true'] {
+  background: transparent;
+}
+
+.modal-overlay[data-covered='true'] > .modal-dialog {
+  filter: brightness(0.7) saturate(0.6);
 }
 
 .sm-catalog-offer-prompt {
@@ -2662,6 +2965,36 @@
 
 .service-card--compact .service-card-name {
   font-size: 0.9375rem;
+}
+
+/* Catalog: every card the same size; long names clamp to 2 lines (full name in `title`). */
+.app-catalog .sm-grid--compact {
+  grid-auto-rows: 1fr;
+}
+
+.app-catalog .app-catalog-item {
+  display: flex;
+  min-width: 0;
+}
+
+.app-catalog .service-card--compact {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.app-catalog .service-card--compact .service-card-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.app-catalog .service-card--compact .service-card-actions {
+  margin-top: auto;
 }
 
 .service-card--row .service-card-name {

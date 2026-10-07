@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 
 export const REMOVE_APP_CONFIRM_TITLE = (name: string) => `להסיר את ${name}?`;
 export const REMOVE_APP_CONFIRM_BODY =
-  'כל הפרופילים ופרטי ההתחברות של האפליקציה יימחקו מכל המכשירים שלך.';
+  'כל הפרופילים ופרטי ההתחברות של האתר יימחקו מכל המכשירים שלך.';
 export const REMOVE_APP_CONFIRM_ACTION = 'הסרה';
 export const REMOVE_APP_CONFIRM_CANCEL = 'ביטול';
 
@@ -10,12 +10,14 @@ const FOCUSABLE = 'button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export interface RemoveAppConfirmDialogProps {
   serviceName: string;
+  /** False → title + buttons only (nothing to delete beyond the app itself). */
+  hasProfiles: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 /** AD-123-11 — in-app confirm for «הסרת אפליקציה» (N-4: never a browser dialog). Escape = cancel. */
-export default function RemoveAppConfirmDialog({ serviceName, onConfirm, onCancel }: RemoveAppConfirmDialogProps) {
+export default function RemoveAppConfirmDialog({ serviceName, hasProfiles, onConfirm, onCancel }: RemoveAppConfirmDialogProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const onCancelRef = useRef(onCancel);
@@ -73,15 +75,17 @@ export default function RemoveAppConfirmDialog({ serviceName, onConfirm, onCance
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="dh-remove-app-title"
-        aria-describedby="dh-remove-app-body"
+        aria-describedby={hasProfiles ? 'dh-remove-app-body' : undefined}
         dir="rtl"
       >
         <h2 id="dh-remove-app-title" className="dh-confirm-title">
           {REMOVE_APP_CONFIRM_TITLE(serviceName)}
         </h2>
-        <p id="dh-remove-app-body" className="dh-confirm-body">
-          {REMOVE_APP_CONFIRM_BODY}
-        </p>
+        {hasProfiles && (
+          <p id="dh-remove-app-body" className="dh-confirm-body">
+            {REMOVE_APP_CONFIRM_BODY}
+          </p>
+        )}
         <div className="dh-confirm-actions">
           <button type="button" className="dh-confirm-btn dh-confirm-btn--danger" data-action="confirm-remove-app" onClick={onConfirm}>
             {REMOVE_APP_CONFIRM_ACTION}

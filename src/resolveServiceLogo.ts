@@ -1,11 +1,18 @@
 // Keep in sync with .app-icon-img max size in App.css (72% of icon container).
 export const APP_ICON_SIZE_PX = 44;
 const MIN_LOGO_SIZE = Math.ceil(APP_ICON_SIZE_PX * 0.8);
+/** O-123-36 — painted size is ~32 px (72 % of 44), so a 32 px icon is used when nothing ≥ MIN_LOGO_SIZE exists. */
+const MIN_FALLBACK_LOGO_SIZE = 32;
 const IMAGE_TIMEOUT_MS = 2500;
 
 interface ResolveLogoInput {
   url: string;
   logoUrl?: string;
+}
+
+/** Largest candidate seen in this cascade that loaded at ≥ MIN_FALLBACK_LOGO_SIZE (but < MIN_LOGO_SIZE). */
+interface FallbackLogo {
+  best: { src: string; size: number } | null;
 }
 
 function normalizeSiteUrl(siteUrl: string): URL | null {
@@ -27,7 +34,7 @@ function resolveHref(href: string, base: URL): string {
   }
 }
 
-function tryImage(src: string): Promise<boolean> {
+function tryImage(src: string, fallback: FallbackLogo): Promise<boolean> {
   if (!src) return Promise.resolve(false);
 
   return new Promise((resolve) => {
@@ -36,10 +43,15 @@ function tryImage(src: string): Promise<boolean> {
 
     img.onload = () => {
       window.clearTimeout(timer);
-      resolve(
-        img.naturalWidth >= MIN_LOGO_SIZE &&
-          img.naturalHeight >= MIN_LOGO_SIZE,
-      );
+      const size = Math.min(img.naturalWidth, img.naturalHeight);
+      if (size >= MIN_LOGO_SIZE) {
+        resolve(true);
+        return;
+      }
+      if (size >= MIN_FALLBACK_LOGO_SIZE && (!fallback.best || size > fallback.best.size)) {
+        fallback.best = { src, size };
+      }
+      resolve(false);
     };
 
     img.onerror = () => {
@@ -53,15 +65,17 @@ function tryImage(src: string): Promise<boolean> {
 
 async function firstValidSequential(
   candidates: string[],
+  fallback: FallbackLogo,
 ): Promise<string | null> {
   for (const src of candidates) {
-    if (await tryImage(src)) return src;
+    if (await tryImage(src, fallback)) return src;
   }
   return null;
 }
 
 async function firstValidParallel(
   candidates: string[],
+  fallback: FallbackLogo,
 ): Promise<string | null> {
   if (candidates.length === 0) return null;
 
@@ -70,7 +84,7 @@ async function firstValidParallel(
     let settled = false;
 
     for (const src of candidates) {
-      void tryImage(src).then((ok) => {
+      void tryImage(src, fallback).then((ok) => {
         if (settled) return;
         if (ok) {
           settled = true;
@@ -88,19 +102,12 @@ async function fetchPageHtml(site: URL): Promise<string | null> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), 4000);
 
+  // O-123-36: direct fetch only — no third-party HTML proxy (it would reveal which sites users hold).
   try {
-    try {
-      const response = await fetch(site.href, {
-        signal: controller.signal,
-        mode: 'cors',
-      });
-      if (response.ok) return await response.text();
-    } catch {
-      // CORS blocked — fall back to read-only proxy for meta tags.
-    }
-
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(site.href)}`;
-    const response = await fetch(proxyUrl, { signal: controller.signal });
+    const response = await fetch(site.href, {
+      signal: controller.signal,
+      mode: 'cors',
+    });
     if (response.ok) return await response.text();
   } catch {
     return null;
@@ -166,9 +173,10 @@ export async function resolveServiceLogo(
   if (!site) return null;
 
   const origin = site.origin;
+  const fallback: FallbackLogo = { best: null };
 
   if (input.logoUrl) {
-    const explicit = await firstValidSequential([input.logoUrl]);
+    const explicit = await firstValidSequential([input.logoUrl], fallback);
     if (explicit) return explicit;
   }
 
@@ -180,7 +188,7 @@ export async function resolveServiceLogo(
     '/apple-touch-icon-120x120.png',
   ].map((path) => `${origin}${path}`);
 
-  const appleFromPaths = await firstValidParallel(applePaths);
+  const appleFromPaths = await firstValidParallel(applePaths, fallback);
   if (appleFromPaths) return appleFromPaths;
 
   const html = await fetchPageHtml(site);
@@ -188,15 +196,15 @@ export async function resolveServiceLogo(
     const meta = parsePageMeta(html, site);
 
     if (meta.appleTouch) {
-      const appleFromMeta = await firstValidSequential([meta.appleTouch]);
+      const appleFromMeta = await firstValidSequential([meta.appleTouch], fallback);
       if (appleFromMeta) return appleFromMeta;
     }
 
-    const iconsFromMeta = await firstValidSequential(meta.icons);
+    const iconsFromMeta = await firstValidSequential(meta.icons, fallback);
     if (iconsFromMeta) return iconsFromMeta;
 
     if (meta.ogImage) {
-      const ogImage = await firstValidSequential([meta.ogImage]);
+      const ogImage = await firstValidSequential([meta.ogImage], fallback);
       if (ogImage) return ogImage;
     }
   }
@@ -210,8 +218,8 @@ export async function resolveServiceLogo(
     `${origin}/android-chrome-192x192.png`,
   ];
 
-  const favicon = await firstValidSequential(faviconPaths);
+  const favicon = await firstValidSequential(faviconPaths, fallback);
   if (favicon) return favicon;
 
-  return null;
+  return fallback.best?.src ?? null;
 }

@@ -122,12 +122,15 @@ for (const needle of [
   '[AUTOFILL_PROFILE_ACTION_KEY]: \'save\',',
   '[AUTOFILL_LIVE_VALIDATION_APPROVED_KEY]: false,',
   '[AUTOFILL_MANAGED_READINESS_PROBE_PASSED_KEY]: false,',
-  'formatAdminManagedTestResultSummary(outcome)',
+  // G-3 (O-123-31 b, Architect ruling): the visible failure line is the Hebrew sentence; the summary tokens are rendered collapsed.
+  'setError(outcome.userMessage);',
   "setError('בדיקת המילוי המנוהל נכשלה. נסו שוב.');",
   'await onSaved();',
 ]) {
   assertIncludes(requestFn, needle, `STANDARD run path: ${needle}`);
 }
+const technicalFn = gridSrc.slice(gridSrc.indexOf('function technicalTokens('), gridSrc.indexOf('export default function'));
+assertIncludes(technicalFn, 'formatAdminManagedTestResultSummary(outcome)', 'G-3 (O-123-31 b): the summary formatter still produces the collapsed technical tokens');
 assertNotIncludes(requestFn, 'tempTestValues[', 'temps never serialized into the stamp write');
 assertNotIncludes(gridSrc, 'localStorage', 'temps not persisted (localStorage)');
 assertNotIncludes(gridSrc, 'sessionStorage', 'temps not persisted (sessionStorage)');
@@ -416,11 +419,14 @@ console.log('  ✓ no extension / manifest references to the grid');
 // --- 9. D-121-40: SPECIAL result = message + short context line; technical details collapsed ---
 const viewSrc = read('src/admin/SpecialTestResultView.tsx');
 assertIncludes(gridSrc, '<SpecialTestResultView outcome={specialResult.outcome} at={specialResult.at} />', 'grid renders the SPECIAL result view');
-assertNotIncludes(gridSrc, '<details', 'grid itself (STANDARD output) has no collapsed section');
+// G-3 (O-123-31 b, Architect ruling): STANDARD failures get exactly one closed «פרטים טכניים» (tokens + structure line).
+const gridDetails = gridSrc.match(/<details\b[^>]*>/g) ?? [];
+assert(gridDetails.length === 1 && gridDetails[0].includes('data-section="managed-test-technical"') && !/\bopen\b/.test(gridDetails[0]), 'grid itself: only the closed O-123-31 (b) technical section');
 assertNotIncludes(gridSrc, 'special-test-diagnostics', 'SPECIAL diagnostics rendered only by the result view');
 assertNotIncludes(viewSrc, '<details open', 'technical section never forced open');
 assertIncludes(ctxSrc, "specialTechnicalDetails: 'פרטים טכניים'", 'exact «פרטים טכניים» label');
-const managedStructure = gridSrc.slice(gridSrc.indexOf('{testOutcome && !testOutcome.ok ? ('), gridSrc.indexOf(') : specialContext ? ('));
+const managedStructureStart = gridSrc.indexOf('<details className="admin-special-test-details" data-section="managed-test-technical">');
+const managedStructure = gridSrc.slice(managedStructureStart, gridSrc.indexOf('</details>', managedStructureStart));
 for (const needle of ['data-testid="managed-test-structure"', '[testOutcome.reason, testOutcome.fieldId, testOutcome.detail, testOutcome.locator]']) {
   assertIncludes(managedStructure, needle, `STANDARD result output unchanged: ${needle}`);
 }

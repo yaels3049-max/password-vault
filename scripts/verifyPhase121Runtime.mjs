@@ -29,6 +29,7 @@ import { revertD12171EligibilityEdits } from './lib/phase121D71Edits.mjs';
 import { revertD12172BackgroundOutsideEdits, revertD12172ManagedAutofillEdits } from './lib/phase121D72Edits.mjs';
 import { revertD12170ValidatedAutofillEdits } from './lib/phase121D70ValidatedAutofillEdits.mjs';
 import { withTempDir } from './lib/tempDir.mjs';
+import { revertPhase126PartAManifest } from './lib/phase126PartA.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
@@ -1058,7 +1059,9 @@ const draftMeta = (plan) => ({
           ? revertD12163ValidatorEdits(read(rel))
           : rel === 'src/execution/managedAutofill.ts'
             ? revertD12172ManagedAutofillEdits(read(rel))
-            : read(rel);
+            : rel === 'extension/manifest.json'
+              ? revertPhase126PartAManifest(read(rel)) // Phase 126 Part A (G-3)
+              : read(rel);
   for (const [rel, pin] of Object.entries(PINS)) {
     assert(sha(pinned(rel)) === pin, `RT-STATIC byte-identical: ${rel}`);
   }

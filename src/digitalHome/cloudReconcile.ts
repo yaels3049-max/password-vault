@@ -7,7 +7,7 @@ import type { VaultState } from '../vault/vault';
 /** AD-123-18 (3) — at most one focus / visibility re-hydrate per interval. */
 export const CLOUD_REFRESH_MIN_INTERVAL_MS = 10_000;
 
-export const MSG_REMOVED_ELSEWHERE = 'האפליקציה או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.';
+export const MSG_REMOVED_ELSEWHERE = 'האתר או הפרופיל נמחקו בחלון אחר, ולכן החלון נסגר.';
 
 export interface GoneRows {
   goneProfileIds: string[];

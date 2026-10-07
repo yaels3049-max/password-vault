@@ -187,6 +187,14 @@ async function recoverOrphanAuthRegistration(
     throw new Error(withDevHint(AUTH_COPY.registerDuplicate, signInError));
   }
 
+  // Sign-up reported the address as taken, so this registration created no auth user and no
+  // trigger row: a profile row here belongs to an account that already existed.
+  if (await loadProfileOrNull()) {
+    logRegisterFailure('orphan recover', 'profile row already exists');
+    await signOutAccount();
+    throw new Error(AUTH_COPY.registerDuplicate);
+  }
+
   return ensureProfileForSession({
     firstName,
     lastName,

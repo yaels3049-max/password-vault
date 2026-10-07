@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { isDevBuild } from '../dev/devMode';
+import { useBackdropDismiss } from '../digitalHome/dialogDismiss';
 import {
   AUTH_COPY,
   loginWithPassword,
@@ -9,6 +11,16 @@ import {
 import { getAccountPasswordPolicy } from './passwordPolicy';
 
 type AuthMode = 'login' | 'register';
+
+const DEV_HINT_MARK = '\n(פרטי פיתוח:';
+
+/** O-123-33: the duplicate copy, with or without the DEV hint that register.ts may append. */
+function isRegisterDuplicate(message: string): boolean {
+  return (
+    message === AUTH_COPY.registerDuplicate ||
+    message.startsWith(AUTH_COPY.registerDuplicate + DEV_HINT_MARK)
+  );
+}
 
 interface AuthEntryScreenProps {
   /** Auth success; Hub also unlocks vault with the same password. Admin may ignore password. */
@@ -40,8 +52,35 @@ export default function AuthEntryScreen({
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
+  const [focusFirstField, setFocusFirstField] = useState(false);
+  const firstRegisterFieldRef = useRef<HTMLInputElement>(null);
 
   const policy = getAccountPasswordPolicy();
+
+  useEffect(() => {
+    if (!focusFirstField || duplicateNotice !== null) return;
+    setFocusFirstField(false);
+    firstRegisterFieldRef.current?.focus();
+  }, [focusFirstField, duplicateNotice]);
+
+  function clearRegisterFields() {
+    setEmail('');
+    setPassword('');
+    setPasswordConfirm('');
+    setFirstName('');
+    setLastName('');
+    setPhone('');
+    setShowPassword(false);
+  }
+
+  function closeDuplicateNotice() {
+    setDuplicateNotice(null);
+    setFocusFirstField(true);
+  }
+
+  // D-123-3: a dialog without a form closes on a full press + release on its backdrop.
+  const duplicateBackdrop = useBackdropDismiss(closeDuplicateNotice, { containsForm: false });
 
   function switchMode(next: AuthMode) {
     if (loading || next === mode) return;
@@ -80,13 +119,22 @@ export default function AuthEntryScreen({
       const raw =
         err instanceof Error && err.message.trim() ? err.message.trim() : '';
       const known = new Set(Object.values(AUTH_COPY));
-      setError(
+      const message =
         raw &&
-          (known.has(raw as (typeof AUTH_COPY)[keyof typeof AUTH_COPY]) ||
-            raw.includes('(פרטי פיתוח:'))
+        (known.has(raw as (typeof AUTH_COPY)[keyof typeof AUTH_COPY]) ||
+          raw.includes('(פרטי פיתוח:'))
           ? raw
-          : mapAuthErrorToFriendly(err, mode === 'register' ? 'register' : 'login'),
-      );
+          : mapAuthErrorToFriendly(err, mode === 'register' ? 'register' : 'login');
+      if (mode === 'register' && isRegisterDuplicate(message)) {
+        const devDetail = message.slice(AUTH_COPY.registerDuplicate.length).trim();
+        if (devDetail && isDevBuild()) {
+          console.warn('[auth] register duplicate:', devDetail);
+        }
+        clearRegisterFields();
+        setDuplicateNotice(AUTH_COPY.registerDuplicate);
+        return;
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -94,7 +142,10 @@ export default function AuthEntryScreen({
 
   return (
     <div className="unlock auth-entry">
-      <div className="unlock-card auth-entry-card">
+      <div
+        className={`unlock-card auth-entry-card${duplicateNotice !== null ? ' auth-entry-card--covered' : ''}`}
+        inert={duplicateNotice !== null}
+      >
         <header className="unlock-header">
           <h1>{heading ?? AUTH_COPY.productTitle}</h1>
           {(subtitle || !loginOnly) && (
@@ -140,6 +191,7 @@ export default function AuthEntryScreen({
               <label className="unlock-field">
                 <span>{AUTH_COPY.firstName}</span>
                 <input
+                  ref={firstRegisterFieldRef}
                   type="text"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
@@ -262,6 +314,36 @@ export default function AuthEntryScreen({
           </button>
         </form>
       </div>
+
+      {duplicateNotice !== null && (
+        <div className="modal-overlay auth-duplicate-overlay" {...duplicateBackdrop}>
+          <div
+            className="modal-dialog auth-duplicate-dialog"
+            dir="rtl"
+            role="alertdialog"
+            aria-modal="true"
+            aria-describedby="auth-duplicate-text"
+            data-testid="auth-duplicate-dialog"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') closeDuplicateNotice();
+            }}
+          >
+            <p id="auth-duplicate-text" className="auth-duplicate-text">
+              {duplicateNotice}
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-btn modal-btn-primary"
+                autoFocus
+                onClick={closeDuplicateNotice}
+              >
+                {AUTH_COPY.registerDuplicateClose}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

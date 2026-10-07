@@ -51,7 +51,7 @@ const ROW_STATUS_CHIP: Record<
   multiple_profiles: { label: 'מספר פרופילים', tone: 'ready' },
 };
 
-function ServiceCardLogo({
+export function ServiceCardLogo({
   name,
   logoSrc,
   imgFailed,
@@ -168,7 +168,7 @@ export default function ServiceCard({
             />
           </div>
           <div className="service-card-body">
-            <span className="service-card-name">{name}</span>
+            <span className="service-card-name" title={name}>{name}</span>
             <span className="service-card-category">{categoryLabel}</span>
             {showBadge && (
               <span className={`service-card-badge ${BADGE_CLASS[state]}`}>

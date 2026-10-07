@@ -63,6 +63,15 @@ export function classifyCustomAddFailure(error: unknown): {
   failureClass: CustomAddFailureClass;
   userMessage: string;
 } {
+  // O-123-22: AuthRequiredError (src/auth/session.ts) carries Hebrew copy with no keyword below;
+  // matched by name so this module does not import the auth / client layer.
+  if (error instanceof Error && error.name === 'AuthRequiredError') {
+    return {
+      failureClass: 'auth_policy',
+      userMessage: CUSTOM_ADD_FAIL_AUTH_POLICY_HE,
+    };
+  }
+
   const text = readErrorText(error);
   const lower = text.toLowerCase();
   const status = readStatusCode(error);

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { openUrlInNewTab } from './browserIntegration';
 import { validateCustomPrimaryUrl } from './catalog';
 import {
   EMPTY_LOGIN_URL_MESSAGE,
@@ -12,6 +13,11 @@ import { useBackdropDismiss, useEscapeToClose } from './digitalHome/dialogDismis
 
 export const CATEGORY_REQUIRED_MESSAGE = 'יש לבחור קטגוריה';
 export const CATEGORY_PLACEHOLDER_LABEL = 'בחרו קטגוריה';
+export const TEST_OPEN_URL_LABEL = 'פתח';
+/** First in DOM order, so it sits to the right of «פתח» in RTL. */
+export const TEST_OPEN_URL_ICON = '↗';
+/** Contains the visible word «פתח» (label in name). */
+export const TEST_OPEN_URL_ACCESSIBLE_NAME = 'פתח את הכתובת לבדיקה בכרטיסייה חדשה';
 
 export interface AddSiteFormValues {
   displayName: string;
@@ -34,6 +40,8 @@ interface AddSiteModalProps {
   initialCategory?: ServiceCategory;
   initialSameAsWebsite?: boolean;
   initialLoginUrl?: string;
+  /** Another dialog sits above: the form keeps its values but is dimmed and not focusable. */
+  covered?: boolean;
 }
 
 export default function AddSiteModal({
@@ -48,6 +56,7 @@ export default function AddSiteModal({
   initialCategory,
   initialSameAsWebsite = true,
   initialLoginUrl = '',
+  covered = false,
 }: AddSiteModalProps) {
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [primaryUrl, setPrimaryUrl] = useState(initialPrimaryUrl);
@@ -60,12 +69,22 @@ export default function AddSiteModal({
     if (!isSaving) onCancel();
   };
   const backdrop = useBackdropDismiss(cancelIfIdle, { containsForm: true });
-  useEscapeToClose(cancelIfIdle);
+  useEscapeToClose(cancelIfIdle, !covered);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const wasCovered = useRef(covered);
+  useEffect(() => {
+    if (wasCovered.current && !covered) {
+      nameInputRef.current?.focus();
+    }
+    wasCovered.current = covered;
+  }, [covered]);
   const [sameAsWebsite, setSameAsWebsite] = useState(initialSameAsWebsite);
   const [dedicatedLoginUrl, setDedicatedLoginUrl] = useState(
     initialSameAsWebsite ? '' : initialLoginUrl,
   );
   const [urlError, setUrlError] = useState<string | null>(null);
+  // Same scheme completion as the save path, so the tab shows exactly the address that is stored.
+  const testUrl = validateCustomPrimaryUrl(primaryUrl);
 
   function normalizeUrlField(url: string): string | null {
     const result = validateCustomPrimaryUrl(url);
@@ -117,7 +136,13 @@ export default function AddSiteModal({
   }
 
   return (
-    <div className="modal-overlay" data-dialog-form="true" {...backdrop}>
+    <div
+      className="modal-overlay"
+      data-dialog-form="true"
+      data-covered={covered ? 'true' : undefined}
+      inert={covered}
+      {...backdrop}
+    >
       <div
         className="modal-dialog modal-dialog--frost"
         dir="rtl"
@@ -129,6 +154,7 @@ export default function AddSiteModal({
           <label className="modal-field">
             <span>שם להצגה</span>
             <input
+              ref={nameInputRef}
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
@@ -138,26 +164,41 @@ export default function AddSiteModal({
           </label>
           <label className="modal-field">
             <span>כתובת ראשית (HTTPS)</span>
-            <input
-              type="text"
-              inputMode="url"
-              autoComplete="url"
-              value={primaryUrl}
-              onChange={(e) => {
-                setPrimaryUrl(e.target.value);
-                if (urlError) {
-                  normalizeUrlField(e.target.value);
-                }
-              }}
-              onBlur={() => {
-                if (primaryUrl.trim()) {
-                  normalizeUrlField(primaryUrl);
-                }
-              }}
-              placeholder="example.co.il או https://www…"
-              dir="ltr"
-              disabled={isSaving}
-            />
+            <span className="modal-url-row">
+              <input
+                type="text"
+                inputMode="url"
+                autoComplete="url"
+                value={primaryUrl}
+                onChange={(e) => {
+                  setPrimaryUrl(e.target.value);
+                  if (urlError) {
+                    normalizeUrlField(e.target.value);
+                  }
+                }}
+                onBlur={() => {
+                  if (primaryUrl.trim()) {
+                    normalizeUrlField(primaryUrl);
+                  }
+                }}
+                placeholder="example.co.il או https://www…"
+                dir="ltr"
+                disabled={isSaving}
+              />
+              <button
+                type="button"
+                className="modal-btn modal-btn-secondary modal-url-test"
+                data-action="test-open-url"
+                aria-label={TEST_OPEN_URL_ACCESSIBLE_NAME}
+                disabled={isSaving || !testUrl.valid}
+                onClick={() => {
+                  if (testUrl.valid) openUrlInNewTab(testUrl.normalizedUrl);
+                }}
+              >
+                <span className="modal-url-test-icon" aria-hidden="true">{TEST_OPEN_URL_ICON}</span>
+                {TEST_OPEN_URL_LABEL}
+              </button>
+            </span>
           </label>
           <label className="modal-check">
             <input

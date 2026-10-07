@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseHTML } from 'linkedom';
+import { revertPhase126PartAManifest } from './lib/phase126PartA.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
@@ -211,7 +212,8 @@ function checkRuntimeAndScope(c) {
     const src = read(rel);
     assert(!/label/i.test(src) && !src.includes('.click('), `${rel}: writes to the resolved target only, never clicks a label`);
   }
-  assert(git('show HEAD:extension/manifest.json') === read('extension/manifest.json'), 'manifest unchanged');
+  // Phase 126 Part A (G-3): the manifest may differ only by the Part A lines.
+  assert(git('show HEAD:extension/manifest.json') === revertPhase126PartAManifest(read('extension/manifest.json')), 'manifest unchanged');
   const d49 = [c.sources[MTE_FILE].slice(c.sources[MTE_FILE].indexOf('D-121-49')), c.sources[VTP_FILE].slice(c.sources[VTP_FILE].indexOf('D-121-49'))];
   for (const block of d49) {
     assert(!/hostname|serviceId|elal|\.co\.il|\.com\b|webNavigation|getFrameId|debugger/i.test(block), 'no site / hostname / serviceId / frame-API branches');

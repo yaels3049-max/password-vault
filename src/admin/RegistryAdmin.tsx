@@ -97,6 +97,7 @@ import { AdminEmptyState, IconInfo, IconKey, IconNote, IconPlay, IconPlus, IconS
 import AdminChipRow from './AdminChipRow';
 import AdminNotesPanel from './AdminNotesPanel';
 import UserApprovalBadge from './UserApprovalBadge';
+import { USER_APPROVAL_HE, userApprovalState, type UserApprovalState } from './userApproval';
 
 const WORKSPACE_TAB_ICONS: Record<WorkspaceTab, ReactNode> = {
   details: <IconInfo />,
@@ -118,6 +119,9 @@ const EMPTY_FORM: GlobalRegistryInput = {
 
 type SourceFilter = 'all' | 'built_in' | 'custom' | 'user_submitted';
 type StatusFilter = 'all' | 'active' | 'inactive';
+/** O-123-32 — the card badge's approval state (userApprovalState), or all. */
+type ApprovalFilter = 'all' | UserApprovalState;
+const APPROVAL_FILTER_STATES: UserApprovalState[] = ['approved', 'not_approved', 'blocked', 'no_mapping'];
 
 function SiteIcon({
   row,
@@ -217,6 +221,7 @@ export default function RegistryAdmin({ onDirtyChange }: RegistryAdminProps = {}
   const [filterCategory, setFilterCategory] = useState('');
   const [filterSource, setFilterSource] = useState<SourceFilter>('all');
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('all');
+  const [filterApproval, setFilterApproval] = useState<ApprovalFilter>('all');
   // Phase 122 — service form state as loaded / last saved (unsaved-changes guard only).
   const [formBaseline, setFormBaseline] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -294,9 +299,10 @@ export default function RegistryAdmin({ onDirtyChange }: RegistryAdminProps = {}
       ) {
         return false;
       }
+      if (filterApproval !== 'all' && userApprovalState(row) !== filterApproval) return false;
       return registryRowMatches(row, search, categoryLabel);
     });
-  }, [rows, search, filterCategory, filterSource, filterStatus, categoryLabel]);
+  }, [rows, search, filterCategory, filterSource, filterStatus, filterApproval, categoryLabel]);
 
   const switcherRows = useMemo(
     () => rows.filter((row) => registryRowMatches(row, switcherQuery, categoryLabel)),
@@ -719,6 +725,19 @@ export default function RegistryAdmin({ onDirtyChange }: RegistryAdminProps = {}
           <option value="active">פעיל</option>
           <option value="inactive">לא פעיל</option>
         </select>
+        <select
+          value={filterApproval}
+          onChange={(e) => setFilterApproval(e.target.value as ApprovalFilter)}
+          aria-label="סינון לפי מצב אישור"
+          data-filter="approval"
+        >
+          <option value="all">כל מצבי האישור</option>
+          {APPROVAL_FILTER_STATES.map((state) => (
+            <option key={state} value={state}>
+              {USER_APPROVAL_HE[state]}
+            </option>
+          ))}
+        </select>
       </div>
       </div>
 
@@ -921,15 +940,21 @@ export default function RegistryAdmin({ onDirtyChange }: RegistryAdminProps = {}
               onSubmit={(event) => void handleSave(event)}
               onInvalid={() => setWorkspaceTab('details')}
             >
+              {workspaceTab !== 'test' || detailsUnsavedElsewhere ? (
               <header className="admin-workspace-head">
-                <h3>
-                  {isCreating
-                    ? 'יצירת אתר'
-                    : isUserOwnedRow
-                      ? 'פרטי אתר (הגשת משתמש)'
-                      : 'עריכת אתר'}
-                </h3>
-                <p className="admin-section-desc">{WORKSPACE_TAB_DESCRIPTION_HE[workspaceTab]}</p>
+                {/* O-123-31 — «בדיקה והפעלה» has no heading or description line. */}
+                {workspaceTab !== 'test' ? (
+                  <>
+                    <h3>
+                      {isCreating
+                        ? 'יצירת אתר'
+                        : isUserOwnedRow
+                          ? 'פרטי אתר (הגשת משתמש)'
+                          : 'עריכת אתר'}
+                    </h3>
+                    <p className="admin-section-desc">{WORKSPACE_TAB_DESCRIPTION_HE[workspaceTab]}</p>
+                  </>
+                ) : null}
                 {detailsUnsavedElsewhere ? (
                   <p className="admin-unsaved-notice" role="status" data-notice="details-unsaved">
                     <IconWarning />
@@ -945,6 +970,7 @@ export default function RegistryAdmin({ onDirtyChange }: RegistryAdminProps = {}
                   </p>
                 ) : null}
               </header>
+              ) : null}
 
               {isUserOwnedRow && (
                 <p className="admin-field-hint admin-workspace-notice" role="status">
@@ -1217,6 +1243,7 @@ export default function RegistryAdmin({ onDirtyChange }: RegistryAdminProps = {}
                       onTestingChange={setFillTestRunning}
                       statusLine={<MappingStatusLine status={testTabMappingStatus} />}
                       onGoToLoginTab={() => setWorkspaceTab('login')}
+                      active={workspaceTab === 'test'}
                     />
                   </>
                 ) : null}

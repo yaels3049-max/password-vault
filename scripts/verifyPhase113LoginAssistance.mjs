@@ -124,7 +124,8 @@ function mainStatic() {
   assert(!messages.includes('פתח אתר להתחברות'), 'retired login-open CTA gone');
   assert(!/פתח את \$\{serviceName\}/.test(messages), 'named service-open CTA retired');
   assert(!messages.includes('export function labelOpenSiteNamed'), 'named CTA helper retired');
-  assert(messages.includes("נסה מילוי אוטומטי"), 'Autofill copy unchanged');
+  // O-123-15 (G-3): the autofill label «נסה מילוי אוטומטי» was renamed «מילוי פרטים אוטומטי».
+  assert(messages.includes("LABEL_TRY_AUTO = 'מילוי פרטים אוטומטי'"), 'Autofill copy unchanged');
   assert(messages.includes('לא אותר דף התחברות'), 'AC-113-23 Hebrew home-open');
   // Superseded by AD-123-1 (Phase 123.4): the manage screen is gone; the prompt points to the app window.
   assert(
@@ -211,14 +212,20 @@ function mainStatic() {
       appSrcLaunch.includes('openProfileManagement'),
     'Home missing-credentials CTA reuses existing credential editor',
   );
-  assert(dash.includes('setStatusMessage(null)'), 'opening Launch Card must clear the global warning');
+  // Superseded by O-123-8 (Phase 123.5): app messages live only in the floating window, so the Digital
+  // Home keeps no app status banner to clear when a Launch Card opens.
+  assert(
+    !dash.includes('setStatusMessage') && !dash.includes('onStatus'),
+    'no Digital Home app status banner — app messages stay in the floating window (O-123-8)',
+  );
   // Superseded by AD-123-1 / AD-123-9 (Phase 123.4): no Manage CTA; «+ הוספת אפליקציה» is the Home CTA.
   assert(
     !dash.includes('dashboard-manage-cta') && dash.includes('dashboard-add-app-cta'),
     'Home has no Manage CTA; «+ הוספת אפליקציה» is the prominent CTA (AD-123-1)',
   );
   assert(!dash.includes('la-home-notice-cta') && !dash.includes('LABEL_GO_MANAGE'), 'no banner manage button');
-  assert(dash.includes('la-home-notice'), 'credentials notice banner');
+  // Superseded by O-123-8 (Phase 123.5): the app notice banner on the Digital Home is removed.
+  assert(!dash.includes('la-home-notice'), 'no app notice banner on the Digital Home (O-123-8)');
   assert(!dash.includes('openServiceWithProfile'), 'Home uses assistance panel first');
   assert(dash.includes('userDisplayName') && dash.includes('הבית הדיגיטלי של'), 'AC-113-26 named title');
   assert(!dash.includes('openDemoAndFill') && !dash.includes('openIsraeliSiteAutofillTest'), 'no PoC fill buttons');

@@ -258,7 +258,11 @@ function checkSharedLogicUnchanged(overrides) {
 
 function checkAdminReexportOnly(overrides) {
   // D-123-6 (N-1 copy exception): ApprovalQueue.tsx success line — content checked by verifyPhase123FixD6D8.
-  const changed = git('diff', '--name-only', BASE, '--', 'src/admin').split('\n').filter(Boolean);
+  // O-123-23 (KI-123.5-5, G-3): AdminGate.tsx / admin.css are left out here — content pinned by verifyPhase123OwnerFixes checkAdminLoginScreen.
+  const O23_ADMIN = ['src/admin/AdminGate.tsx', 'src/admin/admin.css'];
+  // O-123-29…32 (G-3): Owner-excepted admin shell / RegistryAdmin / fill-test grid — pinned by verifyPhase123OwnerFixes.
+  O23_ADMIN.push('src/admin/AdminApp.tsx', 'src/admin/RegistryAdmin.tsx', 'src/admin/AdminFillTestGrid.tsx');
+  const changed = git('diff', '--name-only', BASE, '--', 'src/admin').split('\n').filter(Boolean).filter((p) => !O23_ADMIN.includes(p));
   assert(changed.length <= 2 && changed.every((p) => p === 'src/admin/userApproval.ts' || p === 'src/admin/ApprovalQueue.tsx'), `N-1 / AD-123-19: only src/admin/userApproval.ts (+ D-123-6 ApprovalQueue.tsx) changes under src/admin (${changed.join(', ')})`);
   assert(git('ls-files', '--others', '--exclude-standard', '--', 'src/admin').trim() === '', 'N-1: no new files under src/admin');
   const admin = source(overrides, 'src/admin/userApproval.ts');

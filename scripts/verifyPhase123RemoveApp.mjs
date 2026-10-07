@@ -25,6 +25,7 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { makeTempDir, removeTempDir } from './lib/tempDir.mjs';
 import { formatElapsed, mutationId, parseMutationArgs, selectMutations } from './lib/mutationArgs.mjs';
+import { assertSecureContext, registerHarnessDir, routeHarness } from './lib/routeHarness.mjs';
 import { checkTimeoutMessage, closeServer, failRun, isTimeout, mutationTimeoutMessage, withTimeout } from './lib/withTimeout.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,10 +53,12 @@ const TOAST = 'src/digitalHome/UndoToast.tsx';
 const NEW_FILES = [DIALOG, TOAST];
 
 const HE = {
-  removeApp: 'הסרת אפליקציה',
+  // O-123-20 (G-3): the menu item was «הסרת אפליקציה».
+  removeApp: 'הסרת אתר',
   editSite: 'עריכת פרטי האתר',
   appActions: 'פעולות אפליקציה',
-  confirmBody: 'כל הפרופילים ופרטי ההתחברות של האפליקציה יימחקו מכל המכשירים שלך.',
+  // O-123-21 (G-3): the paragraph was «…של האפליקציה…».
+  confirmBody: 'כל הפרופילים ופרטי ההתחברות של האתר יימחקו מכל המכשירים שלך.',
   confirmAction: 'הסרה',
   cancel: 'ביטול',
   removeFailed: 'לא הצלחנו להסיר את האתר מהחשבון. בדקו חיבור לרשת ונסו שוב.',
@@ -472,8 +475,12 @@ function checkNChecks(overrides) {
   const toast = source(overrides, TOAST);
   assert(/role="status"/.test(toast) && toast.includes(`'${HE.cancel}'`) && /dir="rtl"/.test(toast), 'AD-123-11: Undo toast = RTL status with «ביטול»');
   assert(source(overrides, 'src/loginAssistance/messages.ts').includes(`'${HE.removeApp}'`), 'N-6: «הסרת אפליקציה»');
+  // O-123-23 (KI-123.5-5, G-3): AdminGate.tsx / admin.css also allowed — content pinned by verifyPhase123OwnerFixes checkAdminLoginScreen.
+  const O23_ADMIN = ['src/admin/AdminGate.tsx', 'src/admin/admin.css'];
+  // O-123-29…32 (G-3): Owner-excepted admin shell / RegistryAdmin / fill-test grid — pinned by verifyPhase123OwnerFixes.
+  O23_ADMIN.push('src/admin/AdminApp.tsx', 'src/admin/RegistryAdmin.tsx', 'src/admin/AdminFillTestGrid.tsx');
   const adminChanged = git('diff', '--name-only', BASE, '--', 'src/admin').split('\n').filter(Boolean);
-  assert(adminChanged.every((p) => p === 'src/admin/userApproval.ts' || p === 'src/admin/ApprovalQueue.tsx'), `N-1: src/admin changes only the accepted files (${adminChanged.join(', ')})`);
+  assert(adminChanged.every((p) => p === 'src/admin/userApproval.ts' || p === 'src/admin/ApprovalQueue.tsx' || O23_ADMIN.includes(p)), `N-1: src/admin changes only the accepted files (${adminChanged.join(', ')})`);
   assert(git('ls-files', '--others', '--exclude-standard', '--', 'src/admin').trim() === '', 'N-1: no new files under src/admin');
   return 'N-1 (src/admin = accepted files only) / N-4 (no browser dialogs) / N-5 (no site / id branches) / N-6 (Hebrew RTL copy) / N-8 (no admin imports)';
 }
@@ -526,7 +533,11 @@ function serve(dir) {
       res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
       res.end(readFileSync(file));
     });
-    server.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${server.address().port}/`, close: () => closeServer(server) }));
+    server.listen(0, '127.0.0.1', () => {
+      const url = `http://127.0.0.1:${server.address().port}/`;
+      registerHarnessDir(url, dir);
+      resolve({ url, close: () => closeServer(server) });
+    });
   });
 }
 
@@ -552,6 +563,7 @@ async function login(s) {
 async function openPage(url) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'he-IL' });
   openContexts.add(context);
+  await routeHarness(context, url);
   const page = await context.newPage();
   const s = { page, context, errors: [], native: [] };
   page.on('pageerror', (e) => s.errors.push(String(e)));
@@ -561,6 +573,7 @@ async function openPage(url) {
   });
   await page.clock.install();
   await page.goto(url);
+  await assertSecureContext(page);
   await page.waitForFunction(() => window.__pvReady || window.__pvBootError, null, { timeout: 30000, polling: 100 });
   const bootError = await page.evaluate(() => window.__pvBootError ?? null);
   assert(!bootError, `fixture: harness boot failed: ${bootError}`);
@@ -813,14 +826,16 @@ async function checkEdgeRules(url) {
   const item = s.page.locator('[data-catalog-modal] [data-catalog-item="svc-cred"]');
   await item.waitFor({ timeout: 5000 });
   assert((await item.getAttribute('data-catalog-state')) !== 'added', 'AD-123-12: while pending, the catalog shows the app as not added');
-  await item.locator('button.sm-action--primary').click();
+  // O-123-35 (G-3): select the card + the CTA (was the card's primary «הוספה» button).
+  await item.click();
+  await s.page.locator('[data-catalog-modal] [data-action="catalog-add-selected"]').click();
   await waitFor(s, () => window.__pvSeq.filter((e) => e.kind === 'persist').length >= 2, null, 'AD-123-12: re-add commits and then adds');
   await settle(s);
   const readd = await writeTokens(s);
   assert(same(readd, [...COMMIT('svc-cred'), 'persist']), `AD-123-12: commit first, then the add (got ${readd.join(' → ')})`);
   const after = await lastPersist(s);
   assert(after.selectedIds.includes('svc-cred') && !after.profileIds.some((id) => id.startsWith('p-cred')) && !after.credentialKeys.some((k) => k.startsWith('p-cred')), 'AD-123-12: the app is added fresh with 0 profiles / credentials');
-  await s.page.keyboard.press('Escape');
+  // O-123-35 (G-3): the catalog closes itself after the add (was: Escape).
   await s.page.locator('[data-catalog-modal]').waitFor({ state: 'detached', timeout: 5000 });
   assert((await tileCount(s, 'svc-cred')) === 1 && (await toast(s).count()) === 0, 'AD-123-12: the tile is back, no Undo window left');
   await closePage(s);
@@ -891,9 +906,17 @@ const MUTATIONS = [
   ['M5 pending removal persisted to storage', edit(APP,
     '    clearRemovalTimer();\n    removalTimerRef.current = window.setTimeout(() => {',
     "    window.sessionStorage.setItem('pv-pending-removal', serviceId);\n    clearRemovalTimer();\n    removalTimerRef.current = window.setTimeout(() => {")],
-  ['M6 re-add during the window keeps the old profiles (pending undone instead of committed)', edit(APP,
-    "    if (pendingRemovalRef.current?.serviceId === id && (await commitPendingRemoval()) === 'failed') {",
-    "    if (pendingRemovalRef.current?.serviceId === id && (undoPendingRemoval(), false)) {")],
+  // O-123-35 (G-3): the catalog re-add now runs through addApps, so both add paths are mutated.
+  ['M6 re-add during the window keeps the old profiles (pending undone instead of committed)', (o) => {
+    let src = read(APP);
+    src = replaceOnce(src,
+      "    if (pendingRemovalRef.current?.serviceId === id && (await commitPendingRemoval()) === 'failed') {",
+      "    if (pendingRemovalRef.current?.serviceId === id && (undoPendingRemoval(), false)) {", o);
+    src = replaceOnce(src,
+      "    if (removalId && ids.includes(removalId) && (await commitPendingRemoval()) === 'failed') {",
+      '    if (removalId && ids.includes(removalId) && (undoPendingRemoval(), false)) {', o);
+    return { [APP]: src };
+  }],
   ['M7 removeAppFromVault keeps credentials', edit(SELECTION,
     '    if (!removed.has(key) && key !== target) {',
     '    if (removed.size >= 0) {')],
